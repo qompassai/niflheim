@@ -636,6 +636,82 @@ impl Default for Floor4Progress {
     }
 }
 
+/// The work inside one Veilworks chamber. Fields land with
+/// their chambers; the demonstration flag is here from the
+/// scaffolding, like its elders'.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct VeilWork {
+    /// The demonstration has been watched.
+    #[serde(default)]
+    pub watched: bool,
+}
+
+/// Floor 5, one chamber's progress.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor5ChamberProgress {
+    /// Resolution state.
+    pub state: ChamberState,
+    /// Hint rungs consumed (4 forfeits the facet).
+    pub hints_used: u8,
+    /// The facet rides with the repair.
+    pub facet: bool,
+    /// The chamber's work record.
+    pub work: VeilWork,
+}
+
+/// Floor 5, the FOE's progress: the Thing Behind the Veil.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor5FoeProgress {
+    /// Resolution state.
+    pub state: FoeState,
+    /// The safety case is assembled.
+    pub gate_passed: bool,
+    /// The strike's phase.
+    pub strike: StrikePhase,
+    /// The date inscribed when the FOE fell (`YYYY-MM-DD`).
+    pub fallen_date: Option<String>,
+}
+
+/// The whole of Floor 5: five chambers and the FOE.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor5Progress {
+    /// The five chambers.
+    pub chambers: Vec<Floor5ChamberProgress>,
+    /// The FOE record.
+    pub foe: Floor5FoeProgress,
+    /// Hint rungs spent on the FOE.
+    pub foe_hints_used: u8,
+}
+
+impl Floor5Progress {
+    /// A fresh Floor 5: chambers unworked, the FOE standing.
+    pub fn new() -> Self {
+        Self {
+            chambers: (0..5)
+                .map(|_| Floor5ChamberProgress {
+                    state: ChamberState::Unworked,
+                    hints_used: 0,
+                    facet: false,
+                    work: VeilWork::default(),
+                })
+                .collect(),
+            foe: Floor5FoeProgress {
+                state: FoeState::Standing,
+                gate_passed: false,
+                strike: StrikePhase::Idle,
+                fallen_date: None,
+            },
+            foe_hints_used: 0,
+        }
+    }
+}
+
+impl Default for Floor5Progress {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Floor 2's whole progress record: five chambers, the FOE, the
 /// admissions ledger, and the roster board's view state.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -760,6 +836,8 @@ struct SaveFile {
     floor3: Floor3Progress,
     #[serde(default)]
     floor4: Floor4Progress,
+    #[serde(default)]
+    floor5: Floor5Progress,
 }
 
 /// The whole expedition: the campaign's one source of truth.
@@ -791,6 +869,7 @@ pub struct Expedition {
     pub floor3: Floor3Progress,
     /// Floor 4's progress record.
     pub floor4: Floor4Progress,
+    pub floor5: Floor5Progress,
 }
 
 impl Default for Expedition {
@@ -831,6 +910,7 @@ impl Expedition {
             floor2: Floor2Progress::new(),
             floor3: Floor3Progress::new(),
             floor4: Floor4Progress::new(),
+            floor5: Floor5Progress::new(),
         }
     }
 
@@ -2633,6 +2713,151 @@ impl Expedition {
         self.floor4_chambers_repaired() == 5 && self.floor4.foe.state == FoeState::Fallen
     }
 
+    /// Whether a Floor 5 chamber's work presently proves out.
+    /// No chamber proves yet: the judges land with their
+    /// chambers in Steps 2–4.
+    pub fn floor5_diagnosed(&self, chamber: usize) -> bool {
+        let Some(_progress) = self.floor5.chambers.get(chamber) else {
+            return false;
+        };
+        false
+    }
+
+    /// File one Floor 5 chamber's proof once its work proves:
+    /// Unworked → Diagnosed, and the expedition log gains a line.
+    pub fn floor5_file_proof(&mut self, chamber: usize) -> Result<String, Refusal> {
+        if !self.floor5_diagnosed(chamber) {
+            return Err(Refusal(match chamber {
+                0 => "the path is not yet walked true: read every card \
+                      before its step, walk the sound steps, and refuse \
+                      the one whose card lies"
+                    .to_string(),
+                1 => "the tenancies are not yet judged true: call all \
+                      eight, let the referee stamp them, and annotate \
+                      every miss with the rule that decided it"
+                    .to_string(),
+                2 => "the cards do not yet read checkable: cycle every \
+                      line of all four tools to the phrasing a sceptic \
+                      can test"
+                    .to_string(),
+                3 => "the beam does not yet stand seamed: choose the \
+                      seam, pass the referee's three rulings, work both \
+                      halves, and drop them in the order prescribed"
+                    .to_string(),
+                4 => "the hunt is not yet presented: lens all six \
+                      stations, name the three faults truly, and rewrite \
+                      the cards that allowed them"
+                    .to_string(),
+                _ => "this workshop is not open yet".to_string(),
+            }));
+        }
+        let progress = self
+            .floor5
+            .chambers
+            .get_mut(chamber)
+            .ok_or_else(|| Refusal("no such chamber".to_string()))?;
+        if progress.state == ChamberState::Repaired {
+            return Err(Refusal("this chamber already stands repaired".to_string()));
+        }
+        progress.state = ChamberState::Diagnosed;
+        Ok(match chamber {
+            0 => "Filed: six steps, every card read before its step, and \
+                  the lying card refused by name."
+                .to_string(),
+            1 => "Filed: eight tenancies called, stamped, and every miss \
+                  owned with its deciding rule."
+                .to_string(),
+            2 => "Filed: four tools, twelve lines, every one a sceptic \
+                  can check."
+                .to_string(),
+            3 => "Filed: one beam, two halves, a seam the referee walked \
+                  and found sound."
+                .to_string(),
+            4 => "Filed: three faults found underneath, and their cards \
+                  rewritten at the root."
+                .to_string(),
+            _ => "The proof is filed with the Veilwalker's office.".to_string(),
+        })
+    }
+
+    /// Repair a diagnosed chamber (the seal): Diagnosed →
+    /// Repaired, with the facet at full standard (§5.5).
+    pub fn floor5_repair_chamber(&mut self, chamber: usize) -> Result<String, Refusal> {
+        let progress = self
+            .floor5
+            .chambers
+            .get_mut(chamber)
+            .ok_or_else(|| Refusal("no such chamber".to_string()))?;
+        match progress.state {
+            ChamberState::Repaired => {
+                Err(Refusal("this chamber already stands repaired".to_string()))
+            }
+            ChamberState::Unworked => Err(Refusal(
+                "there is nothing to repair yet — assemble the proof first".to_string(),
+            )),
+            ChamberState::Diagnosed => {
+                progress.state = ChamberState::Repaired;
+                if progress.hints_used <= 3 {
+                    progress.facet = true;
+                    Ok("Repaired at full standard. A facet of the Ice Stone \
+                        settles into the codex."
+                        .to_string())
+                } else {
+                    Ok("Repaired — though the seam was named, and the record \
+                        keeps it. No facet, but the floor still completes."
+                        .to_string())
+                }
+            }
+        }
+    }
+
+    /// Reset one Floor 5 chamber's work to its starting
+    /// state: hint usage stays on the record.
+    pub fn floor5_reset_chamber(&mut self, chamber: usize) {
+        if let Some(progress) = self.floor5.chambers.get_mut(chamber) {
+            progress.state = ChamberState::Unworked;
+            progress.facet = false;
+            progress.work = VeilWork::default();
+        }
+    }
+
+    /// Record that the player read a Floor 5 hint rung.
+    pub fn floor5_view_hint(&mut self, chamber: usize) -> u8 {
+        let Some(progress) = self.floor5.chambers.get_mut(chamber) else {
+            return 0;
+        };
+        progress.hints_used = (progress.hints_used + 1).min(4);
+        progress.hints_used
+    }
+
+    /// Hints used on a Floor 5 chamber.
+    pub fn floor5_hints_used(&self, chamber: usize) -> u8 {
+        self.floor5
+            .chambers
+            .get(chamber)
+            .map(|progress| progress.hints_used)
+            .unwrap_or(0)
+    }
+
+    /// Floor 5 stands open when the Crooked Foundation has
+    /// fallen and Floor 4 stands complete.
+    pub fn floor5_reachable(&self) -> bool {
+        self.floor4_complete()
+    }
+
+    /// How many Floor 5 chambers stand repaired.
+    pub fn floor5_chambers_repaired(&self) -> usize {
+        self.floor5
+            .chambers
+            .iter()
+            .filter(|chamber| chamber.state == ChamberState::Repaired)
+            .count()
+    }
+
+    /// Whether Floor 5 is complete: five chambers + FOE.
+    pub fn floor5_complete(&self) -> bool {
+        self.floor5_chambers_repaired() == 5 && self.floor5.foe.state == FoeState::Fallen
+    }
     /// Take the dimension book down: the re-survey may begin,
     /// and the Foundation stands Exposed.
     pub fn floor4_foe_take_book(&mut self) {
@@ -2972,6 +3197,7 @@ impl Expedition {
             floor2: self.floor2.clone(),
             floor3: self.floor3.clone(),
             floor4: self.floor4.clone(),
+            floor5: self.floor5.clone(),
         };
         serde_json::to_string(&file).map_err(|error| SaveError::Corrupt {
             reason: error.to_string(),
@@ -3038,6 +3264,7 @@ impl Expedition {
             floor2: file.floor2,
             floor3: file.floor3,
             floor4: file.floor4,
+            floor5: file.floor5,
         };
         expedition.validate_invariants()?;
         Ok(expedition)
@@ -3070,6 +3297,9 @@ impl Expedition {
         if self.floor4.chambers.len() != 5 {
             return Err(corrupt("the save does not hold five Floor 4 chambers"));
         }
+        if self.floor5.chambers.len() != 5 {
+            return Err(corrupt("the save does not hold five Floor 5 chambers"));
+        }
         for chamber in 0..5 {
             if self.floor3.chambers[chamber].state != ChamberState::Unworked
                 && !self.floor3_diagnosed(chamber)
@@ -3085,6 +3315,15 @@ impl Expedition {
             {
                 return Err(corrupt(
                     "the save claims a Floor 4 proof its work does not hold",
+                ));
+            }
+        }
+        for chamber in 0..5 {
+            if self.floor5.chambers[chamber].state != ChamberState::Unworked
+                && !self.floor5_diagnosed(chamber)
+            {
+                return Err(corrupt(
+                    "the save claims a Floor 5 proof its work does not hold",
                 ));
             }
         }
@@ -3412,7 +3651,7 @@ mod tests {
     fn load_refuses_future_versions() {
         let expedition = Expedition::new();
         let text = expedition.save_json().expect("save");
-        let future = text.replace("\"version\":4", "\"version\":99");
+        let future = text.replace("\"version\":5", "\"version\":99");
         assert_eq!(
             Expedition::load_json(&future),
             Err(SaveError::FutureVersion { found: 99 })
@@ -3482,7 +3721,7 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).expect("v1 loads");
         assert_eq!(loaded.floor2, Floor2Progress::new());
         let resaved = loaded.save_json().expect("re-save");
-        assert!(resaved.contains("\"version\":4"));
+        assert!(resaved.contains("\"version\":5"));
     }
 
     /// Validation: Floor 2 opens only when the Hoard has fallen.
@@ -3515,7 +3754,7 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).expect("v2 loads");
         assert_eq!(loaded.floor3, Floor3Progress::new());
         let resaved = loaded.save_json().expect("re-save");
-        assert!(resaved.contains("\"version\":4"));
+        assert!(resaved.contains("\"version\":5"));
     }
 
     /// Validation: a version-3 save (no floor4 field at all)
@@ -3530,9 +3769,39 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).expect("v3 loads");
         assert_eq!(loaded.floor4, Floor4Progress::new());
         let resaved = loaded.save_json().expect("re-save");
-        assert!(resaved.contains("\"version\":4"));
+        assert!(resaved.contains("\"version\":5"));
     }
 
+    /// Validation: a version-4 save (no floor5 field at all)
+    /// loads with a fresh Floor 5, and re-saves as version 5.
+    #[test]
+    fn version_four_saves_load_with_default_floor5() {
+        let expedition = Expedition::new();
+        let text = expedition.save_json().expect("save");
+        let mut value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        value.as_object_mut().expect("object").remove("floor5");
+        value["version"] = serde_json::json!(4);
+        let loaded = Expedition::load_json(&value.to_string()).expect("v4 loads");
+        assert_eq!(loaded.floor5, Floor5Progress::new());
+        let resaved = loaded.save_json().expect("re-save");
+        assert!(resaved.contains("\"version\":5"));
+    }
+
+    /// Validation: Floor 5 opens only when Floor 4 stands
+    /// complete — five chambers repaired and the Crooked
+    /// Foundation fallen.
+    #[test]
+    fn floor5_reachable_follows_floor4_completion() {
+        let mut expedition = Expedition::new();
+        assert!(!expedition.floor5_reachable());
+        for chamber in expedition.floor4.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        assert!(!expedition.floor5_reachable(), "the FOE still stands");
+        expedition.floor4.foe.state = FoeState::Fallen;
+        assert!(expedition.floor5_reachable());
+        assert!(!expedition.floor5_complete());
+    }
     /// Floor 4 Step 3 state: the crests judge on measured
     /// sizes, and the treaty wall judges the seating, the
     /// line, and the amended promise together.

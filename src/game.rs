@@ -194,6 +194,10 @@ pub enum Screen {
     Floor3Foe,
     /// Floor 4's FOE: the Crooked Foundation.
     Floor4Foe,
+    /// Floor 5's hub: the Veilworks.
+    Floor5Hub,
+    /// A Floor 5 chamber, by index (0-4).
+    Floor5Chamber(usize),
 }
 
 /// What a reading overlay is showing.
@@ -306,6 +310,10 @@ pub enum El {
     DoorFloor4,
     /// A Floor 4 chamber door.
     Floor4Door(u8),
+    /// The door to Floor 5, on Floor 4's hub.
+    DoorFloor5,
+    /// A Floor 5 chamber door.
+    Floor5Door(u8),
     /// Floor 2 hub: a chamber door, by index.
     Floor2Door(u8),
     /// Floor 2 hub: collapse or expand a roster group, by index.
@@ -316,6 +324,8 @@ pub enum El {
     F3Watch,
     /// Floor 4: read the chamber's charter (the watch).
     F4Watch,
+    /// Floor 5: watch the demonstration.
+    F5Watch,
     /// Floor 4 Chamber 1: put this stone on the slate.
     F4Stone(u8),
     /// Floor 4 Chamber 1: step the slate's size down.
@@ -603,6 +613,8 @@ enum ArmedFor {
     Floor3Chamber(usize),
     /// A Floor 4 chamber's repair.
     Floor4Chamber(usize),
+    /// A Floor 5 chamber's repair.
+    Floor5Chamber(usize),
     /// Floor 3 FOE's strike.
     Foe3,
     /// Floor 4 FOE's strike.
@@ -763,6 +775,8 @@ impl Game {
                 | Screen::Floor3Hub
                 | Screen::Floor4Hub
                 | Screen::Floor4Chamber(_)
+                | Screen::Floor5Hub
+                | Screen::Floor5Chamber(_)
                 | Screen::Chamber(_)
                 | Screen::Floor2Chamber(_)
                 | Screen::Floor3Chamber(_)
@@ -814,6 +828,7 @@ impl Game {
             Screen::Floor2Chamber(index) => self.armed == Some(ArmedFor::Floor2Chamber(index)),
             Screen::Floor3Chamber(index) => self.armed == Some(ArmedFor::Floor3Chamber(index)),
             Screen::Floor4Chamber(index) => self.armed == Some(ArmedFor::Floor4Chamber(index)),
+            Screen::Floor5Chamber(index) => self.armed == Some(ArmedFor::Floor5Chamber(index)),
             Screen::Foe => self.expedition.foe.strike == StrikePhase::Armed,
             Screen::Floor2Foe => self.expedition.floor2.foe.strike == StrikePhase::Armed,
             Screen::Floor3Foe => self.expedition.floor3.foe.strike == StrikePhase::Armed,
@@ -1015,13 +1030,14 @@ impl Game {
         match self.screen {
             Screen::Title => Vec::new(),
             Screen::Hub => vec![Verb::Read, Verb::Map],
-            Screen::Floor2Hub | Screen::Floor3Hub | Screen::Floor4Hub => {
+            Screen::Floor2Hub | Screen::Floor3Hub | Screen::Floor4Hub | Screen::Floor5Hub => {
                 vec![Verb::Read, Verb::Map]
             }
             Screen::Chamber(_)
             | Screen::Floor2Chamber(_)
             | Screen::Floor3Chamber(_)
-            | Screen::Floor4Chamber(_) => vec![
+            | Screen::Floor4Chamber(_)
+            | Screen::Floor5Chamber(_) => vec![
                 Verb::Examine,
                 Verb::Read,
                 Verb::Prove,
@@ -1111,6 +1127,14 @@ pub mod geom {
     /// of the panel — the spot Floor 3's door proved on Floor
     /// 2's hub.
     pub fn door_floor4() -> Rect {
+        Rect::new(640.0, 150.0, 124.0, 124.0)
+    }
+
+    /// Floor 5's door, on Floor 4's hub: the upper field
+    /// below the chamber row's end — the spot Floor 4's door
+    /// proved on Floor 1's hub, clear of the panel and the
+    /// FOE's door below.
+    pub fn door_floor5() -> Rect {
         Rect::new(640.0, 150.0, 124.0, 124.0)
     }
 
@@ -1566,13 +1590,16 @@ impl Game {
             return true;
         }
         match self.screen {
-            Screen::Hub | Screen::Floor2Hub | Screen::Floor3Hub | Screen::Floor4Hub => {
-                cy == 0 || cell == (5, 4)
-            }
+            Screen::Hub
+            | Screen::Floor2Hub
+            | Screen::Floor3Hub
+            | Screen::Floor4Hub
+            | Screen::Floor5Hub => cy == 0 || cell == (5, 4),
             Screen::Chamber(_)
             | Screen::Floor2Chamber(_)
             | Screen::Floor3Chamber(_)
             | Screen::Floor4Chamber(_)
+            | Screen::Floor5Chamber(_)
             | Screen::Foe
             | Screen::Floor2Foe
             | Screen::Floor3Foe
@@ -1805,6 +1832,7 @@ impl Game {
                     Screen::Floor2Chamber(index) => F2_EXAMINE_TEXTS[index],
                     Screen::Floor3Chamber(index) => F3_EXAMINE_TEXTS[index],
                     Screen::Floor4Chamber(index) => content::F4_EXAMINE_TEXTS[index],
+                    Screen::Floor5Chamber(index) => content::F5_EXAMINE_TEXTS[index],
                     Screen::Foe => {
                         "The hoard-engine: a ledger the size of a door, turning its \
                          pages by itself, smiling with every leaf."
@@ -1841,6 +1869,11 @@ impl Game {
                         "The Foundation Galleries: five galleries of stones, \
                          each stencilled with its true dimensions, and a \
                          plumb line hanging in every room."
+                    }
+                    Screen::Floor5Hub => {
+                        "The Veilworks: five workshops behind gauze, a sharp \
+                         tool on every bench, and the Veilwalker watching \
+                         hands, not faces."
                     }
                     Screen::Title => return,
                 };
@@ -1948,6 +1981,19 @@ impl Game {
                     }
                     self.changed();
                 }
+                if let Screen::Floor5Chamber(index) = self.screen {
+                    match self.expedition.floor5_file_proof(index) {
+                        Ok(text) => {
+                            self.expedition.log_push(format!(
+                                "Proof filed in {}.",
+                                content::VEIL_CHAMBERS[index].name
+                            ));
+                            self.say(StatusKind::Good, text);
+                        }
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
                 if let Screen::Floor4Chamber(index) = self.screen {
                     match self.expedition.floor4_file_proof(index) {
                         Ok(text) => {
@@ -1963,7 +2009,14 @@ impl Game {
                 }
             }
             Verb::Hint => {
-                if let Screen::Floor4Chamber(index) = self.screen {
+                if let Screen::Floor5Chamber(index) = self.screen {
+                    if self.expedition.floor5_hints_used(index) == 0 {
+                        self.expedition.floor5_view_hint(index);
+                    }
+                    self.hint_showing = self.expedition.floor5_hints_used(index).max(1);
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                } else if let Screen::Floor4Chamber(index) = self.screen {
                     if self.expedition.floor4_hints_used(index) == 0 {
                         self.expedition.floor4_view_hint(index);
                     }
@@ -2279,10 +2332,31 @@ impl Game {
                     );
                 }
             }
+            El::DoorFloor5 => {
+                if self.expedition.floor5_reachable() {
+                    self.enter_screen(Screen::Floor5Hub);
+                    self.say(StatusKind::Info, content::FLOOR5_INTRO);
+                } else {
+                    self.say(
+                        StatusKind::Refusal,
+                        "The gauze door is barred until the Foundation \
+                         Galleries stand complete — five chambers repaired \
+                         and the Crooked Foundation fallen.",
+                    );
+                }
+            }
+
             El::Floor4Door(index) => {
                 let index = index as usize;
                 self.enter_screen(Screen::Floor4Chamber(index));
                 self.say(StatusKind::Info, content::FLOOR4_CHAMBER_INTROS[index]);
+                self.bump();
+            }
+
+            El::Floor5Door(index) => {
+                let index = index as usize;
+                self.enter_screen(Screen::Floor5Chamber(index));
+                self.say(StatusKind::Info, content::FLOOR5_CHAMBER_INTROS[index]);
                 self.bump();
             }
 
@@ -2740,6 +2814,26 @@ impl Game {
                     self.say(
                         StatusKind::Info,
                         format!("The book's final promise now reads {promise}."),
+                    );
+                    self.changed();
+                }
+            }
+
+            El::F5Watch => {
+                if let Screen::Floor5Chamber(index) = self.screen {
+                    if let Some(progress) = self.expedition.floor5.chambers.get_mut(index) {
+                        progress.work.watched = true;
+                    }
+                    self.say(
+                        StatusKind::Info,
+                        match index {
+                            0 => content::WALK_CHARTER,
+                            1 => content::TENANCY_CHARTER,
+                            2 => content::CARD_CHARTER,
+                            3 => content::BEAM_CHARTER,
+                            4 => content::HUNT_CHARTER,
+                            _ => "The Veilwalker nods at the gauze.",
+                        },
                     );
                     self.changed();
                 }
@@ -3642,6 +3736,15 @@ impl Game {
                     self.changed();
                 }
 
+                Screen::Floor5Chamber(index) => {
+                    self.expedition.floor5_reset_chamber(index);
+                    self.say(
+                        StatusKind::Info,
+                        "The workshop is reset: tools racked, cards squared, \
+                         the work begun again.",
+                    );
+                    self.changed();
+                }
                 Screen::Floor4Chamber(index) => {
                     self.expedition.floor4_reset_chamber(index);
                     self.say(
@@ -3828,6 +3931,26 @@ impl Game {
                 }
             },
 
+            Screen::Floor5Chamber(index) => match self.expedition.floor5.chambers[index].state {
+                ChamberState::Diagnosed => {
+                    self.armed = Some(ArmedFor::Floor5Chamber(index));
+                    self.say(
+                        StatusKind::Info,
+                        "The seal is pressed. Confirm to strike the repair home, or \
+                         stand down.",
+                    );
+                }
+                ChamberState::Repaired => {
+                    self.say(StatusKind::Info, "This chamber already stands repaired.");
+                }
+                ChamberState::Unworked => {
+                    self.say(
+                        StatusKind::Refusal,
+                        "The seal sleeps until the proof is complete.",
+                    );
+                }
+            },
+
             Screen::Floor3Chamber(index) => match self.expedition.floor3.chambers[index].state {
                 ChamberState::Diagnosed => {
                     self.armed = Some(ArmedFor::Floor3Chamber(index));
@@ -3942,6 +4065,19 @@ impl Game {
                             "{} repaired.",
                             content::FOUNDATION_CHAMBERS[index].name
                         ));
+                        self.say(StatusKind::Good, text);
+                    }
+                    Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                }
+                self.changed();
+            }
+
+            Some(ArmedFor::Floor5Chamber(index)) => {
+                self.armed = None;
+                match self.expedition.floor5_repair_chamber(index) {
+                    Ok(text) => {
+                        self.expedition
+                            .log_push(format!("{} repaired.", content::VEIL_CHAMBERS[index].name));
                         self.say(StatusKind::Good, text);
                     }
                     Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
@@ -4292,6 +4428,11 @@ impl Game {
                     index + 1,
                     content::FOUNDATION_CHAMBERS[index].name
                 ),
+                Screen::Floor5Chamber(index) => format!(
+                    "Chamber {} — {}",
+                    index + 1,
+                    content::VEIL_CHAMBERS[index].name
+                ),
                 Screen::Foe => "The Hoard's Inscription".to_string(),
                 Screen::Floor2Foe => "The Menagerie's Inscription".to_string(),
                 Screen::Floor3Foe => "The Release's Inscription".to_string(),
@@ -4305,6 +4446,7 @@ impl Game {
                 Screen::Floor2Hub => format!("Floor 2 — {}", content::FLOOR2_NAME),
                 Screen::Floor3Hub => format!("Floor 3 — {}", content::FLOOR3_NAME),
                 Screen::Floor4Hub => format!("Floor 4 — {}", content::FLOOR4_NAME),
+                Screen::Floor5Hub => format!("Floor 5 — {}", content::FLOOR5_NAME),
                 _ => format!("Floor 1 — {}", content::FLOOR_NAME),
             },
             ReadingKind::MasterPlan => "The Master Plan".to_string(),
@@ -4321,6 +4463,7 @@ impl Game {
                 }
                 Screen::Floor3Chamber(index) => content::FLOOR3_CHAMBER_INTROS[index].to_string(),
                 Screen::Floor4Chamber(index) => content::FLOOR4_CHAMBER_INTROS[index].to_string(),
+                Screen::Floor5Chamber(index) => content::FLOOR5_CHAMBER_INTROS[index].to_string(),
                 Screen::Foe => content::FOE_INSCRIPTION.to_string(),
                 Screen::Floor2Foe => content::FOE2_INSCRIPTION.to_string(),
                 Screen::Floor3Foe => content::FOE3_INSCRIPTION.to_string(),
@@ -4342,6 +4485,9 @@ impl Game {
                 Screen::Floor4Chamber(index) => content::FOUNDATION_CHAMBERS[index]
                     .demonstration
                     .to_string(),
+                Screen::Floor5Chamber(index) => {
+                    content::VEIL_CHAMBERS[index].demonstration.to_string()
+                }
                 Screen::Foe => content::FOE_DEMONSTRATION.to_string(),
                 Screen::Floor2Foe => content::FOE2_DEMONSTRATION.to_string(),
                 Screen::Floor3Foe => content::FOE3_INTRO.to_string(),
@@ -4354,6 +4500,7 @@ impl Game {
                     Screen::Floor2Chamber(index) => content::floor2_hints(index)[rung - 1],
                     Screen::Floor3Chamber(index) => content::floor3_chamber_hints(index)[rung - 1],
                     Screen::Floor4Chamber(index) => content::floor4_chamber_hints(index)[rung - 1],
+                    Screen::Floor5Chamber(index) => content::floor5_chamber_hints(index)[rung - 1],
                     Screen::Floor2Foe => content::floor2_foe_hints()[rung - 1],
                     Screen::Floor3Foe => content::floor3_foe_hints()[rung - 1],
                     Screen::Floor4Foe => content::floor4_foe_hints()[rung - 1],
@@ -4392,6 +4539,7 @@ impl Game {
                 Screen::Floor2Hub => content::FLOOR2_INTRO.to_string(),
                 Screen::Floor3Hub => content::FLOOR3_INTRO.to_string(),
                 Screen::Floor4Hub => content::FLOOR4_INTRO.to_string(),
+                Screen::Floor5Hub => content::FLOOR5_INTRO.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::MasterPlan => content::MASTER_PLAN.to_string(),
@@ -4559,12 +4707,14 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor2Chamber(_)
         | Screen::Floor3Chamber(_)
         | Screen::Floor4Chamber(_)
+        | Screen::Floor5Chamber(_)
         | Screen::Foe
         | Screen::Floor2Foe
         | Screen::Floor3Foe
         | Screen::Floor4Foe
         | Screen::Floor3Hub
-        | Screen::Floor4Hub => {
+        | Screen::Floor4Hub
+        | Screen::Floor5Hub => {
             els.push((El::TabFloor, rects::TAB_FLOOR));
             els.push((El::TabMap, rects::TAB_MAP));
             els.push((El::TabLog, rects::TAB_LOG));
@@ -4596,6 +4746,13 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
                 els.push((El::Floor4Door(index as u8), geom::door_chamber(index)));
             }
             els.push((El::DoorFoe4, geom::door_foe4()));
+            els.push((El::DoorFloor5, geom::door_floor5()));
+        }
+        Screen::Floor5Hub => {
+            els.push((El::CampStone, geom::camp_stone()));
+            for index in 0..5 {
+                els.push((El::Floor5Door(index as u8), geom::door_chamber(index)));
+            }
         }
 
         Screen::Floor2Hub => {
@@ -4626,6 +4783,14 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             layout_floor4_chamber_panel(&mut els, game, index);
             layout_floor4_chamber34(&mut els, index);
             layout_floor4_chamber5(&mut els, index);
+            layout_seal(&mut els, game);
+        }
+
+        Screen::Floor5Chamber(index) => {
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.push((El::ResetChamber, rects::RESET_BTN));
+            layout_floor5_chamber_panel(&mut els, game, index);
             layout_seal(&mut els, game);
         }
 
@@ -4790,6 +4955,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         Screen::Floor2Chamber(index) => game.armed == Some(ArmedFor::Floor2Chamber(index)),
         Screen::Floor3Chamber(index) => game.armed == Some(ArmedFor::Floor3Chamber(index)),
         Screen::Floor4Chamber(index) => game.armed == Some(ArmedFor::Floor4Chamber(index)),
+        Screen::Floor5Chamber(index) => game.armed == Some(ArmedFor::Floor5Chamber(index)),
         Screen::Foe => game.expedition.foe.strike == StrikePhase::Armed,
         Screen::Floor2Foe => game.expedition.floor2.foe.strike == StrikePhase::Armed,
         Screen::Floor3Foe => game.expedition.floor3.foe.strike == StrikePhase::Armed,
@@ -4801,6 +4967,14 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         els.push((El::SealConfirm, rects::SEAL_CONFIRM));
         els.push((El::SealCancel, rects::SEAL_CANCEL));
     }
+}
+
+/// The Floor 5 chambers' panel elements: the watch; each
+/// chamber's own controls land with its step.
+fn layout_floor5_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: usize) {
+    let _ = game;
+    let _ = chamber;
+    els.push((El::F5Watch, geom::f2_watch()));
 }
 
 /// The Floor 4 chambers' panel elements: the watch, Chamber
@@ -5978,6 +6152,43 @@ mod tests {
         assert_eq!(game.screen, Screen::Floor4Hub);
     }
 
+    /// Floor 5's door answers the pointer when Floor 4 stands
+    /// complete, and refuses it while any part waits.
+    #[test]
+    fn floor5_door_answers_the_pointer_when_floor4_stands_complete() {
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        game.screen = Screen::Hub;
+        // Light the Stratum I stairs (Floor 4 Step 1's fixture).
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.foe.gate_passed = true;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        game.expedition.floor3.foe.gate_passed = true;
+        for chamber in game.expedition.floor2.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        let door4 = geom::door_floor4();
+        game.pointer_down(door4.cx(), door4.cy());
+        game.pointer_up(door4.cx(), door4.cy());
+        assert_eq!(game.screen, Screen::Floor4Hub);
+        let rect = geom::door_floor5();
+        game.pointer_down(rect.cx(), rect.cy());
+        game.pointer_up(rect.cx(), rect.cy());
+        assert_eq!(
+            game.screen,
+            Screen::Floor4Hub,
+            "barred while Floor 4 stands incomplete"
+        );
+        for chamber in game.expedition.floor4.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        game.expedition.floor4.foe.state = FoeState::Fallen;
+        assert!(game.expedition.floor5_reachable());
+        game.pointer_down(rect.cx(), rect.cy());
+        game.pointer_up(rect.cx(), rect.cy());
+        assert_eq!(game.screen, Screen::Floor5Hub);
+    }
     /// Floor 4 Step 3, driven on the GUI surface: the crests
     /// are cut to their niches and measured, and the treaty
     /// wall is seated, proven, and its book amended — both

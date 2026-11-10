@@ -2800,3 +2800,178 @@ pub const PLUMB_LINE: &str = "The Plumb Line";
 pub const PLUMB_LINE_TEXT: &str = "A weight, a cord, and the whole doctrine of the galleries: \
     what it says outranks what anyone remembers. Wielded on Floors 5, 9, 10, 13, and 14 — from \
     this fall onward, prose about sizes is no longer evidence anywhere in the descent.";
+
+// ---------------------------------------------------------------------------
+// Floor 5 — The Veilworks. Domain 5: Unsafe Rust & the aliasing model.
+// Keeper: the Veilwalker. FOE: The Thing Behind the Veil.
+// ---------------------------------------------------------------------------
+
+/// The floor's name.
+pub const FLOOR5_NAME: &str = "The Veilworks";
+/// The domain this floor teaches.
+pub const FLOOR5_DOMAIN: &str = "Unsafe Rust & the aliasing model";
+/// The floor's keeper.
+pub const FLOOR5_KEEPER: &str = "the Veilwalker";
+/// The floor's introduction, spoken on entry.
+pub const FLOOR5_INTRO: &str = "The Veilworks: gauze over the machinery, a sharp \
+    tool on every bench, and a card beside each one stating what it assumes. \
+    The Veilwalker watches hands, not faces — read the card before you lift \
+    the tool, and the tools behave exactly as their cards say.";
+
+/// The five Veilworks chambers.
+pub const VEIL_CHAMBERS: [ChamberMeta; 5] = [
+    ChamberMeta {
+        name: "Raw pointers",
+        room: "The Pointer Walks",
+        inscription_title: "The Read Card",
+        inscription: "The pointer points where it pleases and promises nothing. \
+            The card beside each step is the whole of the law: read it before \
+            the step, or the yard keeps what you drop.",
+        demonstration: "The walker reads the first card aloud, steps where it \
+            allows, and refuses the step whose card lies — pole grounded, foot \
+            unmoved, the refusal spoken as plainly as the steps.",
+        slot_wants: "every step walked or refused by its card",
+        prove_label: "Walk the path",
+    },
+    ChamberMeta {
+        name: "The aliasing model",
+        room: "The Two Tenants",
+        inscription_title: "One Writer, or Readers",
+        inscription: "A room holds many readers or one writer, never both at \
+            once. The promise is over the whole room, not the corner you \
+            happened to touch — the referee judges by the room, not the corner.",
+        demonstration: "Eight tenancies stand placarded; the Veilwalker opens \
+            each one slowly, and the referee's stamp falls where the rule says \
+            it falls — the writer's stamp never shares a room with a reader's.",
+        slot_wants: "seven verdicts true, and every miss annotated",
+        prove_label: "Call the referee",
+    },
+    ChamberMeta {
+        name: "Unsafe contracts",
+        room: "The Contract Cards",
+        inscription_title: "Checkable, or Vapour",
+        inscription: "A card that cannot be checked is a wish. 'Safe because \
+            it is safe' has never held a roof up; write what a sceptic can \
+            test, line by line, tool by tool.",
+        demonstration: "Four tools stand in a rack, their cards beside them; \
+            the Veilwalker sharpens each vague line to a checkable one with a \
+            pencil, out loud, and lays the false ones face-down.",
+        slot_wants: "twelve lines a sceptic can check",
+        prove_label: "Present the cards",
+    },
+    ChamberMeta {
+        name: "Safe abstractions",
+        room: "The Split Beam",
+        inscription_title: "The Seam Contract",
+        inscription: "Two halves may be worked at once only because the seam's \
+            contract says exactly where each half ends. The face of the beam \
+            is safe; the parts are not; the card at the seam is the whole \
+            reason why.",
+        demonstration: "The Veilwalker saws the beam at a marked seam, sets \
+            one crew to each half, and shows the referee the three rulings: \
+            the seam that stands, the overlap refused, the drop order kept.",
+        slot_wants: "a sound seam, walked by the referee",
+        prove_label: "Seam the beam",
+    },
+    ChamberMeta {
+        name: "The UB hunt",
+        room: "The Fault Machine",
+        inscription_title: "Fix the Card, Not the Symptom",
+        inscription: "A fault at the surface is a contract broken underneath. \
+            Lens every station, name the faults truly, and rewrite the card \
+            that allowed them — a symptom patched is a fault postponed, not \
+            a fault cured.",
+        demonstration: "The machine turns over slowly under the lens; the \
+            Veilwalker stations a card at each whine and ticks the honest \
+            ones through, leaving the broken three ticking louder.",
+        slot_wants: "three faults found and their cards rewritten",
+        prove_label: "Present the hunt",
+    },
+];
+
+/// Each chamber's spoken introduction.
+pub const FLOOR5_CHAMBER_INTROS: [&str; 5] = [
+    "The Pointer Walks. Six steps across the yard, a card beside each: the \
+     walker steps where the card allows and refuses where it lies — the \
+     pole itself is deaf, and trusts no one.",
+    "The Two Tenants. Eight tenancies stand placarded; call each one's \
+     soundness before the referee opens it, and annotate every miss with \
+     the rule that decided it.",
+    "The Contract Cards. Four tools, three lines each: cycle every line to \
+     the phrasing a sceptic can check, and leave no vapour standing.",
+    "The Split Beam. One beam, two halves, a seam to choose: seam it \
+     soundly, refuse the overlap, work both halves, and drop them in the \
+     order the card prescribes.",
+    "The UB hunt. Six stations, three of them faulted underneath: lens each \
+     one before you judge it, name the faults truly, and rewrite the cards \
+     that allowed them.",
+];
+
+/// The Examine texts for Floor 5's five chambers.
+pub const F5_EXAMINE_TEXTS: [&str; 5] = [
+    "A marked yard, a long pole, and six stepping stones. Beside every \
+     stone a card states what the step assumes; the cards are the only \
+     promises in the room, and one of them is lying.",
+    "Eight small rooms behind gauze, each placarded with a tenancy: who \
+     holds it, who reads it, who writes it. The referee's stamp hangs at \
+     the door, patient and exact.",
+    "A rack of four sharp tools, each with a three-line card. Some lines \
+     can be checked by a sceptic with a ruler; others are vapour wearing \
+     a card's shape.",
+    "A single beam on trestles, chalked with possible seams. A saw, two \
+     crew benches, and the referee's chair at the end, where the three \
+     rulings are read out in order.",
+    "A long machine under gauze, six stations ticking. Three tick wrong — \
+     not at the surface, where the eye rests, but underneath, where the \
+     contracts were written carelessly.",
+];
+
+/// Chamber 1's demonstration, spoken at the watch.
+pub const WALK_CHARTER: &str = "The Veilwalker reads the first card aloud — \
+    'the stone beyond is whole; step freely' — and steps. At the fourth \
+    stone the card claims a footing the yard does not have; the walker \
+    grounds the pole, refuses the step out loud, and walks no further \
+    until the refusal stands recorded.";
+
+/// Chamber 2's demonstration, spoken at the watch.
+pub const TENANCY_CHARTER: &str = "The Veilwalker opens the tenancies one at \
+    a time: readers together, stamping SOUND; a reader at her desk while a \
+    writer works the same room, stamped UNSOUND — the rule never asks who \
+    touched what last, only who holds the room.";
+
+/// Chamber 3's demonstration, spoken at the watch.
+pub const CARD_CHARTER: &str = "The Veilwalker takes the pencil to the first \
+    card: 'handle with care' becomes 'the caller's slice is non-null, \
+    aligned, and valid for reads of the stated length' — a line a sceptic \
+    can test. The vapour lines go face-down on the bench.";
+
+/// Chamber 4's demonstration, spoken at the watch.
+pub const BEAM_CHARTER: &str = "The Veilwalker chalks the seam at the beam's \
+    middle, saws, and sets a crew to each half. When a hand reaches across \
+    the seam for the other crew's half, the referee refuses it — aloud, by \
+    the card — and the halves are worked apart, then dropped left first.";
+
+/// Chamber 5's demonstration, spoken at the watch.
+pub const HUNT_CHARTER: &str = "The Veilwalker runs the machine slowly under \
+    the lens, station by station, ticking the honest cards through. Three \
+    stations tick wrong underneath; their cards are lifted out and laid on \
+    the bench, waiting to be rewritten at the root.";
+
+/// The hint ladders for Floor 5's chambers. At scaffolding only the
+/// general ladder stands; each chamber's own ladder lands with it.
+pub fn floor5_chamber_hints(_chamber: usize) -> [&'static str; 4] {
+    [
+        "The Veilworks reward the read card over the lifted tool: before any \
+         work, read what the mechanism in front of you assumes — the press \
+         that refuses names the assumption you skipped.",
+        "Work the chamber's own order. The demonstration at the watch is the \
+         mechanism shown honestly, by the keeper's own hands; imitate it \
+         exactly and the bench has no surprises left.",
+        "Every refusal on this floor names the missing piece of the contract \
+         out loud. Collect the refusals; they are the specification, told \
+         from the other side.",
+        "The seam of this floor, in miniature: a borrow is a contract over \
+         the whole value, not the part you touched — look for the place \
+         where a card, a tenancy, or a seam quietly narrows it.",
+    ]
+}
