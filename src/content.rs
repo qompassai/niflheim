@@ -2553,6 +2553,19 @@ pub fn floor4_chamber_hints(index: usize) -> [&'static str; 4] {
             "The seam, named — failure class #14 in miniature: amend the book's final promise to the offset the line reads, neither the sum nor a guess.",
         ],
 
+        4 => [
+            "Fill a cavity, then tag it — the two cycles are separate, and the stone keeps only \
+             the filling. The tag lives in the mason's head: yours.",
+            "Read a stone as its tag claims before you judge it. A number read as a ratio is \
+             next to nothing; a ratio read as a number is a count in the millions — the bits \
+             are faithful either way.",
+            "The blank stone is used whole or not at all: fill all four cells first. A Use on \
+             a part-filled blank earns the referee's whistle, and the catch stays on the \
+             record.",
+            "The seam: the tag is not in the stone. Where the tag and the filling disagree, \
+             the reading is nonsense and the chamber will not complete — set tag and filling \
+             to the same kind on both stones.",
+        ],
         _ => [
             "The Plumbmason's galleries reward the measured over the remembered: work the room's own instrument before you guess.",
             "Read the inscription again, slowly. The rule of the room is carved on its stone, and the demonstration at the desk shows it kept once.",
@@ -2658,3 +2671,132 @@ pub const CREST_CHARTER: &str = "The Seal Stones' charter: find the niche before
 
 /// Chamber 4's charter, spoken at the watch.
 pub const TREATY_CHARTER: &str = "The treaty wall's charter: a treaty stone promises every offset and is held to all of them; a free stone promises nothing and owes nothing. Prove each offset with the line — and where the book itself was written carelessly, amend the book, not the stone.";
+
+/// Chamber 5's charter, spoken at the watch.
+pub const HOLLOW_CHARTER: &str = "The Hollow Stones' charter: a cavity holds one filling of two \
+    kinds, and the tag that says which kind is kept in a head, not in the stone. Read a stone as \
+    its tag claims and the bits will answer — faithfully, and without mercy. Fill the blank whole \
+    before it is used; the referee is Miri, and the referee counts.";
+
+/// Chamber 5's hollow stones: (name, the whole-number filling,
+/// the ratio filling). Each cavity is four bytes: the number is
+/// a `u32`, the ratio an `f32`, and the stone holds whichever
+/// was poured in — as bare bits.
+pub const HOLLOW_STONES: [(&str, u32, f32); 2] = [
+    ("the first hollow stone", 7, 2.5),
+    ("the second hollow stone", 1_000_000, 0.75),
+];
+
+/// The dimension book of the master foundation: five
+/// load-bearing entries, (name, the book's figure). The book's
+/// arithmetic is flawless; three of its figures were taken
+/// from a shadow and are false to the ground by exactly the
+/// shadow's offset.
+pub const DIMENSION_BOOK: [(&str, u32); 5] = [
+    ("the Keystone", 8),
+    ("the Long Beam", 22),
+    ("the Footing", 24),
+    ("the Arch Stone", 14),
+    ("the Capstone", 14),
+];
+
+/// The shadow's offset: every false figure in the book stands
+/// this many units from the stone it names — the noon shadow
+/// of the survey's own rod, counted as stone.
+pub const SHADOW_OFFSET: u32 = 6;
+
+/// The plumb line's measure of one book entry: the size of
+/// the real stone the entry names, taken with `size_of`. The
+/// book is audited against the ground, never against itself.
+pub fn dimension_book_true(index: usize) -> u32 {
+    match index {
+        0 => std::mem::size_of::<(u32, u32)>() as u32,
+        1 => std::mem::size_of::<&[u8]>() as u32,
+        2 => std::mem::size_of::<Vec<u16>>() as u32,
+        3 => std::mem::size_of::<(u8, u32)>() as u32,
+        _ => std::mem::size_of::<Option<&u64>>() as u32,
+    }
+}
+
+/// The re-cut's foreign set, in tray order: (name, size,
+/// alignment). Four stones belong to the foreign spec; the
+/// fifth was cut from the crooked book — its measure matches
+/// its honest twin, but its stencil repeats the book.
+pub const RECUT_FOREIGN: [(&str, u32, u32); 5] = [
+    ("the sill", 2, 2),
+    ("the post", 4, 4),
+    ("the beam", 8, 8),
+    ("the cap", 1, 1),
+    ("the beam, shadow-cut", 8, 8),
+];
+
+/// What each foreign stone's stencil claims for its size.
+/// Four are honest; the shadow-cut beam's stencil claims the
+/// book's figure, six more than the stone measures.
+pub const RECUT_FOREIGN_STENCIL: [u32; 5] = [2, 4, 8, 1, 14];
+
+/// The re-cut's free set: (name, size, alignment). Four
+/// stones under a stated size budget — the budget being the
+/// least span the four allow (`puzzles::wall_minimum`); the
+/// tray order's own wall is larger.
+pub const RECUT_FREE: [(&str, u32, u32); 4] = [
+    ("the wedge", 1, 1),
+    ("the pier", 8, 8),
+    ("the slab", 4, 4),
+    ("the rod", 2, 2),
+];
+
+/// Floor 4's FOE: the name of the Crooked Foundation.
+pub const FOE4_NAME: &str = "The Crooked Foundation";
+
+/// The Crooked Foundation's introduction, spoken at its door.
+pub const FOE4_INTRO: &str = "At the galleries' heart the master foundation settles — a finger's \
+    width this year, a thumb's the next, always toward the same side. The dimension book hangs \
+    in a frame by the door, its survey celebrated, its arithmetic beautiful. Nobody has dropped \
+    a line on the stones themselves in a generation.";
+
+/// The Crooked Foundation's inscription: failure class #8,
+/// named in the fiction, as FULL-DESIGN requires of every FOE.
+pub const FOE4_INSCRIPTION: &str = "Here is kept the record of the eighth failure class: THE \
+    ASTRONOMER'S BRASS EYE — a fine instrument, faithfully read, pointed at the wrong thing. \
+    The old survey measured this foundation by its shadow at noon and entered the shadow's \
+    numbers in the dimension book as the stones' own sizes. The book has been audited a \
+    hundred times and found flawless, because an audit compares the book with itself. The \
+    ground has never once been asked.";
+
+/// The Crooked Foundation's demonstration, read at its desk.
+pub const FOE4_DEMONSTRATION: &str = "The Plumbmason takes the dimension book down from its \
+    frame and opens it on the desk: five load-bearing entries in a beautiful hand, every sum \
+    correct. Then she hangs the line beside the first stone and says nothing at all. The line \
+    says it for her.";
+
+/// The Crooked Foundation's hint ladder.
+pub fn floor4_foe_hints() -> [&'static str; 4] {
+    [
+        "Take the book down and drop the line on every stone it names. The re-survey is the \
+         whole diagnosis: five stones, measured at the stone.",
+        "Three of the five figures disagree with the line, and all three disagree by the same \
+         amount. Exhibit each false entry beside its true value — a disagreement merely \
+         noticed is not yet proof.",
+        "The re-cut is laid in two sets: four stones to the foreign spec — mind the tray, one \
+         stone on it was cut from the crooked book — and four free stones under the budget, \
+         which is their least span.",
+        "The seam, named — failure class #8, the Astronomer's Brass Eye: the survey measured a \
+         shadow and called it a stone. Nothing in the book can acquit the book; only the line, \
+         dropped on the ground itself, measures the quantity.",
+    ]
+}
+
+/// The Crooked Foundation's codex stone.
+pub const BRASS_EYE_STONE: &str = "The Brass Eye Stone";
+
+/// The Brass Eye Stone's text in the codex.
+pub const BRASS_EYE_STONE_TEXT: &str = "Distinct quantities get distinct types.";
+
+/// The Crooked Foundation's loot.
+pub const PLUMB_LINE: &str = "The Plumb Line";
+
+/// The Plumb Line's text in the pack.
+pub const PLUMB_LINE_TEXT: &str = "A weight, a cord, and the whole doctrine of the galleries: \
+    what it says outranks what anyone remembers. Wielded on Floors 5, 9, 10, 13, and 14 — from \
+    this fall onward, prose about sizes is no longer evidence anywhere in the descent.";

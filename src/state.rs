@@ -18,9 +18,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::content::{
-    ADMISSION_SERVICES, BEASTS, FOE_ADMISSIONS, FOE_CHALLENGE, GATE_SCAFFOLD, GATE2_SCAFFOLD,
-    GATEHOUSE_KEY, HERALD_LETTERS, INTERNERS_HOARD, LANTERN_STONE, LEASES_INITIAL, LENS_STONE,
-    PACK_ITEMS, PLACARDS, PLANK_STONE, PLUGIN_MENAGERIE, ROSTER_GROUPS,
+    ADMISSION_SERVICES, BEASTS, BRASS_EYE_STONE, FOE_ADMISSIONS, FOE_CHALLENGE, GATE_SCAFFOLD,
+    GATE2_SCAFFOLD, GATEHOUSE_KEY, HERALD_LETTERS, INTERNERS_HOARD, LANTERN_STONE, LEASES_INITIAL,
+    LENS_STONE, PACK_ITEMS, PLACARDS, PLANK_STONE, PLUGIN_MENAGERIE, PLUMB_LINE, ROSTER_GROUPS,
 };
 use crate::core::{SAVE_FORMAT_VERSION, SAVE_MAGIC, SaveError, Settings, TextScale};
 use crate::puzzles::{
@@ -503,6 +503,23 @@ pub struct FoundationWork {
     /// stands — the book's naive figure until amended.
     #[serde(default = "default_final_promise")]
     pub final_promise: u32,
+    /// Chamber 5: each hollow stone's filling (0 empty,
+    /// 1 the whole number, 2 the ratio).
+    #[serde(default)]
+    pub fillings: [u8; 2],
+    /// Chamber 5: the mason's tag per stone (0 untagged,
+    /// 1 number, 2 ratio) — kept only in the mason's head.
+    #[serde(default)]
+    pub tags: [u8; 2],
+    /// Chamber 5: the blank stone's cells, filled one by one.
+    #[serde(default)]
+    pub blank_cells: [bool; 4],
+    /// Chamber 5: the blank has been used whole.
+    #[serde(default)]
+    pub blank_used: bool,
+    /// Chamber 5: the referee's catches of a part-filled use.
+    #[serde(default)]
+    pub referee_catches: u32,
 }
 
 /// Chamber 4's final promise starts at the treaty book's
@@ -525,6 +542,11 @@ impl Default for FoundationWork {
             treaty_order: Vec::new(),
             treaty_proven: false,
             final_promise: default_final_promise(),
+            fillings: [0; 2],
+            tags: [0; 2],
+            blank_cells: [false; 4],
+            blank_used: false,
+            referee_catches: 0,
         }
     }
 }
@@ -543,6 +565,28 @@ pub struct Floor4FoeProgress {
     pub strike: StrikePhase,
     /// The date inscribed when the FOE fell (`YYYY-MM-DD`).
     pub fallen_date: Option<String>,
+    /// The dimension book has been taken down (and the
+    /// Foundation stands Exposed).
+    #[serde(default)]
+    pub book_taken: bool,
+    /// The line has dropped on this book entry's stone.
+    #[serde(default)]
+    pub measured: [bool; 5],
+    /// This entry stands exhibited beside its true value.
+    #[serde(default)]
+    pub exhibited: [bool; 5],
+    /// The foreign re-cut's seating, in order.
+    #[serde(default)]
+    pub foreign_order: Vec<u8>,
+    /// The line has verified the foreign set.
+    #[serde(default)]
+    pub foreign_proven: bool,
+    /// The free re-cut's seating, in order.
+    #[serde(default)]
+    pub free_order: Vec<u8>,
+    /// The line has verified the free set at its budget.
+    #[serde(default)]
+    pub free_proven: bool,
 }
 
 /// Floor 4's whole progress record: five chambers and the FOE.
@@ -573,6 +617,13 @@ impl Floor4Progress {
                 gate_passed: false,
                 strike: StrikePhase::Idle,
                 fallen_date: None,
+                book_taken: false,
+                measured: [false; 5],
+                exhibited: [false; 5],
+                foreign_order: Vec::new(),
+                foreign_proven: false,
+                free_order: Vec::new(),
+                free_proven: false,
             },
             foe_hints_used: 0,
         }
@@ -2433,6 +2484,16 @@ impl Expedition {
                     && progress.work.treaty_proven
                     && progress.work.final_promise == truth[3]
             }
+            // Chamber 5: both stones filled and tagged as
+            // filled, the blank full and used whole.
+            4 => {
+                work.watched
+                    && (0..crate::content::HOLLOW_STONES.len()).all(|stone| {
+                        work.fillings[stone] != 0 && work.tags[stone] == work.fillings[stone]
+                    })
+                    && work.blank_cells.iter().all(|cell| *cell)
+                    && work.blank_used
+            }
             _ => false,
         }
     }
@@ -2457,6 +2518,10 @@ impl Expedition {
                       and amend the book's final promise to the offset \
                       the line reads"
                     .to_string(),
+                4 => "the hollow stones do not yet read true: fill \
+                      both, tag each as it is filled, and use the blank \
+                      only when it stands whole"
+                    .to_string(),
                 _ => "this gallery is not open yet".to_string(),
             }));
         }
@@ -2480,6 +2545,9 @@ impl Expedition {
                 .to_string(),
             3 => "Filed: four offsets the line itself read, and a book \
                   amended where the book was careless."
+                .to_string(),
+            4 => "Filed: two stones read as they are, and a blank \
+                  used whole — nothing trusted to a head."
                 .to_string(),
             _ => "The proof is filed with the Plumbmason's office.".to_string(),
         })
@@ -2563,6 +2631,249 @@ impl Expedition {
     /// Whether Floor 4 is complete: five chambers + FOE.
     pub fn floor4_complete(&self) -> bool {
         self.floor4_chambers_repaired() == 5 && self.floor4.foe.state == FoeState::Fallen
+    }
+
+    /// Take the dimension book down: the re-survey may begin,
+    /// and the Foundation stands Exposed.
+    pub fn floor4_foe_take_book(&mut self) {
+        self.floor4.foe.book_taken = true;
+        if self.floor4.foe.state == FoeState::Standing {
+            self.floor4.foe.state = FoeState::Exposed;
+        }
+    }
+
+    /// Drop the line on one book entry's stone: the measured
+    /// size against the book's figure, spoken plainly either
+    /// way.
+    pub fn floor4_foe_measure(&mut self, entry: usize) -> Result<String, Refusal> {
+        if !self.floor4.foe.book_taken {
+            return Err(Refusal(
+                "take the dimension book down first — the re-survey \
+                 begins with the book in hand"
+                    .to_string(),
+            ));
+        }
+        let Some(slot) = self.floor4.foe.measured.get_mut(entry) else {
+            return Err(Refusal("no such entry in the book".to_string()));
+        };
+        *slot = true;
+        let (name, figure) = crate::content::DIMENSION_BOOK[entry];
+        let truth = crate::content::dimension_book_true(entry);
+        if figure == truth {
+            Ok(format!(
+                "The line drops on {name}: the stone measures {truth}, \
+                 and the book says {figure}. This entry is honest."
+            ))
+        } else {
+            Ok(format!(
+                "The line drops on {name}: the stone measures {truth}, \
+                 and the book says {figure}. The entry is false to the \
+                 ground — exhibit it beside its true value."
+            ))
+        }
+    }
+
+    /// Exhibit one measured entry beside its true value:
+    /// only a false entry can be exhibited, and only once
+    /// the line has actually dropped on its stone.
+    pub fn floor4_foe_exhibit(&mut self, entry: usize) -> Result<String, Refusal> {
+        if !self
+            .floor4
+            .foe
+            .measured
+            .get(entry)
+            .copied()
+            .unwrap_or(false)
+        {
+            return Err(Refusal(
+                "drop the line on the stone first — an unmeasured \
+                 entry cannot be exhibited, only believed"
+                    .to_string(),
+            ));
+        }
+        if !crate::puzzles::book_disagrees(entry) {
+            return Err(Refusal(
+                "this entry agrees with its stone: there is nothing \
+                 to exhibit but an honest figure"
+                    .to_string(),
+            ));
+        }
+        self.floor4.foe.exhibited[entry] = true;
+        let (name, figure) = crate::content::DIMENSION_BOOK[entry];
+        let truth = crate::content::dimension_book_true(entry);
+        Ok(format!(
+            "Exhibited: {name} — the book's {figure} beside the \
+             stone's {truth}, off by exactly the shadow's offset."
+        ))
+    }
+
+    /// The Foundation's proof, whole: the book taken, every
+    /// entry measured at its stone, and every false entry
+    /// exhibited beside its true value. (The re-cut — the
+    /// strike's other half — is the gate, tracked apart.)
+    pub fn floor4_foe_proof_complete(&self) -> bool {
+        let foe = &self.floor4.foe;
+        foe.book_taken
+            && foe.measured.iter().all(|done| *done)
+            && (0..crate::content::DIMENSION_BOOK.len())
+                .all(|entry| !crate::puzzles::book_disagrees(entry) || foe.exhibited[entry])
+    }
+
+    /// Prove the foreign re-cut: four stones seated in the
+    /// spec's order, no shadow-cut stone among them — its
+    /// stencil betrays it before its seat is even read — and
+    /// the line reading the promised offsets from `c_offsets`.
+    pub fn floor4_foe_prove_foreign(&mut self) -> Result<String, Refusal> {
+        let order = self.floor4.foe.foreign_order.clone();
+        if order.len() < 4 {
+            return Err(Refusal(
+                "the line drops on a finished set: four stones, no fewer".to_string(),
+            ));
+        }
+        for &stone in &order {
+            let claimed = crate::content::RECUT_FOREIGN_STENCIL[stone as usize];
+            let measured = crate::content::RECUT_FOREIGN[stone as usize].1;
+            if claimed != measured {
+                return Err(Refusal(format!(
+                    "the line stops at {}: its stencil claims {claimed}, \
+                     and the stone measures {measured} — it was cut from \
+                     the crooked book, and no spec can seat it",
+                    crate::content::RECUT_FOREIGN[stone as usize].0
+                )));
+            }
+        }
+        if order != vec![0, 1, 2, 3] {
+            return Err(Refusal(
+                "the stones stand, but not in the spec's seats: the \
+                 foreign order is sill, post, beam, cap"
+                    .to_string(),
+            ));
+        }
+        let dims: Vec<(u32, u32)> = order
+            .iter()
+            .map(|&stone| {
+                let (_, size, align) = crate::content::RECUT_FOREIGN[stone as usize];
+                (size, align)
+            })
+            .collect();
+        let offsets = crate::puzzles::c_offsets(&dims);
+        self.floor4.foe.foreign_proven = true;
+        self.floor4_foe_refresh_gate();
+        Ok(format!(
+            "The line verifies the foreign set: seats at {}.",
+            offsets
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    }
+
+    /// Prove the free re-cut: four stones ordered so the
+    /// wall's total meets the budget — the budget being the
+    /// least span the four allow.
+    pub fn floor4_foe_prove_free(&mut self) -> Result<String, Refusal> {
+        let order = self.floor4.foe.free_order.clone();
+        if order.len() < 4 {
+            return Err(Refusal(
+                "the line drops on a finished set: four stones, no fewer".to_string(),
+            ));
+        }
+        let pairs: Vec<(u32, u32)> = crate::content::RECUT_FREE
+            .iter()
+            .map(|(_, size, align)| (*size, *align))
+            .collect();
+        let seated: Vec<(u32, u32)> = order.iter().map(|&stone| pairs[stone as usize]).collect();
+        let (total, _) = crate::puzzles::wall_layout(&seated);
+        let budget = crate::puzzles::wall_minimum(&pairs);
+        if total != budget {
+            return Err(Refusal(format!(
+                "the line reads the free set at {total}; the budget \
+                 is {budget} — the least span these four allow"
+            )));
+        }
+        self.floor4.foe.free_proven = true;
+        self.floor4_foe_refresh_gate();
+        Ok(format!(
+            "The line verifies the free set: {total} against a \
+             budget of {budget} — not a unit wasted."
+        ))
+    }
+
+    /// The gate is the line itself: both re-cut sets laid
+    /// true and verified, the mark stands.
+    fn floor4_foe_refresh_gate(&mut self) {
+        let foe = &mut self.floor4.foe;
+        foe.gate_passed = foe.foreign_proven && foe.free_proven;
+    }
+
+    /// Arm the Foundation's strike: proof complete and the
+    /// re-cut verified by the line, as with every FOE.
+    pub fn floor4_foe_arm_strike(&mut self) -> Result<(), Refusal> {
+        if self.floor4.foe.state == FoeState::Fallen {
+            return Err(Refusal(
+                "the Foundation has already been re-laid".to_string(),
+            ));
+        }
+        if !self.floor4_foe_proof_complete() {
+            return Err(Refusal(
+                "the strike sleeps until the re-survey stands complete: \
+                 every entry measured at its stone, every false one \
+                 exhibited beside its true value"
+                    .to_string(),
+            ));
+        }
+        if !self.floor4.foe.gate_passed {
+            return Err(Refusal(
+                "the strike sleeps until the re-cut stands verified: \
+                 the foreign set to its spec, the free set at its budget"
+                    .to_string(),
+            ));
+        }
+        self.floor4.foe.strike = StrikePhase::Armed;
+        Ok(())
+    }
+
+    /// Confirm the strike: the Foundation is re-laid from
+    /// the measured stones, and the Brass Eye Stone and the
+    /// Plumb Line change hands.
+    pub fn floor4_foe_confirm_strike(&mut self, date: &str) -> Result<String, Refusal> {
+        if self.floor4.foe.state == FoeState::Fallen {
+            return Err(Refusal(
+                "the Foundation has already been re-laid".to_string(),
+            ));
+        }
+        if self.floor4.foe.strike != StrikePhase::Armed {
+            return Err(Refusal(
+                "the strike is not armed — press the seal first".to_string(),
+            ));
+        }
+        self.floor4.foe.strike = StrikePhase::Idle;
+        self.floor4.foe.state = FoeState::Fallen;
+        self.floor4.foe.fallen_date = Some(date.to_string());
+        if !self.codex.iter().any(|stone| stone == BRASS_EYE_STONE) {
+            self.codex.push(BRASS_EYE_STONE.to_string());
+        }
+        if !self.pack.iter().any(|loot| loot == PLUMB_LINE) {
+            self.pack.push(PLUMB_LINE.to_string());
+        }
+        Ok("The strike lands — not a foundation condemned, but a \
+            survey replaced: the crooked stones are lifted, the book \
+            is burned in the Plumbmason's own brazier, and the master \
+            foundation is re-laid from figures the line read off the \
+            ground itself. It will settle no more."
+            .to_string())
+    }
+
+    /// Record that the player read a Foundation hint rung.
+    pub fn floor4_foe_view_hint(&mut self) -> u8 {
+        self.floor4.foe_hints_used = (self.floor4.foe_hints_used + 1).min(4);
+        self.floor4.foe_hints_used
+    }
+
+    /// The deepest Foundation hint rung recorded.
+    pub fn floor4_foe_hints_used(&self) -> u8 {
+        self.floor4.foe_hints_used
     }
 
     /// Floor 3 stands open when both valley FOEs have fallen
@@ -3271,6 +3582,144 @@ mod tests {
         expedition.floor4_file_proof(3).expect("treaty proof");
         expedition.floor4_repair_chamber(3).expect("treaty repair");
         assert_eq!(expedition.floor4_chambers_repaired(), 2);
+    }
+
+    /// Floor 4 Step 4 state: the hollow stones judge tags
+    /// against fillings and the blank against wholeness; the
+    /// Foundation's whole arc — re-survey, exhibition, the
+    /// two re-cuts, the gate, the strike — holds together,
+    /// and each refusal fires where the design puts it.
+    #[test]
+    fn floor4_hollow_stones_and_foundation_judged() {
+        let mut expedition = Expedition::new();
+        // Chamber 5: a filling without its tag is not a proof.
+        {
+            let work = &mut expedition.floor4.chambers[4].work;
+            work.watched = true;
+            work.fillings = [1, 2];
+            work.tags = [1, 0];
+            work.blank_cells = [true; 4];
+            work.blank_used = true;
+        }
+        assert!(!expedition.floor4_diagnosed(4), "an untagged ratio refuses");
+        expedition.floor4.chambers[4].work.tags = [2, 2];
+        assert!(!expedition.floor4_diagnosed(4), "a wrong tag refuses");
+        expedition.floor4.chambers[4].work.tags = [1, 2];
+        assert!(expedition.floor4_diagnosed(4));
+        expedition.floor4.chambers[4].work.blank_used = false;
+        assert!(!expedition.floor4_diagnosed(4), "an unused blank refuses");
+        expedition.floor4.chambers[4].work.blank_used = true;
+        expedition.floor4_file_proof(4).expect("hollow proof");
+        expedition.floor4_repair_chamber(4).expect("hollow repair");
+        // The FOE refuses its strike before any work, and a
+        // measurement before the book is taken.
+        assert!(expedition.floor4_foe_arm_strike().is_err());
+        assert!(
+            expedition.floor4_foe_measure(0).is_err(),
+            "the book still hangs in its frame"
+        );
+        expedition.floor4_foe_take_book();
+        assert_eq!(expedition.floor4.foe.state, FoeState::Exposed);
+        // An honest entry cannot be exhibited; an unmeasured
+        // one cannot either.
+        expedition.floor4_foe_measure(0).expect("measure keystone");
+        assert!(expedition.floor4_foe_exhibit(0).is_err());
+        assert!(expedition.floor4_foe_exhibit(1).is_err());
+        for entry in 1..5 {
+            expedition.floor4_foe_measure(entry).expect("measure entry");
+        }
+        assert!(!expedition.floor4_foe_proof_complete());
+        for entry in [1, 3, 4] {
+            expedition
+                .floor4_foe_exhibit(entry)
+                .expect("exhibit false entry");
+        }
+        assert!(expedition.floor4_foe_proof_complete());
+        // The gate still sleeps: the re-cut is not laid.
+        assert!(expedition.floor4_foe_arm_strike().is_err());
+        // The foreign set refuses the shadow-cut stone by its
+        // stencil, then stands to its spec.
+        expedition.floor4.foe.foreign_order = vec![0, 1, 4, 3];
+        assert!(expedition.floor4_foe_prove_foreign().is_err());
+        expedition.floor4.foe.foreign_order = vec![0, 2, 1, 3];
+        assert!(
+            expedition.floor4_foe_prove_foreign().is_err(),
+            "the spec's order is part of the spec"
+        );
+        expedition.floor4.foe.foreign_order = vec![0, 1, 2, 3];
+        expedition
+            .floor4_foe_prove_foreign()
+            .expect("the foreign set stands to its spec");
+        assert!(!expedition.floor4.foe.gate_passed);
+        // The free set refuses the tray order, then meets its
+        // budget in the falling-alignment seating.
+        expedition.floor4.foe.free_order = vec![0, 1, 2, 3];
+        assert!(expedition.floor4_foe_prove_free().is_err());
+        expedition.floor4.foe.free_order = vec![1, 2, 3, 0];
+        expedition
+            .floor4_foe_prove_free()
+            .expect("the free set at its budget");
+        assert!(expedition.floor4.foe.gate_passed);
+        // The strike lands, the awards change hands, and a
+        // second strike is refused.
+        expedition.floor4_foe_arm_strike().expect("arm");
+        expedition
+            .floor4_foe_confirm_strike("2026-11-10")
+            .expect("strike lands");
+        assert_eq!(expedition.floor4.foe.state, FoeState::Fallen);
+        assert!(
+            expedition
+                .codex
+                .iter()
+                .any(|stone| stone == crate::content::BRASS_EYE_STONE)
+        );
+        assert!(
+            expedition
+                .pack
+                .iter()
+                .any(|loot| loot == crate::content::PLUMB_LINE)
+        );
+        assert!(expedition.floor4_foe_confirm_strike("2026-11-10").is_err());
+        // Save-compat: a save written before the Foundation's
+        // re-survey fields existed loads with them defaulted.
+        // (Run on a fresh expedition, so no repaired chamber's
+        // stripped work can trip the invariant check.)
+        let fresh = Expedition::new();
+        let mut value: serde_json::Value =
+            serde_json::from_str(&fresh.save_json().expect("save")).expect("save parses");
+        let foe = value
+            .pointer_mut("/floor4/foe")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("the foe record");
+        for key in [
+            "book_taken",
+            "measured",
+            "exhibited",
+            "foreign_order",
+            "foreign_proven",
+            "free_order",
+            "free_proven",
+        ] {
+            foe.remove(key);
+        }
+        let work = value
+            .pointer_mut("/floor4/chambers/4/work")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("the chamber work record");
+        for key in [
+            "fillings",
+            "tags",
+            "blank_cells",
+            "blank_used",
+            "referee_catches",
+        ] {
+            work.remove(key);
+        }
+        let text = serde_json::to_string(&value).expect("re-serialize");
+        let loaded = Expedition::load_json(&text).expect("the stripped save loads");
+        assert!(!loaded.floor4.foe.book_taken);
+        assert!(loaded.floor4.foe.measured.iter().all(|done| !done));
+        assert_eq!(loaded.floor4.chambers[4].work.referee_catches, 0);
     }
 
     /// Floor 4 Chambers 1–2: the bench judge (true slates,

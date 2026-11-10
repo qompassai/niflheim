@@ -192,6 +192,8 @@ pub enum Screen {
     Floor3Chamber(usize),
     /// Floor 3's FOE: the Gatehouse Release.
     Floor3Foe,
+    /// Floor 4's FOE: the Crooked Foundation.
+    Floor4Foe,
 }
 
 /// What a reading overlay is showing.
@@ -346,6 +348,34 @@ pub enum El {
     F4PromiseUp,
     /// Floor 4 Chamber 4: lower the book's final promise.
     F4PromiseDown,
+    /// Floor 4 Chamber 5: cycle one hollow stone's filling.
+    F4Fill(u8),
+    /// Floor 4 Chamber 5: cycle one hollow stone's tag.
+    F4Tag(u8),
+    /// Floor 4 Chamber 5: read one hollow stone as tagged.
+    F4Read(u8),
+    /// Floor 4 Chamber 5: fill one cell of the blank stone.
+    F4Cell(u8),
+    /// Floor 4 Chamber 5: use the blank stone.
+    F4UseBlank,
+    /// Floor 4's FOE: take the dimension book down.
+    F4BookTake,
+    /// Floor 4's FOE: drop the line on one book entry.
+    F4Measure(u8),
+    /// Floor 4's FOE: exhibit one entry beside its truth.
+    F4Exhibit(u8),
+    /// Floor 4's FOE: seat one foreign stone in the re-cut.
+    F4ForeignSeat(u8),
+    /// Floor 4's FOE: take the foreign set down.
+    F4ForeignReset,
+    /// Floor 4's FOE: drop the line on the foreign set.
+    F4ForeignProve,
+    /// Floor 4's FOE: seat one free stone in the re-cut.
+    F4FreeSeat(u8),
+    /// Floor 4's FOE: take the free set down.
+    F4FreeReset,
+    /// Floor 4's FOE: drop the line on the free set.
+    F4FreeProve,
     /// Floor 3 Chamber 1: cycle one report's pair, by report.
     F3Pair(u8),
     /// Floor 3 Chamber 2: cycle one station's setting, by slot
@@ -360,6 +390,8 @@ pub enum El {
     F3Slip(u8, u8),
     /// Floor 3 hub: the FOE's door.
     DoorFoe3,
+    /// Floor 4 hub: the FOE's door.
+    DoorFoe4,
     /// Floor 3 Chamber 5: cycle one line's verdict, by item.
     F3Check(u8),
     /// Floor 3 Chamber 5: cycle the set-aside line's reason.
@@ -573,6 +605,8 @@ enum ArmedFor {
     Floor4Chamber(usize),
     /// Floor 3 FOE's strike.
     Foe3,
+    /// Floor 4 FOE's strike.
+    Foe4,
     /// The FOE's strike.
     Foe,
     /// Floor 2 FOE's strike.
@@ -733,6 +767,7 @@ impl Game {
                 | Screen::Floor2Chamber(_)
                 | Screen::Floor3Chamber(_)
                 | Screen::Floor3Foe
+                | Screen::Floor4Foe
                 | Screen::Foe
                 | Screen::Floor2Foe
         )
@@ -782,6 +817,7 @@ impl Game {
             Screen::Foe => self.expedition.foe.strike == StrikePhase::Armed,
             Screen::Floor2Foe => self.expedition.floor2.foe.strike == StrikePhase::Armed,
             Screen::Floor3Foe => self.expedition.floor3.foe.strike == StrikePhase::Armed,
+            Screen::Floor4Foe => self.expedition.floor4.foe.strike == StrikePhase::Armed,
             _ => false,
         }
     }
@@ -1000,7 +1036,7 @@ impl Game {
                 Verb::Hint,
                 Verb::Map,
             ],
-            Screen::Floor2Foe | Screen::Floor3Foe => vec![
+            Screen::Floor2Foe | Screen::Floor3Foe | Screen::Floor4Foe => vec![
                 Verb::Examine,
                 Verb::Read,
                 Verb::Enumerate,
@@ -1011,6 +1047,17 @@ impl Game {
     }
 }
 
+/// A ratio as the gallery speaks it: plainly when it is
+/// ordinary, in the surveyor's shorthand when it is not — a
+/// wrong tag's nonsense should read as nonsense, not as a
+/// page of zeros.
+pub fn ratio_text(value: f32) -> String {
+    if value != 0.0 && (value.abs() < 0.001 || value.abs() >= 1.0e7) {
+        format!("{value:e}")
+    } else {
+        format!("{value}")
+    }
+}
 /// A cell's centre in design coordinates (the token's home there).
 fn cell_center(cx: i32, cy: i32) -> (f32, f32) {
     let rect = cell_rect(cx, cy);
@@ -1135,6 +1182,82 @@ pub mod geom {
     /// Floor 4 Chamber 4: take the wall down.
     pub fn f4_treaty_reset() -> Rect {
         Rect::new(580.0, 500.0, 188.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 5: one hollow stone's filling cycle.
+    pub fn f4_fill_btn(stone: usize) -> Rect {
+        Rect::new(380.0, 120.0 + stone as f32 * 130.0, 170.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 5: one hollow stone's tag cycle.
+    pub fn f4_tag_btn(stone: usize) -> Rect {
+        Rect::new(566.0, 120.0 + stone as f32 * 130.0, 174.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 5: read one hollow stone as tagged.
+    pub fn f4_read_btn(stone: usize) -> Rect {
+        Rect::new(380.0, 162.0 + stone as f32 * 130.0, 170.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 5: one cell of the blank stone.
+    pub fn f4_cell(cell: usize) -> Rect {
+        Rect::new(380.0 + cell as f32 * 92.0, 420.0, 84.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 5: use the blank stone.
+    pub fn f4_use_blank() -> Rect {
+        Rect::new(380.0, 470.0, 220.0, 30.0)
+    }
+
+    /// Floor 4's FOE door on Floor 4's hub: the same proven
+    /// ground the Release's door holds on Floor 3's hub.
+    pub fn door_foe4() -> Rect {
+        Rect::new(600.0, 292.0, 168.0, 124.0)
+    }
+
+    /// The Foundation: the take-the-book button.
+    pub fn f4_book_take() -> Rect {
+        Rect::new(380.0, 120.0, 300.0, 34.0)
+    }
+
+    /// The Foundation: drop the line on one book entry.
+    pub fn f4_measure_btn(entry: usize) -> Rect {
+        Rect::new(380.0, 96.0 + entry as f32 * 60.0, 170.0, 30.0)
+    }
+
+    /// The Foundation: exhibit one book entry.
+    pub fn f4_exhibit_btn(entry: usize) -> Rect {
+        Rect::new(566.0, 96.0 + entry as f32 * 60.0, 174.0, 30.0)
+    }
+
+    /// The Foundation: one foreign stone's tray row.
+    pub fn f4_foreign_row(stone: usize) -> Rect {
+        Rect::new(56.0, 96.0 + stone as f32 * 52.0, 300.0, 30.0)
+    }
+
+    /// The Foundation: drop the line on the foreign set.
+    pub fn f4_foreign_prove() -> Rect {
+        Rect::new(56.0, 372.0, 144.0, 30.0)
+    }
+
+    /// The Foundation: take the foreign set down.
+    pub fn f4_foreign_reset() -> Rect {
+        Rect::new(208.0, 372.0, 144.0, 30.0)
+    }
+
+    /// The Foundation: one free stone's tray row.
+    pub fn f4_free_row(stone: usize) -> Rect {
+        Rect::new(380.0, 416.0 + stone as f32 * 48.0, 300.0, 30.0)
+    }
+
+    /// The Foundation: drop the line on the free set.
+    pub fn f4_free_prove() -> Rect {
+        Rect::new(380.0, 620.0, 144.0, 30.0)
+    }
+
+    /// The Foundation: take the free set down.
+    pub fn f4_free_reset() -> Rect {
+        Rect::new(532.0, 620.0, 144.0, 30.0)
     }
 
     /// A roster group header row on Floor 2's panel.
@@ -1452,7 +1575,8 @@ impl Game {
             | Screen::Floor4Chamber(_)
             | Screen::Foe
             | Screen::Floor2Foe
-            | Screen::Floor3Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
+            | Screen::Floor3Foe
+            | Screen::Floor4Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
             Screen::Title => true,
         }
     }
@@ -1690,6 +1814,12 @@ impl Game {
                          brazier burning at the door for the calibration, and the \
                          Menagerie watching its own table be read."
                     }
+                    Screen::Floor4Foe => {
+                        "The master foundation: five load-bearing stones \
+                         under a settling arch, a dimension book in a \
+                         frame, and a plumb line hanging still beside \
+                         stones nobody has measured in a generation."
+                    }
                     Screen::Floor3Foe => {
                         "The Gatehouse Release: a great door, a lantern \
                          burning before its keeper came, and a slate that \
@@ -1721,6 +1851,21 @@ impl Game {
                 self.bump();
             }
             Verb::Enumerate => {
+                if self.screen == Screen::Floor4Foe {
+                    let first = !self.expedition.floor4.foe.book_taken;
+                    self.expedition.floor4_foe_take_book();
+                    if first {
+                        self.expedition
+                            .log_push("The dimension book was taken down for the re-survey.");
+                    }
+                    self.say(
+                        StatusKind::Info,
+                        "The book is down: five load-bearing entries in a \
+                         beautiful hand. Drop the line on every stone it \
+                         names — the book cannot acquit itself.",
+                    );
+                    self.changed();
+                }
                 if self.screen == Screen::Floor2Foe {
                     let first = !self.expedition.floor2.foe.audit_taken;
                     self.expedition.floor2_foe_take_audit();
@@ -1844,6 +1989,13 @@ impl Game {
                         self.expedition.floor2_foe_view_hint();
                     }
                     self.hint_showing = self.expedition.floor2_foe_hints_used().max(1);
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                } else if self.screen == Screen::Floor4Foe {
+                    if self.expedition.floor4_foe_hints_used() == 0 {
+                        self.expedition.floor4_foe_view_hint();
+                    }
+                    self.hint_showing = self.expedition.floor4_foe_hints_used().max(1);
                     self.overlay = Overlay::Reading(ReadingKind::Hint);
                     self.changed();
                 } else if self.screen == Screen::Floor3Foe {
@@ -2335,6 +2487,251 @@ impl Game {
                     self.changed();
                 }
             }
+            El::F4Fill(stone) => {
+                if matches!(self.screen, Screen::Floor4Chamber(4)) {
+                    let stone = stone as usize;
+                    let work = &mut self.expedition.floor4.chambers[4].work;
+                    work.fillings[stone] = (work.fillings[stone] + 1) % 3;
+                    let (name, number, ratio) = content::HOLLOW_STONES[stone];
+                    let text = match work.fillings[stone] {
+                        1 => format!("{name} is filled with the whole number: {number}."),
+                        2 => format!("{name} is filled with the ratio: {}.", ratio_text(ratio)),
+                        _ => format!("{name} stands empty again."),
+                    };
+                    self.say(StatusKind::Info, text);
+                    self.changed();
+                }
+            }
+            El::F4Tag(stone) => {
+                if matches!(self.screen, Screen::Floor4Chamber(4)) {
+                    let stone = stone as usize;
+                    let work = &mut self.expedition.floor4.chambers[4].work;
+                    work.tags[stone] = (work.tags[stone] + 1) % 3;
+                    let text = match work.tags[stone] {
+                        1 => "The mason tags it in his head: a whole number.".to_string(),
+                        2 => "The mason tags it in his head: a ratio.".to_string(),
+                        _ => "The mason clears the tag from his head.".to_string(),
+                    };
+                    self.say(StatusKind::Info, text);
+                    self.changed();
+                }
+            }
+            El::F4Read(stone) => {
+                if matches!(self.screen, Screen::Floor4Chamber(4)) {
+                    let stone = stone as usize;
+                    let work = &self.expedition.floor4.chambers[4].work;
+                    let (name, number, ratio) = content::HOLLOW_STONES[stone];
+                    let text = match puzzles::hollow_bits(work.fillings[stone], number, ratio) {
+                        None => format!(
+                            "{name} is empty: the tag claims over a cavity \
+                             with nothing in it."
+                        ),
+                        Some(bits) => match work.tags[stone] {
+                            0 => format!(
+                                "{name} holds its filling untagged: the \
+                                 mason has made no claim, and the stone \
+                                 keeps its counsel."
+                            ),
+                            1 => format!(
+                                "Read as the tag claims — a whole number: \
+                                 {name} answers {bits}."
+                            ),
+                            _ => format!(
+                                "Read as the tag claims — a ratio: {name} \
+                                 answers {}.",
+                                ratio_text(puzzles::hollow_as_ratio(bits))
+                            ),
+                        },
+                    };
+                    self.say(StatusKind::Info, text);
+                    self.changed();
+                }
+            }
+            El::F4Cell(cell) => {
+                if matches!(self.screen, Screen::Floor4Chamber(4)) {
+                    let cell = cell as usize;
+                    let work = &mut self.expedition.floor4.chambers[4].work;
+                    if work.blank_cells[cell] {
+                        self.say(StatusKind::Info, "That cell already stands filled.");
+                    } else {
+                        work.blank_cells[cell] = true;
+                        let filled = work.blank_cells.iter().filter(|c| **c).count();
+                        self.say(
+                            StatusKind::Info,
+                            format!(
+                                "The blank stone takes its filling: {filled} \
+                                 of four cells stand full."
+                            ),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+            El::F4UseBlank => {
+                if matches!(self.screen, Screen::Floor4Chamber(4)) {
+                    let work = &mut self.expedition.floor4.chambers[4].work;
+                    if work.blank_cells.iter().all(|cell| *cell) {
+                        work.blank_used = true;
+                        self.say(
+                            StatusKind::Good,
+                            "The blank is used whole: four cells, every one \
+                             filled, and the gallery's referee nods it \
+                             through.",
+                        );
+                    } else {
+                        work.referee_catches += 1;
+                        let filled = work.blank_cells.iter().filter(|c| **c).count();
+                        let catches = work.referee_catches;
+                        self.say(
+                            StatusKind::Refusal,
+                            format!(
+                                "A whistle: Miri, the gallery's referee, \
+                                 catches the use — {filled} of four cells \
+                                 filled. The catch stands on the record \
+                                 ({catches} so far). Fill the blank whole."
+                            ),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+            El::F4BookTake => {
+                if self.screen == Screen::Floor4Foe {
+                    self.expedition.floor4_foe_take_book();
+                    self.say(
+                        StatusKind::Info,
+                        "The book is in hand: five load-bearing entries. \
+                         Drop the line on every stone it names.",
+                    );
+                    self.changed();
+                }
+            }
+            El::F4Measure(entry) => {
+                if self.screen == Screen::Floor4Foe {
+                    match self.expedition.floor4_foe_measure(entry as usize) {
+                        Ok(text) => self.say(StatusKind::Info, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+            El::F4Exhibit(entry) => {
+                if self.screen == Screen::Floor4Foe {
+                    match self.expedition.floor4_foe_exhibit(entry as usize) {
+                        Ok(text) => self.say(StatusKind::Good, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+            El::F4ForeignSeat(stone) => {
+                if self.screen == Screen::Floor4Foe {
+                    let foe = &mut self.expedition.floor4.foe;
+                    if foe.foreign_order.contains(&stone) {
+                        self.say(
+                            StatusKind::Info,
+                            format!(
+                                "{} already stands in the set.",
+                                content::RECUT_FOREIGN[stone as usize].0
+                            ),
+                        );
+                    } else if foe.foreign_order.len() >= 4 {
+                        self.say(
+                            StatusKind::Refusal,
+                            "The set has four seats and all are filled.",
+                        );
+                    } else {
+                        foe.foreign_order.push(stone);
+                        foe.foreign_proven = false;
+                        foe.gate_passed = false;
+                        let seat = foe.foreign_order.len();
+                        self.say(
+                            StatusKind::Info,
+                            format!(
+                                "{} takes seat {seat} of the foreign set.",
+                                content::RECUT_FOREIGN[stone as usize].0
+                            ),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+            El::F4ForeignReset => {
+                if self.screen == Screen::Floor4Foe {
+                    let foe = &mut self.expedition.floor4.foe;
+                    foe.foreign_order.clear();
+                    foe.foreign_proven = false;
+                    foe.gate_passed = false;
+                    self.say(
+                        StatusKind::Info,
+                        "The foreign set is taken down; the tray is as it was.",
+                    );
+                    self.changed();
+                }
+            }
+            El::F4ForeignProve => {
+                if self.screen == Screen::Floor4Foe {
+                    match self.expedition.floor4_foe_prove_foreign() {
+                        Ok(text) => self.say(StatusKind::Good, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+            El::F4FreeSeat(stone) => {
+                if self.screen == Screen::Floor4Foe {
+                    let foe = &mut self.expedition.floor4.foe;
+                    if foe.free_order.contains(&stone) {
+                        self.say(
+                            StatusKind::Info,
+                            format!(
+                                "{} already stands in the set.",
+                                content::RECUT_FREE[stone as usize].0
+                            ),
+                        );
+                    } else if foe.free_order.len() >= 4 {
+                        self.say(
+                            StatusKind::Refusal,
+                            "The set has four seats and all are filled.",
+                        );
+                    } else {
+                        foe.free_order.push(stone);
+                        foe.free_proven = false;
+                        foe.gate_passed = false;
+                        let seat = foe.free_order.len();
+                        self.say(
+                            StatusKind::Info,
+                            format!(
+                                "{} takes seat {seat} of the free set.",
+                                content::RECUT_FREE[stone as usize].0
+                            ),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+            El::F4FreeReset => {
+                if self.screen == Screen::Floor4Foe {
+                    let foe = &mut self.expedition.floor4.foe;
+                    foe.free_order.clear();
+                    foe.free_proven = false;
+                    foe.gate_passed = false;
+                    self.say(
+                        StatusKind::Info,
+                        "The free set is taken down; the tray is as it was.",
+                    );
+                    self.changed();
+                }
+            }
+            El::F4FreeProve => {
+                if self.screen == Screen::Floor4Foe {
+                    match self.expedition.floor4_foe_prove_free() {
+                        Ok(text) => self.say(StatusKind::Good, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
             El::F4PromiseDown => {
                 if matches!(self.screen, Screen::Floor4Chamber(3)) {
                     let work = &mut self.expedition.floor4.chambers[3].work;
@@ -2360,6 +2757,7 @@ impl Game {
                             1 => content::WALL_CHARTER,
                             2 => content::CREST_CHARTER,
                             3 => content::TREATY_CHARTER,
+                            4 => content::HOLLOW_CHARTER,
                             _ => "The Plumbmason nods at the gallery.",
                         },
                     );
@@ -2733,6 +3131,20 @@ impl Game {
                 } else {
                     self.enter_screen(Screen::Floor3Foe);
                     self.say(StatusKind::Info, content::FOE3_INTRO);
+                }
+                self.bump();
+            }
+            El::DoorFoe4 => {
+                if self.expedition.floor4.foe.state == FoeState::Fallen {
+                    self.say(
+                        StatusKind::Info,
+                        "The master foundation stands re-laid and level: \
+                         the galleries settle no more, and the line hangs \
+                         quiet beside honest stones.",
+                    );
+                } else {
+                    self.enter_screen(Screen::Floor4Foe);
+                    self.say(StatusKind::Info, content::FOE4_INTRO);
                 }
                 self.bump();
             }
@@ -3467,6 +3879,17 @@ impl Game {
                 Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
             },
 
+            Screen::Floor4Foe => match self.expedition.floor4_foe_arm_strike() {
+                Ok(()) => {
+                    self.armed = Some(ArmedFor::Foe4);
+                    self.say(
+                        StatusKind::Info,
+                        "The seal is pressed. Confirm to re-lay the master \
+                         foundation from the measured stones — or stand down.",
+                    );
+                }
+                Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+            },
             Screen::Floor3Foe => match self.expedition.floor3_foe_arm_strike() {
                 Ok(()) => {
                     self.armed = Some(ArmedFor::Foe3);
@@ -3597,6 +4020,27 @@ impl Game {
                 self.changed();
             }
 
+            Some(ArmedFor::Foe4) => {
+                self.armed = None;
+                let date = if self.today.is_empty() {
+                    "an unrecorded day".to_string()
+                } else {
+                    self.today.clone()
+                };
+                match self.expedition.floor4_foe_confirm_strike(&date) {
+                    Ok(text) => {
+                        self.expedition
+                            .log_push(format!("The Crooked Foundation fell on {date}."));
+                        self.expedition.log_push(
+                            "The Brass Eye Stone entered the codex; the Plumb \
+                             Line, the pack.",
+                        );
+                        self.say(StatusKind::Good, text);
+                    }
+                    Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                }
+                self.changed();
+            }
             Some(ArmedFor::Foe2) => {
                 self.armed = None;
                 let date = if self.today.is_empty() {
@@ -3851,6 +4295,7 @@ impl Game {
                 Screen::Foe => "The Hoard's Inscription".to_string(),
                 Screen::Floor2Foe => "The Menagerie's Inscription".to_string(),
                 Screen::Floor3Foe => "The Release's Inscription".to_string(),
+                Screen::Floor4Foe => "The Foundation's Inscription".to_string(),
                 _ => "The Inscription".to_string(),
             },
             ReadingKind::Demonstration => "The Demonstration".to_string(),
@@ -3879,6 +4324,7 @@ impl Game {
                 Screen::Foe => content::FOE_INSCRIPTION.to_string(),
                 Screen::Floor2Foe => content::FOE2_INSCRIPTION.to_string(),
                 Screen::Floor3Foe => content::FOE3_INSCRIPTION.to_string(),
+                Screen::Floor4Foe => content::FOE4_INSCRIPTION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Demonstration => match self.screen {
@@ -3899,6 +4345,7 @@ impl Game {
                 Screen::Foe => content::FOE_DEMONSTRATION.to_string(),
                 Screen::Floor2Foe => content::FOE2_DEMONSTRATION.to_string(),
                 Screen::Floor3Foe => content::FOE3_INTRO.to_string(),
+                Screen::Floor4Foe => content::FOE4_DEMONSTRATION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Hint => {
@@ -3909,6 +4356,7 @@ impl Game {
                     Screen::Floor4Chamber(index) => content::floor4_chamber_hints(index)[rung - 1],
                     Screen::Floor2Foe => content::floor2_foe_hints()[rung - 1],
                     Screen::Floor3Foe => content::floor3_foe_hints()[rung - 1],
+                    Screen::Floor4Foe => content::floor4_foe_hints()[rung - 1],
                     _ => {
                         let challenge = self.current_challenge().unwrap_or(0);
                         content::hints(challenge)[rung - 1]
@@ -4114,6 +4562,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Foe
         | Screen::Floor2Foe
         | Screen::Floor3Foe
+        | Screen::Floor4Foe
         | Screen::Floor3Hub
         | Screen::Floor4Hub => {
             els.push((El::TabFloor, rects::TAB_FLOOR));
@@ -4146,6 +4595,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             for index in 0..5 {
                 els.push((El::Floor4Door(index as u8), geom::door_chamber(index)));
             }
+            els.push((El::DoorFoe4, geom::door_foe4()));
         }
 
         Screen::Floor2Hub => {
@@ -4175,6 +4625,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             els.push((El::ResetChamber, rects::RESET_BTN));
             layout_floor4_chamber_panel(&mut els, game, index);
             layout_floor4_chamber34(&mut els, index);
+            layout_floor4_chamber5(&mut els, index);
             layout_seal(&mut els, game);
         }
 
@@ -4234,6 +4685,32 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
                 els.push((El::F3Rite, geom::f3_rite_field()));
                 els.push((El::F3Lantern(0), geom::f3_lantern(0)));
                 els.push((El::F3Lantern(1), geom::f3_lantern(1)));
+            }
+            layout_seal(&mut els, game);
+        }
+        Screen::Floor4Foe => {
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.push((El::ResetChamber, rects::RESET_BTN));
+            if !game.expedition.floor4.foe.book_taken {
+                els.push((El::F4BookTake, geom::f4_book_take()));
+            } else {
+                for entry in 0..content::DIMENSION_BOOK.len() {
+                    els.push((El::F4Measure(entry as u8), geom::f4_measure_btn(entry)));
+                    if !game.expedition.floor4.foe.exhibited[entry] {
+                        els.push((El::F4Exhibit(entry as u8), geom::f4_exhibit_btn(entry)));
+                    }
+                }
+                for stone in 0..content::RECUT_FOREIGN.len() {
+                    els.push((El::F4ForeignSeat(stone as u8), geom::f4_foreign_row(stone)));
+                }
+                els.push((El::F4ForeignProve, geom::f4_foreign_prove()));
+                els.push((El::F4ForeignReset, geom::f4_foreign_reset()));
+                for stone in 0..content::RECUT_FREE.len() {
+                    els.push((El::F4FreeSeat(stone as u8), geom::f4_free_row(stone)));
+                }
+                els.push((El::F4FreeProve, geom::f4_free_prove()));
+                els.push((El::F4FreeReset, geom::f4_free_reset()));
             }
             layout_seal(&mut els, game);
         }
@@ -4316,6 +4793,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         Screen::Foe => game.expedition.foe.strike == StrikePhase::Armed,
         Screen::Floor2Foe => game.expedition.floor2.foe.strike == StrikePhase::Armed,
         Screen::Floor3Foe => game.expedition.floor3.foe.strike == StrikePhase::Armed,
+        Screen::Floor4Foe => game.expedition.floor4.foe.strike == StrikePhase::Armed,
         _ => false,
     };
     els.push((El::Seal, rects::SEAL));
@@ -4370,6 +4848,22 @@ fn layout_floor4_chamber34(els: &mut Vec<(El, Rect)>, chamber: usize) {
         els.push((El::F4PromiseUp, geom::f4_size_up()));
         els.push((El::F4TreatyProve, geom::f4_treaty_prove()));
         els.push((El::F4TreatyReset, geom::f4_treaty_reset()));
+    }
+}
+
+/// Floor 4 Chamber 5 panel elements: the hollow stones'
+/// fillings, tags, and readings; the blank's cells and use.
+fn layout_floor4_chamber5(els: &mut Vec<(El, Rect)>, chamber: usize) {
+    if chamber == 4 {
+        for stone in 0..2u8 {
+            els.push((El::F4Fill(stone), geom::f4_fill_btn(stone as usize)));
+            els.push((El::F4Tag(stone), geom::f4_tag_btn(stone as usize)));
+            els.push((El::F4Read(stone), geom::f4_read_btn(stone as usize)));
+        }
+        for cell in 0..4u8 {
+            els.push((El::F4Cell(cell), geom::f4_cell(cell as usize)));
+        }
+        els.push((El::F4UseBlank, geom::f4_use_blank()));
     }
 }
 
@@ -5705,5 +6199,116 @@ mod tests {
         game.pointer_down(rect.cx(), rect.cy());
         game.pointer_up(rect.cx(), rect.cy());
         assert_eq!(game.screen, Screen::Chamber(0));
+    }
+
+    /// Floor 4 Step 4, driven on the GUI surface: the hollow
+    /// stones are filled, tagged, read, and repaired through
+    /// the seal — with the referee's catch landing on the way —
+    /// and the Crooked Foundation is taken down, re-surveyed,
+    /// exhibited, re-cut in both sets, and struck through its
+    /// door on Floor 4's hub.
+    #[test]
+    fn floor4_chamber_5_and_the_foundation_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        // The stairs stand lit (the Step 1 fixture).
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.foe.gate_passed = true;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        game.expedition.floor3.foe.gate_passed = true;
+        for chamber in game.expedition.floor2.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        game.screen = Screen::Hub;
+        click(&mut game, El::DoorFloor4);
+        assert_eq!(game.screen, Screen::Floor4Hub);
+        // Chamber 5 — the Hollow Stones.
+        click(&mut game, El::Floor4Door(4));
+        assert_eq!(game.screen, Screen::Floor4Chamber(4));
+        click(&mut game, El::F4Watch);
+        // A use on the part-filled blank is caught, and the
+        // catch stays on the record.
+        click(&mut game, El::F4Cell(0));
+        click(&mut game, El::F4UseBlank);
+        assert_eq!(game.expedition.floor4.chambers[4].work.referee_catches, 1);
+        assert!(!game.expedition.floor4.chambers[4].work.blank_used);
+        for cell in 1..4u8 {
+            click(&mut game, El::F4Cell(cell));
+        }
+        click(&mut game, El::F4UseBlank);
+        assert!(game.expedition.floor4.chambers[4].work.blank_used);
+        // Stone 0 takes the number, tagged a number; stone 1
+        // takes the ratio, tagged a ratio.
+        click(&mut game, El::F4Fill(0));
+        click(&mut game, El::F4Tag(0));
+        click(&mut game, El::F4Fill(1));
+        click(&mut game, El::F4Fill(1));
+        click(&mut game, El::F4Tag(1));
+        click(&mut game, El::F4Tag(1));
+        click(&mut game, El::F4Read(0));
+        click(&mut game, El::F4Read(1));
+        assert!(game.expedition.floor4_diagnosed(4));
+        click(&mut game, El::Chip(Verb::Prove));
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_some());
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor4.chambers[4].state,
+            ChamberState::Repaired
+        );
+        // The FOE — the Crooked Foundation.
+        click(&mut game, El::TabFloor);
+        click(&mut game, El::DoorFloor4);
+        click(&mut game, El::DoorFoe4);
+        assert_eq!(game.screen, Screen::Floor4Foe);
+        click(&mut game, El::F4BookTake);
+        assert_eq!(game.expedition.floor4.foe.state, FoeState::Exposed);
+        for entry in 0..5u8 {
+            click(&mut game, El::F4Measure(entry));
+        }
+        for entry in [1u8, 3, 4] {
+            click(&mut game, El::F4Exhibit(entry));
+        }
+        assert!(game.expedition.floor4_foe_proof_complete());
+        // The seal refuses before the re-cut stands verified.
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_none());
+        for stone in 0..4u8 {
+            click(&mut game, El::F4ForeignSeat(stone));
+        }
+        click(&mut game, El::F4ForeignProve);
+        assert!(game.expedition.floor4.foe.foreign_proven);
+        assert!(!game.expedition.floor4.foe.gate_passed);
+        for stone in [1u8, 2, 3, 0] {
+            click(&mut game, El::F4FreeSeat(stone));
+        }
+        click(&mut game, El::F4FreeProve);
+        assert!(game.expedition.floor4.foe.gate_passed);
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_some());
+        click(&mut game, El::SealConfirm);
+        assert_eq!(game.expedition.floor4.foe.state, FoeState::Fallen);
+        assert!(
+            game.expedition
+                .codex
+                .iter()
+                .any(|stone| stone == content::BRASS_EYE_STONE)
+        );
+        assert!(
+            game.expedition
+                .pack
+                .iter()
+                .any(|loot| loot == content::PLUMB_LINE)
+        );
     }
 }

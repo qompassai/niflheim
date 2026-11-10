@@ -247,3 +247,126 @@ from Step 4.
   separately-gated fix for Floor 3's inert chamber reset
   (flagged in Step 2's section) lands before Step 4 per
   D-1189.
+
+## Step 4 — Chamber 5 and the Crooked Foundation
+
+**Method note (D-1189):** authored Claude-direct by the
+coordinator (the programme's fifth lane), blocks + splicers,
+no phlow-stack dispatch — the first rung under the formal
+D-1189 arrangement, as this report's Step 3 section foresaw.
+
+### What landed
+
+- **`content.rs`** — `HOLLOW_CHARTER` and a real hint ladder
+  for Chamber 5 (the general ladder no longer serves it);
+  `HOLLOW_STONES` (7 with 2.5; 1,000,000 with 0.75 — cross-read,
+  the number's bits are next to nothing and the ratio's bits
+  are a count in the millions). The FOE furniture:
+  `FOE4_NAME` / `FOE4_INTRO` / `FOE4_INSCRIPTION` (failure
+  class #8, **the Astronomer's Brass Eye**, named in the
+  fiction) / `FOE4_DEMONSTRATION`; `floor4_foe_hints`.
+  `DIMENSION_BOOK` (five load-bearing entries) with
+  `dimension_book_true` — `size_of` of the real stones
+  ((u32, u32), &[u8], Vec<u16>, (u8, u32), Option<&u64>) — and
+  `SHADOW_OFFSET` 6: exactly entries 1, 3, and 4 are false,
+  each by exactly the offset, and identifiable only by
+  measuring. `RECUT_FOREIGN` (the spec's four + the
+  shadow-cut beam; stencils [2, 4, 8, 1, 14]) and `RECUT_FREE`
+  (wedge, pier, slab, rod — tray span 24, budget 16).
+  `BRASS_EYE_STONE` ("Distinct quantities get distinct
+  types.") and `PLUMB_LINE` (wielded on Floors 5, 9, 10, 13,
+  14; from this fall, prose about sizes is no longer evidence).
+- **`puzzles.rs`** — `book_disagrees`; `hollow_bits` /
+  `hollow_as_ratio`: honest `to_bits`/`from_bits`
+  reinterpretation, never a union read
+  (`#![forbid(unsafe_code)]` untouched). No new layout
+  algorithm: the re-cut prices through the existing
+  `c_offsets` / `wall_layout` / `wall_minimum`.
+- **`state.rs`** — `FoundationWork` gains `fillings`,
+  `tags`, `blank_cells`, `blank_used`, `referee_catches`
+  (all serde-defaulted). Chamber 5's judge: watched, both
+  stones filled with tag == filling, the blank full and
+  used whole; the referee's catches stay on the record but
+  are not the judge's business. `Floor4FoeProgress` gains
+  `book_taken`, `measured`, `exhibited`, `foreign_order`,
+  `foreign_proven`, `free_order`, `free_proven` (all
+  serde-defaulted), and the FOE accessors
+  (`floor4_foe_take_book` / `measure` / `exhibit` /
+  `proof_complete` / `prove_foreign` / `prove_free` /
+  `arm_strike` / `confirm_strike`, plus hint recorders).
+  `prove_foreign` refuses the shadow-cut stone by its
+  stencil before order is judged; `gate_passed` = both sets
+  verified by the line. This FOE carries no cargo gate —
+  `gate.rs` untouched.
+- **`game.rs`** — `Screen::Floor4Foe`, `ArmedFor::Foe4`,
+  `El::DoorFoe4` and fifteen new elements. Chamber 5's
+  presses: filling and tag cycle separately (the tag lives
+  in the mason's head); Read speaks the cavity as the tag
+  claims (`ratio_text` keeps nonsense readable as nonsense);
+  a Use on a part-filled blank is refused and
+  `referee_catches` grows — Miri is named in the fiction as
+  the syllabus's referee. The FOE's presses: take, measure,
+  exhibit; seating a stone spends its set's proof and the
+  gate, as the treaty's seating spent its proof. The strike
+  rides the shared two-step seal; inscription, demonstration,
+  and hint readings wired; the hub gains the FOE door (the
+  Release door's proven ground, 600·292); all panel controls
+  stay clear of the seal block (x < 780).
+- **`shell.rs`** — `build_f4c5` (fillings, tags, the live
+  readings, the blank's cells, the referee's count) and
+  `build_floor4_foe` (the book's rows with measured truths
+  and exhibit buttons, both trays under the line, the free
+  set's budget computed from `wall_minimum` on screen, the
+  re-survey and the gate spoken in words); the hub's FOE
+  door with its state tag; header "Floor 4 · The Crooked
+  Foundation".
+
+### Defect found by the gates, fixed curatively
+
+- The first clippy run failed on exhaustiveness:
+  `layout()`'s tab-bar match — a second screen list, away
+  from the layout arms — had no `Floor4Foe`. The arm was
+  added; the tab bar renders on the Foundation's screen as
+  on the Release's. Recorded because it is the rung's
+  lesson: a new `Screen` variant has more match sites than
+  the obvious ones, and the compiler is the census.
+
+### Gates (primo, pinned rustc 1.99.0)
+
+- `cargo fmt --check`: clean. `cargo clippy --all-targets
+  -- -D warnings`: exit 0.
+- `cargo test`: **135 passed / 0 failed** (was 130; +5:
+  puzzles 3 — the book false in exactly the shadow's three
+  entries, each by the offset; hollow bits cross-read both
+  ways; the re-cut priced, budget brute-forced over all 24
+  seatings — state 1: Chamber 5's judge, the FOE's refusals
+  (book still framed, honest entry exhibited, unmeasured
+  entry exhibited, decoy seated, tray order over budget),
+  the strike, the awards, and the serde-strip save-compat
+  proof; game 1: Chamber 5 and the Foundation played on the
+  GUI surface through real layout clicks, the referee's
+  catch landing on the way).
+  Log: `~/.local/share/pax/niflheim-floor4-step4-build-20261110/cargo-test.log`.
+- Theodolite (the cured route, the review's Battery C
+  shape): the producer (`bacon --headless -j bacon-ls`) ran
+  before each session, locations current at session start.
+  Planted session: the control
+  `pub fn theodolite_route_control() -> i32 { "not an int" }`
+  appended to `puzzles.rs` read **count=3** (E0308, push and
+  pull) while content, state, game, and shell read **0 in
+  the same session** — verified zeros. Clean session (control
+  restored): all five files count=0, no possibly_incomplete,
+  session ready on rust-analyzer 1.100.0-nightly.
+  Logs: `theodolite-planted.log`, `theodolite.log`.
+- Determinism: the probe extended through Chamber 5 and the
+  Foundation; saves byte-identical, sha256
+  `8a6493c666a90be8ee4e8b8a97212a912bbf74ec44caaf6bc9be6cbb6f358864`
+  (was `92f009fa…` — the playthrough grew).
+- Android lib under the pin: 1,347,263,208 bytes. Launch
+  smoke under Xvfb: `cold_start_ms=754`, no panics.
+
+### Left open
+
+- Step 5: the driven whole-floor playthrough — all five
+  chambers and the FOE on the GUI surface — and Floor 4's
+  close-out.

@@ -1091,6 +1091,31 @@ pub fn c_offsets(stones: &[(u32, u32)]) -> Vec<u32> {
     offsets
 }
 
+/// Whether one dimension-book entry's figure disagrees with
+/// the stone it names — the re-survey's whole audit, in one
+/// comparison the book cannot make about itself.
+pub fn book_disagrees(index: usize) -> bool {
+    crate::content::DIMENSION_BOOK[index].1 != crate::content::dimension_book_true(index)
+}
+
+/// The bits a hollow stone's cavity currently holds: the
+/// number's own bits, or the ratio's, reinterpreted honestly
+/// — never a union read. `None` while the cavity is empty
+/// (filling 0).
+pub fn hollow_bits(filling: u8, number: u32, ratio: f32) -> Option<u32> {
+    match filling {
+        1 => Some(number),
+        2 => Some(ratio.to_bits()),
+        _ => None,
+    }
+}
+
+/// A cavity's bits read as a ratio: `f32::from_bits`, the
+/// honest reinterpretation the gallery demonstrates.
+pub fn hollow_as_ratio(bits: u32) -> f32 {
+    f32::from_bits(bits)
+}
+
 #[cfg(test)]
 mod floor4_step2_tests {
     use super::*;
@@ -1202,5 +1227,105 @@ mod floor4_step3_tests {
             }
         }
         assert_eq!(wrong, 1);
+    }
+}
+
+#[cfg(test)]
+mod floor4_step4_tests {
+    use super::*;
+
+    /// Floor 4 Step 4: the dimension book is false in exactly
+    /// the three entries the shadow touched, each by exactly
+    /// the shadow's offset — and the book's internal
+    /// consistency never enters into it.
+    #[test]
+    fn the_book_is_false_only_where_the_shadow_fell() {
+        let wrong: Vec<usize> = (0..crate::content::DIMENSION_BOOK.len())
+            .filter(|&entry| book_disagrees(entry))
+            .collect();
+        assert_eq!(wrong, vec![1, 3, 4], "three entries of five are false");
+        for entry in wrong {
+            assert_eq!(
+                crate::content::DIMENSION_BOOK[entry].1
+                    - crate::content::dimension_book_true(entry),
+                crate::content::SHADOW_OFFSET,
+                "every false figure stands off by the shadow's offset"
+            );
+        }
+    }
+
+    /// The hollow stones: bits read as the tag claims, in
+    /// both directions — a number's bits are next to nothing
+    /// as a ratio, and a ratio's bits are a count in the
+    /// millions as a number.
+    #[test]
+    fn hollow_bits_read_as_the_tag_claims() {
+        assert_eq!(hollow_bits(1, 7, 2.5), Some(7));
+        assert_eq!(hollow_bits(2, 7, 2.5), Some(2.5f32.to_bits()));
+        assert_eq!(hollow_bits(0, 7, 2.5), None);
+        let as_ratio = hollow_as_ratio(7);
+        assert!(
+            as_ratio > 0.0 && as_ratio < 1.0e-40,
+            "7 as a ratio: {as_ratio}"
+        );
+        assert_eq!(2.5f32.to_bits(), 1_075_838_976);
+        assert_eq!(hollow_as_ratio(2.5f32.to_bits()), 2.5);
+        assert_eq!(0.75f32.to_bits(), 1_061_158_912);
+    }
+
+    /// The re-cut's prices: the foreign spec's promised
+    /// offsets, the one dishonest stencil, and the free
+    /// set's budget proven the minimum by brute force over
+    /// every seating.
+    #[test]
+    fn the_recut_sets_price_themselves() {
+        let dims: Vec<(u32, u32)> = crate::content::RECUT_FOREIGN[..4]
+            .iter()
+            .map(|&(_, size, align)| (size, align))
+            .collect();
+        assert_eq!(c_offsets(&dims), vec![0, 4, 8, 16]);
+        for stone in 0..4 {
+            assert_eq!(
+                crate::content::RECUT_FOREIGN_STENCIL[stone],
+                crate::content::RECUT_FOREIGN[stone].1,
+                "stone {stone}'s stencil is honest"
+            );
+        }
+        assert_ne!(
+            crate::content::RECUT_FOREIGN_STENCIL[4],
+            crate::content::RECUT_FOREIGN[4].1,
+            "the shadow-cut beam's stencil repeats the book"
+        );
+        let pairs: Vec<(u32, u32)> = crate::content::RECUT_FREE
+            .iter()
+            .map(|(_, size, align)| (*size, *align))
+            .collect();
+        assert_eq!(wall_minimum(&pairs), 16);
+        assert_eq!(wall_layout(&pairs).0, 24, "the tray order overruns");
+        let mut best = u32::MAX;
+        for a in 0..4usize {
+            for b in 0..4usize {
+                for c in 0..4usize {
+                    for d in 0..4usize {
+                        let order = [a, b, c, d];
+                        let mut seen = [false; 4];
+                        let mut distinct = true;
+                        for index in order {
+                            if seen[index] {
+                                distinct = false;
+                            }
+                            seen[index] = true;
+                        }
+                        if !distinct {
+                            continue;
+                        }
+                        let seated: Vec<(u32, u32)> =
+                            order.iter().map(|&index| pairs[index]).collect();
+                        best = best.min(wall_layout(&seated).0);
+                    }
+                }
+            }
+        }
+        assert_eq!(best, 16, "no seating of the free four beats the budget");
     }
 }

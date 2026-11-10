@@ -1022,6 +1022,7 @@ fn rebuild_now(
             build_floor4_chamber(commands, game, &pal, fonts, stage, index)
         }
         Screen::Floor3Foe => build_floor3_foe(commands, game, &pal, fonts, stage),
+        Screen::Floor4Foe => build_floor4_foe(commands, game, &pal, fonts, stage),
         Screen::Chamber(index) => build_chamber(commands, game, &pal, fonts, stage, index),
         Screen::Foe => build_foe(commands, game, &pal, fonts, stage),
         Screen::Floor2Foe => build_foe2(commands, game, &pal, fonts, stage),
@@ -1193,6 +1194,7 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         ),
 
         Screen::Floor3Foe => "Floor 3 · The Gatehouse Release".to_string(),
+        Screen::Floor4Foe => "Floor 4 · The Crooked Foundation".to_string(),
 
         Screen::Title => "Niflheim".to_string(),
     };
@@ -2855,6 +2857,9 @@ fn build_floor4_chamber(
     if index == 3 {
         build_f4c4(commands, game, pal, fonts, stage);
     }
+    if index == 4 {
+        build_f4c5(commands, game, pal, fonts, stage);
+    }
 }
 
 /// Chamber 1's panel: the six stones with their slate and
@@ -3854,6 +3859,465 @@ fn build_f3c5(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, st
     );
 }
 
+/// Chamber 5's panel: the two hollow stones with their
+/// fillings, tags, and current readings, and the blank stone
+/// with its cells, its use, and the referee's count.
+fn build_f4c5(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor4.chambers[4].work;
+    for stone in 0..2usize {
+        let (name, number, ratio) = content::HOLLOW_STONES[stone];
+        let fill_row = geom::f4_fill_btn(stone);
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            fill_row.y - 20.0,
+            Some(360.0),
+            name,
+            11.5,
+            true,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        let filling_label = match work.fillings[stone] {
+            1 => format!("FILLING: the number {number}"),
+            2 => format!("FILLING: the ratio {}", crate::game::ratio_text(ratio)),
+            _ => "FILLING: empty".to_string(),
+        };
+        spawn_button(commands, stage, fill_row, &filling_label, pal, false, fonts);
+        let tag_label = match work.tags[stone] {
+            1 => "TAG (in his head): number",
+            2 => "TAG (in his head): ratio",
+            _ => "TAG (in his head): —",
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f4_tag_btn(stone),
+            tag_label,
+            pal,
+            false,
+            fonts,
+        );
+        spawn_button(
+            commands,
+            stage,
+            geom::f4_read_btn(stone),
+            "READ AS TAGGED",
+            pal,
+            false,
+            fonts,
+        );
+        let reading = match crate::puzzles::hollow_bits(work.fillings[stone], number, ratio) {
+            None => "the cavity is empty".to_string(),
+            Some(bits) => match work.tags[stone] {
+                1 => format!("as tagged, it answers {bits}"),
+                2 => format!(
+                    "as tagged, it answers {}",
+                    crate::game::ratio_text(crate::puzzles::hollow_as_ratio(bits))
+                ),
+                _ => "untagged: no reading is claimed".to_string(),
+            },
+        };
+        spawn_text(
+            commands,
+            stage,
+            566.0,
+            geom::f4_read_btn(stone).y + 6.0,
+            Some(200.0),
+            &reading,
+            11.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        392.0,
+        None,
+        "THE BLANK STONE",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for cell in 0..4usize {
+        let label = if work.blank_cells[cell] {
+            "FILLED"
+        } else {
+            "empty"
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f4_cell(cell),
+            label,
+            pal,
+            false,
+            fonts,
+        );
+    }
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_use_blank(),
+        "USE THE BLANK",
+        pal,
+        false,
+        fonts,
+    );
+    let blank_line = if work.blank_used {
+        "The blank stands used, whole.".to_string()
+    } else {
+        format!(
+            "The referee watches: {} catches on the record. A use on a \
+             part-filled blank is caught, every time.",
+            work.referee_catches
+        )
+    };
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &blank_line,
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// The Crooked Foundation's room: the dimension book and the
+/// re-survey, the two re-cuts under the line, and the strike.
+fn build_floor4_foe(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Crooked Foundation — the master foundation",
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        Color::srgb_u8(120, 130, 140),
+        "THE FOUNDATION",
+        "laid from a celebrated survey",
+    );
+    let stone = geom::stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text(
+        commands,
+        stage,
+        stone.x + 10.0,
+        stone.y + 8.0,
+        Some(stone.w - 20.0),
+        "THE RULE",
+        12.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        stone.x + 10.0,
+        stone.y + 30.0,
+        Some(stone.w - 20.0),
+        "The line outranks the book.",
+        11.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let foe = &game.expedition.floor4.foe;
+    if !foe.book_taken {
+        spawn_button(
+            commands,
+            stage,
+            geom::f4_book_take(),
+            "Take down the dimension book",
+            pal,
+            false,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            180.0,
+            Some(360.0),
+            "The dimension book hangs in its frame, beautiful and \
+             unaudited against the ground. The re-survey begins with \
+             the book in hand — no strike, no re-cut, until the line \
+             has dropped on every stone it names.",
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        return;
+    }
+    for (entry, (name, figure)) in content::DIMENSION_BOOK.iter().enumerate() {
+        let row = geom::f4_measure_btn(entry);
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            row.y - 20.0,
+            Some(360.0),
+            &format!("{name} — the book says {figure}"),
+            11.5,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        let measured = foe.measured[entry];
+        let measure_label = if measured {
+            format!("MEASURED: {}", content::dimension_book_true(entry))
+        } else {
+            "DROP THE LINE".to_string()
+        };
+        spawn_button(commands, stage, row, &measure_label, pal, false, fonts);
+        if measured && crate::puzzles::book_disagrees(entry) {
+            let exhibit_label = if foe.exhibited[entry] {
+                "EXHIBITED"
+            } else {
+                "EXHIBIT"
+            };
+            spawn_button(
+                commands,
+                stage,
+                geom::f4_exhibit_btn(entry),
+                exhibit_label,
+                pal,
+                false,
+                fonts,
+            );
+        } else if measured {
+            spawn_text(
+                commands,
+                stage,
+                566.0,
+                row.y + 6.0,
+                Some(180.0),
+                "the book is honest here",
+                10.5,
+                false,
+                pal.ink_dim,
+                Justify::Left,
+                fonts,
+            );
+        }
+    }
+    spawn_text(
+        commands,
+        stage,
+        56.0,
+        74.0,
+        None,
+        "THE FOREIGN SET",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for stone_index in 0..content::RECUT_FOREIGN.len() {
+        let (name, size, align) = content::RECUT_FOREIGN[stone_index];
+        let row = geom::f4_foreign_row(stone_index);
+        spawn_button(
+            commands,
+            stage,
+            row,
+            &format!("{name} — {size} · {align}"),
+            pal,
+            false,
+            fonts,
+        );
+        let state = if let Some(seat) = foe
+            .foreign_order
+            .iter()
+            .position(|&seated| seated == stone_index as u8)
+        {
+            format!("seated at seat {}", seat + 1)
+        } else {
+            format!(
+                "on the tray — its stencil claims {}",
+                content::RECUT_FOREIGN_STENCIL[stone_index]
+            )
+        };
+        spawn_text(
+            commands,
+            stage,
+            row.x + 4.0,
+            row.y + 34.0,
+            Some(360.0),
+            &state,
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_foreign_prove(),
+        "DROP THE LINE",
+        pal,
+        false,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_foreign_reset(),
+        "TAKE DOWN",
+        pal,
+        false,
+        fonts,
+    );
+    let pairs: Vec<(u32, u32)> = content::RECUT_FREE
+        .iter()
+        .map(|(_, size, align)| (*size, *align))
+        .collect();
+    let budget = crate::puzzles::wall_minimum(&pairs);
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        394.0,
+        None,
+        &format!("THE FREE SET — THE BUDGET IS {budget}"),
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for stone_index in 0..content::RECUT_FREE.len() {
+        let (name, size, align) = content::RECUT_FREE[stone_index];
+        let row = geom::f4_free_row(stone_index);
+        spawn_button(
+            commands,
+            stage,
+            row,
+            &format!("{name} — {size} · {align}"),
+            pal,
+            false,
+            fonts,
+        );
+        let state = if let Some(seat) = foe
+            .free_order
+            .iter()
+            .position(|&seated| seated == stone_index as u8)
+        {
+            format!("seated at seat {}", seat + 1)
+        } else {
+            "on the tray".to_string()
+        };
+        spawn_text(
+            commands,
+            stage,
+            row.x + 4.0,
+            row.y + 32.0,
+            Some(300.0),
+            &state,
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_free_prove(),
+        "DROP THE LINE",
+        pal,
+        false,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_free_reset(),
+        "TAKE DOWN",
+        pal,
+        false,
+        fonts,
+    );
+    let measured = foe.measured.iter().filter(|done| **done).count();
+    let exhibited = (0..content::DIMENSION_BOOK.len())
+        .filter(|&entry| crate::puzzles::book_disagrees(entry) && foe.exhibited[entry])
+        .count();
+    let survey_line = format!(
+        "The re-survey: {measured} of 5 measured at the stone; \
+         {exhibited} of 3 false entries exhibited."
+    );
+    spawn_text(
+        commands,
+        stage,
+        56.0,
+        420.0,
+        Some(300.0),
+        &survey_line,
+        11.5,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    let gate_line = if foe.gate_passed {
+        "The gate stands: the line has verified both sets of the re-cut."
+    } else if foe.foreign_proven {
+        "The foreign set stands verified; the free set still owes the line its budget."
+    } else if foe.free_proven {
+        "The free set stands at its budget; the foreign set still owes the line its spec."
+    } else {
+        "The gate sleeps until the line verifies both sets of the re-cut."
+    };
+    spawn_text(
+        commands,
+        stage,
+        56.0,
+        480.0,
+        Some(300.0),
+        gate_line,
+        11.5,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+}
 /// The Gatehouse Release's room: the great door, the slate and
 /// its verdicts, the stamp, the rite, the three lanterns, and
 /// the seal.
@@ -6134,6 +6598,58 @@ fn build_floor4_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
         fonts,
     );
 
+    let foe_door = geom::door_foe4();
+    spawn_box(
+        commands,
+        stage,
+        foe_door,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        foe_door.x,
+        foe_door.y + 10.0,
+        foe_door.w,
+        "THE FOE",
+        11.0,
+        true,
+        pal.ink_dim,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        foe_door.x,
+        foe_door.y + 28.0,
+        foe_door.w - 8.0,
+        "The Crooked Foundation",
+        14.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    let foe4_tag = match game.expedition.floor4.foe.state {
+        FoeState::Fallen => "FALLEN",
+        FoeState::Exposed => "EXPOSED",
+        FoeState::Standing => "",
+    };
+    if !foe4_tag.is_empty() {
+        spawn_text_centered(
+            commands,
+            stage,
+            foe_door.x,
+            foe_door.y + 88.0,
+            foe_door.w,
+            foe4_tag,
+            11.0,
+            true,
+            pal.good,
+            fonts,
+        );
+    }
     spawn_box(
         commands,
         stage,
