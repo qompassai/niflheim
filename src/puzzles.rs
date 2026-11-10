@@ -1974,3 +1974,161 @@ mod floor6_tests {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Floor 6 — the Lockheart: the Spin Heart and the Day
+// Census. The spin heart is a bounded loop against a flag
+// the world provides; the census is a reachable-state
+// enumeration over the flag machine — turn by turn, every
+// ordering of a turn's events explored, refused operations
+// standing as self-loops. The judge's truth is computed
+// here, never written in content.
+// ---------------------------------------------------------------------------
+
+/// Run the spin heart: attempt after attempt, up to the
+/// bound, watching for the flag. The flag's state is the
+/// world's to give — in this chamber the setter is another
+/// porter's work and never comes, so an honest heart gives
+/// up at its bound. Returns the attempts made and whether
+/// the flag was acquired.
+pub fn spin_heart_run(bound: u8, flag_set: bool) -> (u8, bool) {
+    let mut attempts: u8 = 0;
+    while attempts < bound {
+        attempts += 1;
+        if flag_set {
+            return (attempts, true);
+        }
+    }
+    (attempts, false)
+}
+
+/// Add a state to a census set if it is not already there.
+fn push_state(set: &mut Vec<FlagState>, state: FlagState) {
+    if !set.contains(&state) {
+        set.push(state);
+    }
+}
+
+/// Walk one turn from one standing state: the turn's events
+/// happen in every order; every state stood in joins the
+/// visited set, and every state the turn can end in joins
+/// the finals. Refused operations are self-loops — the day
+/// stands where it stood.
+fn walk_turn(
+    state: FlagState,
+    events: &[FlagOp],
+    used: &mut [bool],
+    left: usize,
+    visited: &mut Vec<FlagState>,
+    finals: &mut Vec<FlagState>,
+) {
+    if left == 0 {
+        push_state(finals, state);
+        return;
+    }
+    for index in 0..events.len() {
+        if used[index] {
+            continue;
+        }
+        used[index] = true;
+        let next = flag_step(state, events[index]).unwrap_or(state);
+        push_state(visited, next);
+        walk_turn(next, events, used, left - 1, visited, finals);
+        used[index] = false;
+    }
+}
+
+/// Enumerate a day of turns from Free: the census of
+/// distinct reachable states, [free, shared, exclusive],
+/// counting each distinct Shared(n) as its own state.
+fn census_of_turns(turns: &[Vec<FlagOp>]) -> [u8; 3] {
+    let mut visited = vec![FlagState::Free];
+    let mut frontier = vec![FlagState::Free];
+    for turn in turns {
+        let mut finals = Vec::new();
+        for start in &frontier {
+            let mut used = vec![false; turn.len()];
+            walk_turn(
+                *start,
+                turn,
+                &mut used,
+                turn.len(),
+                &mut visited,
+                &mut finals,
+            );
+        }
+        frontier = finals;
+    }
+    let mut census = [0u8; 3];
+    for state in &visited {
+        match state {
+            FlagState::Free => census[0] += 1,
+            FlagState::Shared(_) => census[1] += 1,
+            FlagState::Exclusive => census[2] += 1,
+        }
+    }
+    census
+}
+
+/// The Day Census's truth: the authored day (content's
+/// CENSUS_EVENTS, grouped by turn) enumerated over the
+/// flag machine.
+pub fn day_census() -> [u8; 3] {
+    let mut turns: Vec<Vec<FlagOp>> = Vec::new();
+    for (turn, _, code) in crate::content::CENSUS_EVENTS {
+        let index = (turn as usize).saturating_sub(1);
+        while turns.len() <= index {
+            turns.push(Vec::new());
+        }
+        if let Some(op) = flag_op(code) {
+            turns[index].push(op);
+        }
+    }
+    census_of_turns(&turns)
+}
+
+#[cfg(test)]
+mod floor6_census_tests {
+    use super::*;
+
+    /// Validation: an unset flag is never acquired, and the
+    /// attempts stop exactly at the bound — the give-up is
+    /// honest and counted.
+    #[test]
+    fn spin_heart_gives_up_at_the_bound() {
+        assert_eq!(spin_heart_run(9, false), (9, false));
+        assert_eq!(spin_heart_run(1, false), (1, false));
+        assert_eq!(spin_heart_run(0, false), (0, false));
+    }
+
+    /// Validation: a set flag is acquired on the first
+    /// attempt — the loop is a real check, not a fixed
+    /// refusal.
+    #[test]
+    fn spin_heart_acquires_a_set_flag() {
+        assert_eq!(spin_heart_run(9, true), (1, true));
+    }
+
+    /// Validation: the authored day's census, enumerated —
+    /// free once, shared at one, two, and three readers,
+    /// exclusive once.
+    #[test]
+    fn day_census_enumerates_the_authored_day() {
+        assert_eq!(day_census(), [1, 3, 1]);
+    }
+
+    /// Adversarial: a refused operation is a self-loop, not
+    /// a door — a day of one barred closing reaches nothing
+    /// but Free, and an exclusive opening from Free is a
+    /// real reach.
+    #[test]
+    fn census_refusals_are_self_loops() {
+        assert_eq!(census_of_turns(&[vec![FlagOp::CloseShared]]), [1, 0, 0]);
+        assert_eq!(census_of_turns(&[vec![FlagOp::OpenExclusive]]), [1, 0, 1]);
+        assert_eq!(
+            census_of_turns(&[vec![FlagOp::OpenShared], vec![FlagOp::OpenExclusive]]),
+            [1, 1, 0],
+            "exclusive never opens over a held share, in any order"
+        );
+    }
+}

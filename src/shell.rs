@@ -7370,6 +7370,8 @@ fn build_floor6_chamber(
     match index {
         0 => build_f6c1(commands, game, pal, fonts, stage),
         1 => build_f6c2(commands, game, pal, fonts, stage),
+        2 => build_f6c3(commands, game, pal, fonts, stage),
+        3 => build_f6c4(commands, game, pal, fonts, stage),
         _ => {}
     }
 }
@@ -7497,6 +7499,150 @@ fn build_f6c2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, st
              five calls, one light.",
             if lit { "lit" } else { "dark" }
         ),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// Chamber 3's panel: the four ordering claims with their
+/// recorded annotations, the bound controls, and the run.
+fn build_f6c3(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor6.chambers[2].work;
+    for (index, (claim, candidates)) in content::SPIN_CLAIMS.iter().enumerate() {
+        let rect = geom::f6_op_row(index);
+        let choice = work.spin_annotations[index];
+        let label = if choice == 0 {
+            format!("CLAIM {} — unrecorded", index + 1)
+        } else {
+            format!(
+                "CLAIM {} — {}",
+                index + 1,
+                content::ORDERING_NAMES[candidates[choice as usize - 1]]
+            )
+        };
+        spawn_button(commands, stage, rect, &label, pal, choice != 0, fonts);
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 34.0,
+            Some(400.0),
+            claim,
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    for (index, label) in ["BOUND −", "BOUND +", "RUN THE HEART"].iter().enumerate() {
+        let rect = geom::f6_op_row(4 + index);
+        spawn_button(commands, stage, rect, label, pal, false, fonts);
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &format!(
+            "The bound stands {}; the heart {}.",
+            if work.spin_bound == 0 {
+                "unset".to_string()
+            } else {
+                format!("at {}", work.spin_bound)
+            },
+            if work.gave_up {
+                "has given up honestly at it"
+            } else {
+                "has not run"
+            }
+        ),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// Chamber 4's panel: the day slate on the right, the
+/// three class counters, and the submit.
+fn build_f6c4(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor6.chambers[3].work;
+    let mut turn = 0u8;
+    for (index, (event_turn, text, _)) in content::CENSUS_EVENTS.iter().enumerate() {
+        if *event_turn != turn {
+            turn = *event_turn;
+        }
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            108.0 + index as f32 * 26.0,
+            Some(424.0),
+            &format!("Turn {turn} — {text}."),
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    for class in 0..3 {
+        let rect = geom::f6_op_row(class);
+        spawn_button(
+            commands,
+            stage,
+            rect,
+            &format!(
+                "{} — {}",
+                content::CENSUS_CLASSES[class],
+                work.census[class]
+            ),
+            pal,
+            false,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 34.0,
+            Some(400.0),
+            "press to count one more state of this class",
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    let rect = geom::f6_op_row(3);
+    spawn_button(
+        commands,
+        stage,
+        rect,
+        "SUBMIT THE CENSUS",
+        pal,
+        work.census_judged,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        if work.census_judged {
+            "The census stands judged true."
+        } else {
+            "The census is unjudged: count the day's reachable \
+             states — free, shared, exclusive — and submit."
+        },
         12.0,
         false,
         pal.ink,

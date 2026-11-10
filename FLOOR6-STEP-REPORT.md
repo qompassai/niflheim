@@ -110,4 +110,51 @@ Gates, all on primo under pinned rustc 1.99.0 (evidence:
 - Xvfb smoke: `cold_start_ms=1276`, zero panics.
   `#![forbid(unsafe_code)]` intact.
 
-Commit: recorded at Step 3.
+Commit: `c6097cf` on `pax/floor2-build-20261109`.
+
+## Step 3 — The Spin Heart and the Day Census
+
+Two unlike proofs. The Spin Heart runs a bounded stepper
+(1..=9): set the bound, run the heart against a flag the
+world never sets — the setter is another porter's work —
+and it gives up honestly at the bound, attempts counted by
+the sim in puzzles.rs. Changing the bound clears the run:
+a give-up belongs to its bound. The four ordering claims
+(payload write, flag store, flag load, payload read) are
+annotated from three authored candidates each and recorded
+PROVISIONAL — judged nowhere on this floor; Floor 7's key
+owns them (DS-7). The Day Census asks for the distinct
+reachable states of an authored four-turn day, and the
+truth is a real enumeration in puzzles.rs: turn by turn,
+every ordering of a turn's events explored over the flag
+machine, refusals standing as self-loops — free 1, shared
+3, exclusive 1. A wrong census is not refused; it is simply
+not judged, and may be submitted again after a recount;
+editing a count un-judges the slate.
+
+Gates, all on primo under pinned rustc 1.99.0 (evidence:
+`~/.local/share/pax/niflheim-floor6-step3-build-20261110/`):
+
+- `cargo fmt --check`: clean.
+- `cargo test`: **180 passed, 0 failed** (173 at Step 2 +
+  four puzzles tests, two state tests, one GUI test; no
+  test deleted, skipped, or weakened).
+- `cargo clippy --all-targets -- -D warnings`: exit 0.
+- Theodolite (cured protocol): planted run — puzzles.rs
+  count=9, all E0308 from the planted control at line 2139,
+  the other four touched files 0 in the same session;
+  restore sha256-verified (df90a8be…); clean run — all
+  five files count=0; PASS both modes.
+- Determinism: the playthrough probe extended through
+  chambers 3–4 at state level (spin run asserted (5,
+  false), census taken from the enumeration and asserted
+  [1, 3, 1], load-back at four chambers repaired), run
+  twice: byte-identical, sha256
+  3e5dba3dfda0a19eef4cfe6694610c04746d598f274b86ef009130f236331a7e.
+  Probe removed after the runs.
+- Android: lib builds, exit 0 (libniflheim.so
+  1,349,078,368 bytes).
+- Xvfb smoke: `cold_start_ms=801`, zero panics.
+  `#![forbid(unsafe_code)]` intact.
+
+Commit: recorded at Step 4.

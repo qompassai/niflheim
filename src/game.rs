@@ -342,6 +342,18 @@ pub enum El {
     F6DayOp(u8),
     /// Floor 6 Chamber 2: make one call on the brazier.
     F6BrazierCall(u8),
+    /// Floor 6 Chamber 3: raise the spin bound.
+    F6BoundUp,
+    /// Floor 6 Chamber 3: lower the spin bound.
+    F6BoundDown,
+    /// Floor 6 Chamber 3: run the heart at its bound.
+    F6SpinRun,
+    /// Floor 6 Chamber 3: cycle one claim's annotation.
+    F6Annotate(u8),
+    /// Floor 6 Chamber 4: count one more state of a class.
+    F6CensusCycle(u8),
+    /// Floor 6 Chamber 4: submit the census to the slate.
+    F6CensusSubmit,
     /// Floor 5 Chamber 1: read one step's card.
     F5Card(u8),
     /// Floor 5 Chamber 1: walk the next step.
@@ -3786,6 +3798,143 @@ impl Game {
                 }
             }
 
+            El::F6BoundUp => {
+                if let Screen::Floor6Chamber(2) = self.screen {
+                    let bound = {
+                        let work = &mut self.expedition.floor6.chambers[2].work;
+                        if work.spin_bound < 9 {
+                            work.spin_bound += 1;
+                            work.gave_up = false;
+                        }
+                        work.spin_bound
+                    };
+                    self.say(StatusKind::Info, format!("The bound stands at {bound}."));
+                    self.changed();
+                }
+            }
+
+            El::F6BoundDown => {
+                if let Screen::Floor6Chamber(2) = self.screen {
+                    let bound = {
+                        let work = &mut self.expedition.floor6.chambers[2].work;
+                        if work.spin_bound > 0 {
+                            work.spin_bound -= 1;
+                            work.gave_up = false;
+                        }
+                        work.spin_bound
+                    };
+                    self.say(
+                        StatusKind::Info,
+                        if bound == 0 {
+                            "The bound is lifted: the heart is unbounded \
+                             again — and unproven."
+                                .to_string()
+                        } else {
+                            format!("The bound stands at {bound}.")
+                        },
+                    );
+                    self.changed();
+                }
+            }
+
+            El::F6SpinRun => {
+                if let Screen::Floor6Chamber(2) = self.screen {
+                    let bound = self.expedition.floor6.chambers[2].work.spin_bound;
+                    if bound == 0 {
+                        self.say(
+                            StatusKind::Refusal,
+                            "Set the bound first: an unbounded spin is \
+                             not a heart, it is a hazard with a handle.",
+                        );
+                    } else {
+                        let (attempts, acquired) = puzzles::spin_heart_run(bound, false);
+                        self.expedition.floor6.chambers[2].work.gave_up = !acquired;
+                        self.say(
+                            StatusKind::Good,
+                            format!(
+                                "The heart spins: {attempts} attempts, and \
+                                 the flag never rises — the setter is \
+                                 another porter's work, and she never \
+                                 comes. At its bound the heart gives up, \
+                                 honestly and on the record."
+                            ),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F6Annotate(claim) => {
+                if let Screen::Floor6Chamber(2) = self.screen {
+                    let claim = claim as usize;
+                    if let Some(slot) = self.expedition.floor6.chambers[2]
+                        .work
+                        .spin_annotations
+                        .get_mut(claim)
+                    {
+                        *slot = (*slot + 1) % 4;
+                        let choice = *slot;
+                        self.say(
+                            StatusKind::Info,
+                            if choice == 0 {
+                                format!("Claim {} annotation cleared.", claim + 1)
+                            } else {
+                                let ordering = content::ORDERING_NAMES
+                                    [content::SPIN_CLAIMS[claim].1[choice as usize - 1]];
+                                format!(
+                                    "Claim {} annotated: {ordering} — recorded, \
+                                     provisional until the Loom Halls.",
+                                    claim + 1
+                                )
+                            },
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F6CensusCycle(class) => {
+                if let Screen::Floor6Chamber(3) = self.screen {
+                    let class = class as usize;
+                    let work = &mut self.expedition.floor6.chambers[3].work;
+                    if let Some(slot) = work.census.get_mut(class) {
+                        *slot = (*slot + 1) % 6;
+                        work.census_judged = false;
+                        let count = *slot;
+                        self.say(
+                            StatusKind::Info,
+                            format!("{} counted at {count}.", content::CENSUS_CLASSES[class]),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F6CensusSubmit => {
+                if let Screen::Floor6Chamber(3) = self.screen {
+                    let census = self.expedition.floor6.chambers[3].work.census;
+                    if census == puzzles::day_census() {
+                        self.expedition.floor6.chambers[3].work.census_judged = true;
+                        self.say(
+                            StatusKind::Good,
+                            "The slate tallies with the day: every state \
+                             the heart can truly reach, counted once, no \
+                             more conjured. The census stands judged true.",
+                        );
+                    } else {
+                        self.say(
+                            StatusKind::Info,
+                            "The slate disagrees with the day. Count \
+                             again — every ordering of every turn, every \
+                             refusal standing as itself — and submit \
+                             again; a wrong census costs nothing but \
+                             the recount.",
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
             El::F6Watch => {
                 if let Screen::Floor6Chamber(index) = self.screen {
                     if let Some(progress) = self.expedition.floor6.chambers.get_mut(index) {
@@ -6096,6 +6245,20 @@ fn layout_floor6_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
                 els.push((El::F6BrazierCall(call as u8), geom::f6_op_row(call)));
             }
         }
+        2 => {
+            for claim in 0..4 {
+                els.push((El::F6Annotate(claim as u8), geom::f6_op_row(claim)));
+            }
+            els.push((El::F6BoundDown, geom::f6_op_row(4)));
+            els.push((El::F6BoundUp, geom::f6_op_row(5)));
+            els.push((El::F6SpinRun, geom::f6_op_row(6)));
+        }
+        3 => {
+            for class in 0..3 {
+                els.push((El::F6CensusCycle(class as u8), geom::f6_op_row(class)));
+            }
+            els.push((El::F6CensusSubmit, geom::f6_op_row(3)));
+        }
         _ => {}
     }
 }
@@ -7365,6 +7528,95 @@ mod tests {
         assert_eq!(game.screen, Screen::Floor5Hub);
     }
 
+    /// Floor 6 Step 3, driven on the GUI surface: the Spin
+    /// Heart's bound is set, the heart gives up honestly,
+    /// four claims are recorded provisional; the Day Census
+    /// is submitted wrong, recounted, and judged true; both
+    /// chambers through the seal.
+    #[test]
+    fn floor6_chambers_three_and_four_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn to_floor6_hub(game: &mut Game) {
+            game.screen = Screen::Hub;
+            game.expedition.foe.state = FoeState::Fallen;
+            game.expedition.foe.gate_passed = true;
+            game.expedition.floor2.foe.state = FoeState::Fallen;
+            game.expedition.floor3.foe.gate_passed = true;
+            for chamber in game.expedition.floor2.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            for chamber in game.expedition.floor4.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor4.foe.state = FoeState::Fallen;
+            for chamber in game.expedition.floor5.chambers.iter_mut().take(3) {
+                chamber.state = ChamberState::Repaired;
+            }
+            click(game, El::DoorFloor4);
+            click(game, El::DoorFloor5);
+            click(game, El::DoorFloor6);
+            assert_eq!(game.screen, Screen::Floor6Hub);
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        to_floor6_hub(&mut game);
+        // Chamber 3 — the Spin Heart.
+        click(&mut game, El::Floor6Door(2));
+        click(&mut game, El::F6Watch);
+        // No bound, no run: the heart refuses to spin free.
+        click(&mut game, El::F6SpinRun);
+        assert!(!game.expedition.floor6.chambers[2].work.gave_up);
+        click(&mut game, El::F6BoundUp);
+        click(&mut game, El::F6BoundUp);
+        click(&mut game, El::F6BoundUp);
+        assert_eq!(game.expedition.floor6.chambers[2].work.spin_bound, 3);
+        click(&mut game, El::F6SpinRun);
+        assert!(game.expedition.floor6.chambers[2].work.gave_up);
+        for claim in 0..4u8 {
+            click(&mut game, El::F6Annotate(claim));
+        }
+        assert!(game.expedition.floor6_diagnosed(2));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor6.chambers[2].state,
+            ChamberState::Repaired
+        );
+        // Chamber 4 — the Day Census.
+        click(&mut game, El::TabFloor);
+        to_floor6_hub(&mut game);
+        click(&mut game, El::Floor6Door(3));
+        click(&mut game, El::F6Watch);
+        // A wrong census is refused nothing — it is simply
+        // not judged, and may be submitted again.
+        click(&mut game, El::F6CensusSubmit);
+        assert!(!game.expedition.floor6.chambers[3].work.census_judged);
+        click(&mut game, El::F6CensusCycle(0));
+        for _ in 0..3 {
+            click(&mut game, El::F6CensusCycle(1));
+        }
+        click(&mut game, El::F6CensusCycle(2));
+        click(&mut game, El::F6CensusSubmit);
+        assert!(game.expedition.floor6.chambers[3].work.census_judged);
+        assert!(game.expedition.floor6_diagnosed(3));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor6.chambers[3].state,
+            ChamberState::Repaired
+        );
+    }
     /// Floor 6 Step 2, driven on the GUI surface: the Cell
     /// Heart's day is walked in order — out-of-order refused,
     /// the exclusive refused with the bell — and the

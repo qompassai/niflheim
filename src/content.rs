@@ -3711,3 +3711,44 @@ pub const BRAZIER_CALLS: [&str; 5] = [
     "Bryn calls for the flame",
     "Both porters read the flame",
 ];
+
+/// The four orderings an annotation may name, weakest to
+/// strongest.
+pub const ORDERING_NAMES: [&str; 4] = ["Relaxed", "Acquire", "Release", "SeqCst"];
+
+/// Floor 6 Chamber 3's four ordering claims: the event each
+/// claim covers, and the three candidate orderings offered
+/// for it (indices into ORDERING_NAMES). The choices are
+/// recorded here and judged nowhere on this floor — the
+/// strongest-correct key belongs to Floor 7's Loom Halls
+/// (DS-7); these records ride the save as provisional.
+pub const SPIN_CLAIMS: [(&str, [usize; 3]); 4] = [
+    (
+        "The payload is written, before anything is published.",
+        [0, 2, 3],
+    ),
+    ("The flag is stored, publishing the payload.", [0, 2, 3]),
+    ("The flag is loaded, checking for a publication.", [0, 1, 3]),
+    ("The payload is read, trusting the flag's word.", [0, 1, 3]),
+];
+
+/// Floor 6 Chamber 4's day: eight events in four turns on
+/// one heart, three porters. Each entry carries its turn,
+/// its account, and its operation code (see CELL_DAY). A
+/// turn's events happen in any order — every ordering is
+/// part of the day. The census counts the distinct states
+/// the day can truly reach, and puzzles enumerates them;
+/// no count is written here.
+pub const CENSUS_EVENTS: [(u8, &str, u8); 8] = [
+    (1, "Ama opens the heart shared", 0),
+    (2, "Bryn opens the heart shared", 0),
+    (2, "Cato opens the heart shared", 0),
+    (3, "Ama closes her share", 1),
+    (3, "Bryn opens the heart exclusive", 2),
+    (4, "Cato closes his share", 1),
+    (4, "Bryn closes his share", 1),
+    (4, "Ama opens the heart exclusive", 2),
+];
+
+/// The census's three classes, in slate order.
+pub const CENSUS_CLASSES: [&str; 3] = ["FREE", "SHARED", "EXCLUSIVE"];

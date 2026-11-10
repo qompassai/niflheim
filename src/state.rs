@@ -655,6 +655,24 @@ pub struct LockWork {
     /// Chamber 2: the brazier's five calls, made.
     #[serde(default)]
     pub calls: [bool; 5],
+    /// Chamber 3: the spin bound (0 = unset, else 1..=9).
+    #[serde(default)]
+    pub spin_bound: u8,
+    /// Chamber 3: the heart gave up honestly at its bound.
+    #[serde(default)]
+    pub gave_up: bool,
+    /// Chamber 3: the recorded ordering per claim (0 =
+    /// unrecorded, else the candidate index + 1) —
+    /// provisional, judged on Floor 7 (DS-7).
+    #[serde(default)]
+    pub spin_annotations: [u8; 4],
+    /// Chamber 4: the submitted census, [free, shared,
+    /// exclusive].
+    #[serde(default)]
+    pub census: [u8; 3],
+    /// Chamber 4: the slate judged the census true.
+    #[serde(default)]
+    pub census_judged: bool,
 }
 
 /// Floor 6, one chamber's progress.
@@ -3211,6 +3229,13 @@ impl Expedition {
                     && work.calls.iter().all(|called| *called)
                     && crate::puzzles::brazier_replay(&work.calls).1 == 1
             }
+            2 => {
+                work.watched
+                    && (1..=9).contains(&work.spin_bound)
+                    && work.gave_up
+                    && work.spin_annotations.iter().all(|choice| *choice != 0)
+            }
+            3 => work.watched && work.census_judged && work.census == crate::puzzles::day_census(),
             _ => false,
         }
     }
@@ -4315,6 +4340,69 @@ mod tests {
         assert!(!expedition.floor5_complete());
     }
 
+    /// Floor 6 Step 3 state: the Spin Heart judges on the
+    /// bound, the honest give-up, and four recorded claims;
+    /// the Census on a judged-true tally against the
+    /// enumeration.
+    #[test]
+    fn floor6_second_chambers_judged() {
+        let mut expedition = Expedition::new();
+        // The spin: bound without a run proves nothing.
+        {
+            let work = &mut expedition.floor6.chambers[2].work;
+            work.watched = true;
+            work.spin_bound = 5;
+            work.spin_annotations = [1, 1, 1, 1];
+        }
+        assert!(!expedition.floor6_diagnosed(2));
+        expedition.floor6.chambers[2].work.gave_up = true;
+        assert!(expedition.floor6_diagnosed(2));
+        assert!(expedition.floor6_file_proof(2).is_ok());
+        assert!(expedition.floor6_repair_chamber(2).is_ok());
+        // The census: judged flags alone do not prove — the
+        // tally itself must equal the enumeration.
+        {
+            let work = &mut expedition.floor6.chambers[3].work;
+            work.watched = true;
+            work.census = [1, 3, 1];
+            work.census_judged = true;
+        }
+        assert!(expedition.floor6_diagnosed(3));
+        expedition.floor6.chambers[3].work.census = [2, 3, 1];
+        assert!(
+            !expedition.floor6_diagnosed(3),
+            "a flattering tally is not the day"
+        );
+        assert!(expedition.floor6_file_proof(3).is_err());
+    }
+
+    /// Adversarial: an unset bound (0) and a bound past the
+    /// stepper's reach (10) both fail the spin judge, and
+    /// one unrecorded claim fails it too.
+    #[test]
+    fn floor6_second_chambers_adversarial() {
+        let mut expedition = Expedition::new();
+        {
+            let work = &mut expedition.floor6.chambers[2].work;
+            work.watched = true;
+            work.gave_up = true;
+            work.spin_annotations = [2, 2, 2, 2];
+        }
+        assert!(!expedition.floor6_diagnosed(2), "bound 0 is unset");
+        expedition.floor6.chambers[2].work.spin_bound = 10;
+        assert!(!expedition.floor6_diagnosed(2), "the bound is 1..=9");
+        expedition.floor6.chambers[2].work.spin_bound = 9;
+        expedition.floor6.chambers[2].work.spin_annotations[3] = 0;
+        assert!(!expedition.floor6_diagnosed(2), "one claim unrecorded");
+        expedition.floor6.chambers[2].work.spin_annotations[3] = 3;
+        assert!(expedition.floor6_diagnosed(2));
+        // A reset clears the spin and the census alike.
+        expedition.floor6_reset_chamber(2);
+        let work = &expedition.floor6.chambers[2].work;
+        assert_eq!(work.spin_bound, 0);
+        assert!(!work.gave_up);
+        assert_eq!(work.spin_annotations, [0; 4]);
+    }
     /// Floor 6 Step 2 state: the Cell Heart judges on the
     /// walked day and the struck bell; the Brazier on five
     /// calls and a single kindling.
