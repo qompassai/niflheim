@@ -370,3 +370,64 @@ D-1189 arrangement, as this report's Step 3 section foresaw.
 - Step 5: the driven whole-floor playthrough — all five
   chambers and the FOE on the GUI surface — and Floor 4's
   close-out.
+
+## Step 5 — Integration: the whole floor, played
+
+**Method note (D-1189):** Claude-direct, as Step 4.
+
+### What landed
+
+- **`game.rs` (tests only)** — `floor4_whole_floor_played_on_the_gui`:
+  the shipped whole-floor playthrough. From the Step 1
+  stairs-lit fixture, every chamber is entered through its
+  door and solved through real layout clicks — the bench's
+  six slates with both surprises annotated, the wall at its
+  least span, the crests cut to their niches, the treaty
+  wall seated and its promise amended six presses, the
+  hollow stones filled and tagged with the referee's catch
+  taken on the way — each chamber proved and sealed before
+  the next door opens. Then the Foundation: the book taken,
+  five stones measured, the false three exhibited, the
+  seal's refusal while the re-cut stands unverified, both
+  sets laid and verified, the strike. The test closes on
+  the floor's own terms: `floor4_complete()`, all five
+  chambers Repaired **at full standard** (no hint spent
+  anywhere on the floor — every facet kept), the Brass Eye
+  Stone in the codex, the Plumb Line in the pack.
+
+### Gates (primo, pinned rustc 1.99.0)
+
+- `cargo fmt --check`: clean. `cargo clippy --all-targets
+  -- -D warnings`: exit 0.
+- `cargo test`: **136 passed / 0 failed** (was 135; +1, the
+  playthrough).
+  Log: `~/.local/share/pax/niflheim-floor4-step5-build-20261110/cargo-test.log`.
+- Theodolite (cured route, Battery C shape): producer
+  first; the planted control in `game.rs` read **count=3**
+  (E0308 live), the restored file read **count=0** in the
+  clean session — a verified zero on the rung's one touched
+  file. Logs: `theodolite-planted.log`, `theodolite.log`.
+- Determinism: the Step 4 probe re-run on the new tree;
+  saves byte-identical, sha256
+  `8a6493c666a90be8ee4e8b8a97212a912bbf74ec44caaf6bc9be6cbb6f358864`
+  — unchanged, as it should be: this rung changed no state
+  code.
+- Android lib under the pin: 1,347,263,208 bytes —
+  byte-size identical to Step 4 (a test-only rung). Launch
+  smoke under Xvfb: `cold_start_ms=1709`, no panics (the
+  number is contention weather, not a regression signal;
+  Step 4 read 754 on a quieter machine).
+
+### Floor 4 close-out
+
+Floor 4 — **the Foundation Galleries** — is complete:
+five chambers (the Surveyor's Bench, the Alignment Wall,
+the Seal Stones, the Treaty Wall, the Hollow Stones) and
+the Crooked Foundation, FOE 4, whose fall teaches the
+descent its eighth failure class and puts the Plumb Line
+in the pack for Floors 5, 9, 10, 13, and 14. The floor's
+doctrine held at every gate: every size, alignment, and
+offset the game asserts was measured from a real type or
+priced by the one layout algorithm — including the FOE's
+own book, whose three false entries are false only against
+the ground. Suite at floor close: **136/0**.

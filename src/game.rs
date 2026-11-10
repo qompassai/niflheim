@@ -6311,4 +6311,202 @@ mod tests {
                 .any(|loot| loot == content::PLUMB_LINE)
         );
     }
+
+    /// Floor 4 Step 5 — the shipped whole-floor playthrough:
+    /// all five galleries and the Crooked Foundation, played
+    /// end to end on the GUI surface from the stairs-lit
+    /// fixture, with no state touched except through clicks.
+    /// The floor completes here: five chambers repaired at
+    /// full standard (no hint spent anywhere), the FOE
+    /// fallen, its stone and its loot in hand.
+    #[test]
+    fn floor4_whole_floor_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn back_to_galleries(game: &mut Game) {
+            click(game, El::TabFloor);
+            click(game, El::DoorFloor4);
+            assert_eq!(game.screen, Screen::Floor4Hub);
+        }
+        fn seal_the_chamber(game: &mut Game, index: usize) {
+            click(game, El::Chip(Verb::Prove));
+            click(game, El::Seal);
+            assert!(game.armed.is_some());
+            click(game, El::SealConfirm);
+            assert_eq!(
+                game.expedition.floor4.chambers[index].state,
+                ChamberState::Repaired
+            );
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        // The stairs stand lit (the Step 1 fixture).
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.foe.gate_passed = true;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        game.expedition.floor3.foe.gate_passed = true;
+        for chamber in game.expedition.floor2.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        game.screen = Screen::Hub;
+        click(&mut game, El::DoorFloor4);
+        assert_eq!(game.screen, Screen::Floor4Hub);
+
+        // Chamber 1 — the Surveyor's Bench.
+        click(&mut game, El::Floor4Door(0));
+        assert_eq!(game.screen, Screen::Floor4Chamber(0));
+        click(&mut game, El::F4Watch);
+        // (stone, size presses, align presses, annotate presses)
+        let slate: [(u8, u32, u32, u32); 6] = [
+            (0, 1, 1, 0),  // u8: 1 · 1, true
+            (1, 5, 3, 2),  // (u8, u32): slate 5 · 4 — surprise, annotate to 1
+            (2, 16, 4, 0), // &str: 16 · 8, true
+            (3, 2, 1, 0),  // Option<u8>: 2 · 1, true
+            (4, 16, 4, 2), // Option<&u64>: slate 16 · 8 — surprise, annotate to 1
+            (5, 24, 4, 0), // Vec<u8>: 24 · 8, true
+        ];
+        for (stone, sizes, aligns, annotates) in slate {
+            click(&mut game, El::F4Stone(stone));
+            for _ in 0..sizes {
+                click(&mut game, El::F4SizeUp);
+            }
+            for _ in 0..aligns {
+                click(&mut game, El::F4AlignUp);
+            }
+            click(&mut game, El::F4DropLine);
+            for _ in 0..annotates {
+                click(&mut game, El::F4Annotate);
+            }
+        }
+        assert!(game.expedition.floor4_diagnosed(0));
+        seal_the_chamber(&mut game, 0);
+        back_to_galleries(&mut game);
+
+        // Chamber 2 — the Alignment Wall at its least span.
+        click(&mut game, El::Floor4Door(1));
+        assert_eq!(game.screen, Screen::Floor4Chamber(1));
+        click(&mut game, El::F4Watch);
+        for stone in [1u8, 2, 4, 3, 0] {
+            click(&mut game, El::F4Seat(stone));
+        }
+        assert!(game.expedition.floor4_diagnosed(1));
+        seal_the_chamber(&mut game, 1);
+        back_to_galleries(&mut game);
+
+        // Chamber 3 — the Seal Stones.
+        click(&mut game, El::Floor4Door(2));
+        assert_eq!(game.screen, Screen::Floor4Chamber(2));
+        click(&mut game, El::F4Watch);
+        for _ in 0..3 {
+            click(&mut game, El::F4Crest(0));
+        }
+        click(&mut game, El::F4CrestProve(0));
+        for _ in 0..2 {
+            click(&mut game, El::F4Crest(1));
+        }
+        click(&mut game, El::F4CrestProve(1));
+        for _ in 0..3 {
+            click(&mut game, El::F4Crest(2));
+        }
+        click(&mut game, El::F4CrestProve(2));
+        assert!(game.expedition.floor4_diagnosed(2));
+        seal_the_chamber(&mut game, 2);
+        back_to_galleries(&mut game);
+
+        // Chamber 4 — the Treaty Wall.
+        click(&mut game, El::Floor4Door(3));
+        assert_eq!(game.screen, Screen::Floor4Chamber(3));
+        click(&mut game, El::F4Watch);
+        for stone in 0..4u8 {
+            click(&mut game, El::F4TreatySeat(stone));
+        }
+        click(&mut game, El::F4TreatyProve);
+        assert!(!game.expedition.floor4_diagnosed(3));
+        for _ in 0..6 {
+            click(&mut game, El::F4PromiseUp);
+        }
+        assert!(game.expedition.floor4_diagnosed(3));
+        seal_the_chamber(&mut game, 3);
+        back_to_galleries(&mut game);
+
+        // Chamber 5 — the Hollow Stones.
+        click(&mut game, El::Floor4Door(4));
+        assert_eq!(game.screen, Screen::Floor4Chamber(4));
+        click(&mut game, El::F4Watch);
+        click(&mut game, El::F4Cell(0));
+        click(&mut game, El::F4UseBlank);
+        assert_eq!(game.expedition.floor4.chambers[4].work.referee_catches, 1);
+        for cell in 1..4u8 {
+            click(&mut game, El::F4Cell(cell));
+        }
+        click(&mut game, El::F4UseBlank);
+        click(&mut game, El::F4Fill(0));
+        click(&mut game, El::F4Tag(0));
+        click(&mut game, El::F4Fill(1));
+        click(&mut game, El::F4Fill(1));
+        click(&mut game, El::F4Tag(1));
+        click(&mut game, El::F4Tag(1));
+        assert!(game.expedition.floor4_diagnosed(4));
+        seal_the_chamber(&mut game, 4);
+        back_to_galleries(&mut game);
+        assert_eq!(game.expedition.floor4_chambers_repaired(), 5);
+
+        // The FOE — the Crooked Foundation.
+        click(&mut game, El::DoorFoe4);
+        assert_eq!(game.screen, Screen::Floor4Foe);
+        click(&mut game, El::F4BookTake);
+        for entry in 0..5u8 {
+            click(&mut game, El::F4Measure(entry));
+        }
+        for entry in [1u8, 3, 4] {
+            click(&mut game, El::F4Exhibit(entry));
+        }
+        assert!(game.expedition.floor4_foe_proof_complete());
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_none(), "the re-cut is not yet verified");
+        for stone in 0..4u8 {
+            click(&mut game, El::F4ForeignSeat(stone));
+        }
+        click(&mut game, El::F4ForeignProve);
+        for stone in [1u8, 2, 3, 0] {
+            click(&mut game, El::F4FreeSeat(stone));
+        }
+        click(&mut game, El::F4FreeProve);
+        assert!(game.expedition.floor4.foe.gate_passed);
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_some());
+        click(&mut game, El::SealConfirm);
+        assert_eq!(game.expedition.floor4.foe.state, FoeState::Fallen);
+
+        // The floor stands complete, at full standard.
+        assert!(game.expedition.floor4_complete());
+        assert!(
+            game.expedition
+                .floor4
+                .chambers
+                .iter()
+                .all(|chamber| chamber.facet),
+            "no hint was spent: every chamber keeps its facet"
+        );
+        assert!(
+            game.expedition
+                .codex
+                .iter()
+                .any(|stone| stone == content::BRASS_EYE_STONE)
+        );
+        assert!(
+            game.expedition
+                .pack
+                .iter()
+                .any(|loot| loot == content::PLUMB_LINE)
+        );
+    }
 }
