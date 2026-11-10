@@ -18,15 +18,15 @@
 use serde::{Deserialize, Serialize};
 
 use crate::content::{
-    ADMISSION_SERVICES, BEASTS, FOE_CHALLENGE, GATE_SCAFFOLD, INTERNERS_HOARD, LEASES_INITIAL,
-    PACK_ITEMS, PLACARDS, PLANK_STONE, ROSTER_GROUPS,
+    ADMISSION_SERVICES, BEASTS, FOE_CHALLENGE, GATE_SCAFFOLD, HERALD_LETTERS, INTERNERS_HOARD,
+    LEASES_INITIAL, PACK_ITEMS, PLACARDS, PLANK_STONE, ROSTER_GROUPS,
 };
 use crate::core::{SAVE_FORMAT_VERSION, SAVE_MAGIC, SaveError, Settings, TextScale};
 use crate::puzzles::{
-    RecordKind, bound_exact, bound_missing, bound_unjustified, day_plan_overlap, errand_choice_ok,
-    foe_census, foe_uncopiable_rows, identification_ok, judge_placards, kennel_choice_ok,
-    lease_chain_problem, packing_problems, reconciled_toll, record_fits_slot, run_delivery,
-    trick_charter_ok,
+    RecordKind, bound_exact, bound_missing, bound_unjustified, collar_route_ok,
+    collision_reading_ok, day_plan_overlap, errand_choice_ok, foe_census, foe_uncopiable_rows,
+    identification_ok, judge_placards, kennel_choice_ok, lease_chain_problem, packing_problems,
+    reconciled_toll, record_fits_slot, registry_bars_ok, run_delivery, trick_charter_ok,
 };
 
 /// Most bytes of editor draft a save will carry.
@@ -191,6 +191,30 @@ pub struct Floor2Work {
     /// C3: the kennel slot stands filled.
     #[serde(default)]
     pub kennel_ok: bool,
+    /// C4: the Dawn Round has been driven through the Wide Door.
+    #[serde(default)]
+    pub drove_round: bool,
+    /// C4: the bar named for each barred beast, keyed by the
+    /// barred beasts in book order, as indices into `BAR_REASONS`.
+    #[serde(default)]
+    pub bar_choices: Vec<Option<usize>>,
+    /// C4: every barred beast's bar stands correctly named.
+    #[serde(default)]
+    pub bars_ok: bool,
+    /// C5: the joining route chosen, as an index into
+    /// `COLLAR_ROUTES`.
+    #[serde(default)]
+    pub route_choice: Option<usize>,
+    /// C5: the route slot stands filled.
+    #[serde(default)]
+    pub route_ok: bool,
+    /// C5: the reading of the staged collision the player holds
+    /// to, as an index into `COLLISION_READINGS`.
+    #[serde(default)]
+    pub collision_choice: Option<usize>,
+    /// C5: the reading slot stands filled.
+    #[serde(default)]
+    pub collision_ok: bool,
 }
 
 /// One Floor 2 chamber's progress.
@@ -238,6 +262,11 @@ pub struct Floor2Progress {
     pub admissions: Vec<bool>,
     /// Per roster group: the board shows it collapsed.
     pub roster_collapsed: Vec<bool>,
+    /// Per Herald letter: acted on and filed. Serde-defaulted so
+    /// saves written before the beat landed load whole; a short
+    /// record reads as letters unfiled.
+    #[serde(default)]
+    pub herald_filed: Vec<bool>,
 }
 
 impl Floor2Progress {
@@ -264,6 +293,7 @@ impl Floor2Progress {
             foe_hints_used: 0,
             admissions: vec![false; BEASTS.len()],
             roster_collapsed: vec![false; ROSTER_GROUPS.len()],
+            herald_filed: vec![false; HERALD_LETTERS.len()],
         }
     }
 }
@@ -872,6 +902,117 @@ impl Expedition {
                     ))
                 }
             }
+            3 => {
+                let (bars_ok, drove, unnamed, misnamed) = {
+                    let work = &mut progress.work;
+                    work.bars_ok = work.drove_round && registry_bars_ok(&work.bar_choices);
+                    let barred: Vec<&crate::content::RegistryBeast> =
+                        crate::content::REGISTRY_BEASTS
+                            .iter()
+                            .filter(|entry| !entry.passes)
+                            .collect();
+                    let unnamed = barred
+                        .iter()
+                        .enumerate()
+                        .find(|(slot, _)| work.bar_choices.get(*slot).copied().flatten().is_none())
+                        .map(|(_, entry)| entry.name);
+                    let misnamed = barred.iter().enumerate().find_map(|(slot, entry)| {
+                        match work.bar_choices.get(slot).copied().flatten() {
+                            Some(label) if Some(label) != entry.bar => Some((entry.name, label)),
+                            _ => None,
+                        }
+                    });
+                    (work.bars_ok, work.drove_round, unnamed, misnamed)
+                };
+                if bars_ok {
+                    progress.state = ChamberState::Diagnosed;
+                    Ok("The registry stands read: three beasts answer the Dawn \
+                         Round in their own bodies and pass, and the three the \
+                         door refuses are named with their bars — a body \
+                         returned whole, a kind named fresh at every call, a \
+                         rite with no self to drive. The registry door swings \
+                         open."
+                        .to_string())
+                } else if !drove {
+                    Err(Refusal(
+                        "The registry asks nothing undriven: drive the Dawn \
+                         Round through the Wide Door first, and watch which \
+                         beasts the door admits and which it refuses"
+                            .to_string(),
+                    ))
+                } else if let Some(name) = unnamed {
+                    Err(Refusal(format!(
+                        "{name} stands barred and unnamed: name the bar on \
+                         every refused beast's placard"
+                    )))
+                } else if let Some((name, label)) = misnamed {
+                    let said = crate::content::BAR_REASON_LABELS
+                        .get(label)
+                        .copied()
+                        .unwrap_or("that bar");
+                    Err(Refusal(format!(
+                        "{name}'s placard does not say {said}. Read the shape \
+                         of its charter again"
+                    )))
+                } else {
+                    Err(Refusal(
+                        "the registry's bars do not yet stand named".to_string(),
+                    ))
+                }
+            }
+            4 => {
+                let (route_ok, collision_ok, route_choice, collision_choice) = {
+                    let work = &mut progress.work;
+                    work.route_ok = matches!(
+                        work.route_choice,
+                        Some(choice) if collar_route_ok(choice)
+                    );
+                    work.collision_ok = matches!(
+                        work.collision_choice,
+                        Some(choice) if collision_reading_ok(choice)
+                    );
+                    (
+                        work.route_ok,
+                        work.collision_ok,
+                        work.route_choice,
+                        work.collision_choice,
+                    )
+                };
+                if route_ok && collision_ok {
+                    progress.state = ChamberState::Diagnosed;
+                    Ok("The joining stands lawful: the foreign sigil rides on \
+                         a collar of your own forging, and the collision reads \
+                         as the rule itself — a sigil claimed once for a beast, \
+                         or it is not claimed lawfully at all. The chamber \
+                         door swings open."
+                        .to_string())
+                } else if route_choice.is_none() {
+                    Err(Refusal(
+                        "Choose the joining first: stamp the beast, forge \
+                         the collar, or ask the door for a blanket joining"
+                            .to_string(),
+                    ))
+                } else if !route_ok {
+                    let refusal = route_choice
+                        .and_then(|choice| crate::content::COLLAR_ROUTES.get(choice))
+                        .map(|route| route.refusal)
+                        .unwrap_or("That route is refused at the desk.");
+                    Err(Refusal(refusal.to_string()))
+                } else if collision_choice.is_none() {
+                    Err(Refusal(
+                        "Read the staged collision: two collars, one sigil, \
+                         one beast — say what their collision specifies"
+                            .to_string(),
+                    ))
+                } else {
+                    Err(Refusal(
+                        "That reading does not hold. Neither keeper erred, \
+                         and the door keeps no first-forged rule: read the \
+                         collision as the rule stating its own shape"
+                            .to_string(),
+                    ))
+                }
+            }
             _ => Err(Refusal(
                 "this chamber's proof is carved in a later step".to_string(),
             )),
@@ -914,6 +1055,31 @@ impl Expedition {
         }
     }
 
+    /// Act on one of the Herald's sealed letters (Floor 2's
+    /// secondary beat): the letter is filed, and the narration
+    /// says what the acting found. A letter announcing a service
+    /// no beast offers wastes the free miniature expedition —
+    /// the floor's first wrong room. Filing is free and final.
+    pub fn floor2_herald_act(&mut self, letter: usize) -> Result<String, Refusal> {
+        let Some(sealed) = crate::content::HERALD_LETTERS.get(letter) else {
+            return Err(Refusal("no such letter".to_string()));
+        };
+        if self.floor2.herald_filed.len() < crate::content::HERALD_LETTERS.len() {
+            self.floor2
+                .herald_filed
+                .resize(crate::content::HERALD_LETTERS.len(), false);
+        }
+        if self.floor2.herald_filed[letter] {
+            return Err(Refusal("that letter already stands filed".to_string()));
+        }
+        self.floor2.herald_filed[letter] = true;
+        Ok(if sealed.offered {
+            crate::content::HERALD_FILED
+        } else {
+            crate::content::HERALD_WRONG_ROOM
+        }
+        .to_string())
+    }
     /// C4's exhibit act: place record `record` into `slot`
     /// (0 = kept, 1 = restored). Fills the slot on success.
     pub fn exhibit_record(
@@ -1287,6 +1453,11 @@ impl Expedition {
         if self.floor2.roster_collapsed.len() != ROSTER_GROUPS.len() {
             return Err(corrupt("the roster view record is the wrong size"));
         }
+        if !self.floor2.herald_filed.is_empty()
+            && self.floor2.herald_filed.len() != HERALD_LETTERS.len()
+        {
+            return Err(corrupt("the herald record is the wrong size"));
+        }
         for chamber in &self.floor2.chambers {
             if chamber.facet && (chamber.state != ChamberState::Repaired || chamber.hints_used > 3)
             {
@@ -1416,6 +1587,11 @@ fn floor2_proof_complete(expedition: &Expedition, chamber: usize) -> bool {
             work.ran_deliveries
                 && matches!(work.errand_choice, Some(choice) if errand_choice_ok(choice))
                 && matches!(work.kennel_choice, Some(kennel) if kennel_choice_ok(kennel))
+        }
+        3 => work.drove_round && registry_bars_ok(&work.bar_choices),
+        4 => {
+            matches!(work.route_choice, Some(choice) if collar_route_ok(choice))
+                && matches!(work.collision_choice, Some(choice) if collision_reading_ok(choice))
         }
         _ => false,
     }
@@ -1916,6 +2092,239 @@ mod tests {
         assert!(loaded.floor2.chambers[2].facet);
     }
 
+    /// Floor 2 Chamber 4 solved as designed: the round driven,
+    /// the three bars named in book order.
+    fn solve_f2c4(expedition: &mut Expedition) {
+        let work = &mut expedition.floor2.chambers[3].work;
+        work.drove_round = true;
+        work.bar_choices = vec![Some(0), Some(1), Some(2)];
+    }
+
+    /// Validation: Chamber 4's proof diagnoses, and the repair
+    /// lands at full standard with its facet.
+    #[test]
+    fn floor2_chamber4_proof_diagnoses_and_repairs() {
+        let mut expedition = Expedition::new();
+        solve_f2c4(&mut expedition);
+        expedition.floor2_file_proof(3).expect("proof");
+        assert_eq!(expedition.floor2.chambers[3].state, ChamberState::Diagnosed);
+        assert!(expedition.floor2.chambers[3].work.bars_ok);
+        expedition.floor2_repair_chamber(3).expect("repair");
+        assert_eq!(expedition.floor2.chambers[3].state, ChamberState::Repaired);
+        assert!(expedition.floor2.chambers[3].facet);
+    }
+
+    /// Adversarial: filing before the round is driven is refused;
+    /// an unnamed barred beast is named in the refusal; swapped
+    /// bars are refused with the placard's own wording; a forged
+    /// out-of-range label is refused without panic.
+    #[test]
+    fn floor2_chamber4_undriven_and_misnamed_are_refused() {
+        let mut expedition = Expedition::new();
+        solve_f2c4(&mut expedition);
+        expedition.floor2.chambers[3].work.drove_round = false;
+        let refusal = expedition.floor2_file_proof(3).expect_err("refused");
+        assert!(refusal.message().contains("nothing undriven"));
+        assert!(!expedition.floor2.chambers[3].work.bars_ok);
+        expedition.floor2.chambers[3].work.drove_round = true;
+        expedition.floor2.chambers[3].work.bar_choices = vec![Some(0), None, Some(2)];
+        let refusal = expedition.floor2_file_proof(3).expect_err("refused");
+        assert!(
+            refusal
+                .message()
+                .contains("Tessell stands barred and unnamed")
+        );
+        expedition.floor2.chambers[3].work.bar_choices = vec![Some(1), Some(0), Some(2)];
+        let refusal = expedition.floor2_file_proof(3).expect_err("refused");
+        assert!(refusal.message().contains("does not say Generic method"));
+        expedition.floor2.chambers[3].work.bar_choices = vec![Some(usize::MAX), Some(1), Some(2)];
+        assert!(expedition.floor2_file_proof(3).is_err());
+        assert_eq!(expedition.floor2.chambers[3].state, ChamberState::Unworked);
+    }
+
+    /// Floor 2 Chamber 5 solved as designed: the guild collar
+    /// route taken, the one-claim reading held to.
+    fn solve_f2c5(expedition: &mut Expedition) {
+        let work = &mut expedition.floor2.chambers[4].work;
+        work.route_choice = Some(1);
+        work.collision_choice = Some(2);
+    }
+
+    /// Validation: Chamber 5's proof diagnoses, and the repair
+    /// lands at full standard with its facet.
+    #[test]
+    fn floor2_chamber5_proof_diagnoses_and_repairs() {
+        let mut expedition = Expedition::new();
+        solve_f2c5(&mut expedition);
+        expedition.floor2_file_proof(4).expect("proof");
+        assert_eq!(expedition.floor2.chambers[4].state, ChamberState::Diagnosed);
+        assert!(expedition.floor2.chambers[4].work.route_ok);
+        assert!(expedition.floor2.chambers[4].work.collision_ok);
+        expedition.floor2_repair_chamber(4).expect("repair");
+        assert_eq!(expedition.floor2.chambers[4].state, ChamberState::Repaired);
+        assert!(expedition.floor2.chambers[4].facet);
+    }
+
+    /// Adversarial: the direct stamp and the blanket joining are
+    /// refused with the Sigilwright's authored reasons; a
+    /// first-forged reading of the collision is refused; a forged
+    /// out-of-range route is refused without panic.
+    #[test]
+    fn floor2_chamber5_unlawful_routes_and_readings_are_refused() {
+        let mut expedition = Expedition::new();
+        solve_f2c5(&mut expedition);
+        expedition.floor2.chambers[4].work.route_choice = Some(0);
+        let refusal = expedition.floor2_file_proof(4).expect_err("refused");
+        assert!(refusal.message().contains("Foreign marks on foreign hides"));
+        assert!(!expedition.floor2.chambers[4].work.route_ok);
+        expedition.floor2.chambers[4].work.route_choice = Some(2);
+        let refusal = expedition.floor2_file_proof(4).expect_err("refused");
+        assert!(refusal.message().contains("Coherence is not waived"));
+        expedition.floor2.chambers[4].work.route_choice = Some(1);
+        expedition.floor2.chambers[4].work.collision_choice = Some(0);
+        let refusal = expedition.floor2_file_proof(4).expect_err("refused");
+        assert!(refusal.message().contains("That reading does not hold"));
+        expedition.floor2.chambers[4].work.route_choice = Some(usize::MAX);
+        assert!(expedition.floor2_file_proof(4).is_err());
+        assert_eq!(expedition.floor2.chambers[4].state, ChamberState::Unworked);
+    }
+
+    /// Validation: the Herald's true letters file plainly, the
+    /// false letter wastes the miniature expedition, and the
+    /// filing stands on the record through a save.
+    #[test]
+    fn floor2_herald_letters_file_and_the_false_one_wastes_the_ride() {
+        let mut expedition = Expedition::new();
+        let filed = expedition.floor2_herald_act(0).expect("hearth letter");
+        assert_eq!(filed, crate::content::HERALD_FILED);
+        let wasted = expedition.floor2_herald_act(1).expect("frost letter");
+        assert_eq!(wasted, crate::content::HERALD_WRONG_ROOM);
+        assert!(expedition.floor2.herald_filed[1]);
+        let text = expedition.save_json().expect("save");
+        let loaded = Expedition::load_json(&text).expect("load");
+        assert_eq!(loaded.floor2.herald_filed, expedition.floor2.herald_filed);
+    }
+
+    /// Adversarial: a filed letter cannot be filed twice, a
+    /// letter that does not exist is refused, and a save written
+    /// before the beat landed (no herald record) loads with every
+    /// letter standing unfiled.
+    #[test]
+    fn floor2_herald_refuses_repeats_and_loads_old_saves() {
+        let mut expedition = Expedition::new();
+        expedition.floor2_herald_act(2).expect("valley letter");
+        let refusal = expedition.floor2_herald_act(2).expect_err("refused");
+        assert!(refusal.message().contains("already stands filed"));
+        assert!(expedition.floor2_herald_act(usize::MAX).is_err());
+        let text = expedition.save_json().expect("save");
+        let mut value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        value["floor2"]
+            .as_object_mut()
+            .expect("floor2 object")
+            .remove("herald_filed");
+        let loaded = Expedition::load_json(&value.to_string()).expect("load old save");
+        assert!(loaded.floor2.herald_filed.is_empty());
+    }
+
+    /// Validation: the Step 3 work fields round-trip, and a save
+    /// written before they existed loads with them defaulted.
+    #[test]
+    fn floor2_step3_work_round_trips_and_defaults() {
+        let mut expedition = Expedition::new();
+        solve_f2c4(&mut expedition);
+        solve_f2c5(&mut expedition);
+        let text = expedition.save_json().expect("save");
+        let loaded = Expedition::load_json(&text).expect("load");
+        assert_eq!(
+            loaded.floor2.chambers[3].work,
+            expedition.floor2.chambers[3].work
+        );
+        assert_eq!(
+            loaded.floor2.chambers[4].work,
+            expedition.floor2.chambers[4].work
+        );
+        let mut value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        for chamber in [3, 4] {
+            let work = value["floor2"]["chambers"][chamber]
+                .as_object_mut()
+                .expect("chamber object")
+                .get_mut("work")
+                .and_then(|w| w.as_object_mut())
+                .expect("work object");
+            for key in [
+                "drove_round",
+                "bar_choices",
+                "bars_ok",
+                "route_choice",
+                "route_ok",
+                "collision_choice",
+                "collision_ok",
+            ] {
+                work.remove(key);
+            }
+        }
+        let loaded = Expedition::load_json(&value.to_string()).expect("load old save");
+        assert_eq!(loaded.floor2.chambers[3].work, Floor2Work::default());
+        assert_eq!(loaded.floor2.chambers[4].work, Floor2Work::default());
+    }
+
+    /// Validation: with all five chambers solved and repaired,
+    /// the floor's chamber count stands complete and survives a
+    /// save/load round-trip — and two identical playthroughs of
+    /// the floor produce byte-identical saves.
+    #[test]
+    fn floor2_all_chambers_repair_and_playthrough_is_deterministic() {
+        fn solve_floor2(expedition: &mut Expedition) {
+            solve_f2c1(expedition);
+            expedition.floor2_file_proof(0).expect("proof c1");
+            expedition.floor2_repair_chamber(0).expect("repair c1");
+            solve_f2c2(expedition);
+            expedition.floor2_file_proof(1).expect("proof c2");
+            expedition.floor2_repair_chamber(1).expect("repair c2");
+            solve_f2c3(expedition);
+            expedition.floor2_file_proof(2).expect("proof c3");
+            expedition.floor2_repair_chamber(2).expect("repair c3");
+            solve_f2c4(expedition);
+            expedition.floor2_file_proof(3).expect("proof c4");
+            expedition.floor2_repair_chamber(3).expect("repair c4");
+            solve_f2c5(expedition);
+            expedition.floor2_file_proof(4).expect("proof c5");
+            expedition.floor2_repair_chamber(4).expect("repair c5");
+            for letter in 0..crate::content::HERALD_LETTERS.len() {
+                expedition.floor2_herald_act(letter).expect("herald");
+            }
+        }
+        let mut first = Expedition::new();
+        solve_floor2(&mut first);
+        assert_eq!(first.floor2_chambers_repaired(), 5);
+        let first_text = first.save_json().expect("save");
+        let loaded = Expedition::load_json(&first_text).expect("load");
+        assert_eq!(loaded.floor2_chambers_repaired(), 5);
+        let mut second = Expedition::new();
+        solve_floor2(&mut second);
+        assert_eq!(second.save_json().expect("save"), first_text);
+    }
+
+    /// Adversarial: a forged save that stands Floor 2's Step 3
+    /// chambers repaired or diagnosed on empty work is refused
+    /// as corrupt — the load invariants recompute the new proofs.
+    #[test]
+    fn load_refuses_forged_floor2_step3_repairs() {
+        let expedition = Expedition::new();
+        let original_text = expedition.save_json().expect("save");
+        for (chamber, state_str) in [(3, "Repaired"), (4, "Diagnosed")] {
+            let mut value: serde_json::Value =
+                serde_json::from_str(&original_text).expect("parse json");
+            value["floor2"]["chambers"][chamber]["state"] = state_str.into();
+            if state_str == "Repaired" {
+                value["floor2"]["chambers"][chamber]["facet"] = true.into();
+            }
+            match Expedition::load_json(&value.to_string()) {
+                Err(SaveError::Corrupt { .. }) => {}
+                other => panic!("expected corrupt error, got: {:?}", other),
+            }
+        }
+    }
     /// Adversarial: a forged save that stands Floor 2 chambers repaired or
     /// diagnosed on empty work is refused as corrupt — the load invariants
     /// recompute every landed chamber's proof.

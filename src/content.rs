@@ -1129,6 +1129,237 @@ pub const DELIVERIES: [[Delivery; 3]; 2] = [
     ],
 ];
 
+// ---------------------------------------------------------------------------
+// Floor 2, Chamber 4 — Trait objects and the Wide Door: the registry.
+// ---------------------------------------------------------------------------
+
+/// The one service routine the registry drives through the Wide
+/// Door, stated once for every beast alike.
+pub const WIDE_DOOR_SERVICE: &str = "The Dawn Round: one routine, driven through the \
+    Wide Door, calls on every beast in the registry alike. The door admits a beast \
+    only if its charter can be answered without knowing the beast's kind.";
+
+/// The three bars the Wide Door sets, in placard order. A barred
+/// beast's placard states the shape of its charter; the bar is the
+/// rule that shape breaks.
+pub const BAR_REASONS: [&str; 3] = [
+    "Its charter returns its own body, whole — a method returning Self cannot be \
+     called through the door, which does not know the body's size",
+    "Its charter method is generic over the load — a method that names a new \
+     kind at every call cannot be answered by one routine for all beasts",
+    "Its rite names no self — a charter struck with no beast present cannot be \
+     driven through a door that admits bodies",
+];
+
+/// The short forms of the three bars, for the naming chips.
+pub const BAR_REASON_LABELS: [&str; 3] = ["Returns Self", "Generic method", "No self"];
+
+/// One beast standing in the registry, awaiting the Wide Door.
+pub struct RegistryBeast {
+    /// The beast's name.
+    pub name: &'static str,
+    /// The kind of beast.
+    pub kind: &'static str,
+    /// What its charter method looks like, as the registry's book states it.
+    pub charter: &'static str,
+    /// Whether this beast may pass the Wide Door.
+    pub passes: bool,
+    /// For a barred beast, the index into `BAR_REASONS` of its bar.
+    pub bar: Option<usize>,
+}
+
+/// The registry's six beasts, in book order: three may pass the
+/// Wide Door; three are barred, each for a different named reason.
+pub const REGISTRY_BEASTS: [RegistryBeast; 6] = [
+    RegistryBeast {
+        name: "Ember",
+        kind: "a salamander of the banked coals",
+        charter: "the beast answers the round in its own body, and the round asks \
+                  nothing the body cannot give",
+        passes: true,
+        bar: None,
+    },
+    RegistryBeast {
+        name: "Drizzle",
+        kind: "a hare of the dew-laden meadow",
+        charter: "the beast answers the round in its own body, and the round asks \
+                  nothing the body cannot give",
+        passes: true,
+        bar: None,
+    },
+    RegistryBeast {
+        name: "Vapor",
+        kind: "a hawk of the cloud's edge",
+        charter: "the beast answers the round in its own body, and the round asks \
+                  nothing the body cannot give",
+        passes: true,
+        bar: None,
+    },
+    RegistryBeast {
+        name: "Brindle",
+        kind: "a hound of the coppice",
+        charter: "its charter method hands the caller back the beast's own body, \
+                  whole",
+        passes: false,
+        bar: Some(0),
+    },
+    RegistryBeast {
+        name: "Tessell",
+        kind: "a tortoise of the river road",
+        charter: "its charter method carries a load of any kind, the kind named \
+                  fresh by the caller at every call",
+        passes: false,
+        bar: Some(1),
+    },
+    RegistryBeast {
+        name: "The Unmounted Bell",
+        kind: "a bell that hangs in the registry door, beast to no house",
+        charter: "its rite is struck at dawn with no beast present; the charter \
+                  names no self",
+        passes: false,
+        bar: Some(2),
+    },
+];
+
+// ---------------------------------------------------------------------------
+// Floor 2, Chamber 5 — Coherence: Foreign Marks.
+// ---------------------------------------------------------------------------
+
+/// The foreign beast, come up the valley with the floods.
+pub const FOREIGN_BEAST_NAME: &str = "Auzi";
+
+/// What the foreign beast is.
+pub const FOREIGN_BEAST_KIND: &str = "a river-horse of the Silt House";
+
+/// The foreign sigil the player would join to the foreign beast.
+pub const FOREIGN_SIGIL: &str = "TideLedger";
+
+/// The chamber's situation, as the Sigilwright states it.
+pub const FOREIGN_MARK_STORY: &str = "Auzi, a river-horse of the Silt House, stands in the \
+    grounds with the floods' mud on her legs. Her own house's sigil, TideLedger, \
+    would let her work the Menagerie's water-ledgers — but the beast is foreign and \
+    the sigil is foreign, and this house owns neither. The joining, if it is to be \
+    made here, must be made lawfully.";
+
+/// One route by which the player might join the foreign sigil
+/// to the foreign beast.
+pub struct CollarRoute {
+    /// The route's name.
+    pub name: &'static str,
+    /// What the route does, plainly.
+    pub detail: &'static str,
+    /// Whether the house's law allows this route.
+    pub legal: bool,
+    /// Why the Sigilwright refuses it, when she does.
+    pub refusal: &'static str,
+}
+
+/// The three joining routes, in desk order. Exactly one is lawful.
+pub const COLLAR_ROUTES: [CollarRoute; 3] = [
+    CollarRoute {
+        name: "Stamp the sigil on the beast directly",
+        detail: "Work TideLedger onto Auzi's own hide, here at the Menagerie's forge.",
+        legal: false,
+        refusal: "Neither the beast nor the sigil is this house's own. A house may \
+                  stamp only what it owns — its own sigils on any beast, or any sigil on \
+                  its own beasts. Foreign marks on foreign hides are refused at the forge.",
+    },
+    CollarRoute {
+        name: "Forge a guild collar for the beast",
+        detail: "Make a collar of your own forging — a beast-shape of this house's \
+                 making that wears Auzi within it — and stamp the sigil on the collar.",
+        legal: true,
+        refusal: "",
+    },
+    CollarRoute {
+        name: "Ask the door for a blanket joining",
+        detail: "Persuade the registry to treat any foreign beast as joined to any \
+                 sigil it is shown beside.",
+        legal: false,
+        refusal: "A blanket joining would claim the sigil for every foreign beast at \
+                  once — and collide with every other house's own stampings, present and \
+                  future. Coherence is not waived at the door.",
+    },
+];
+
+/// The staged collision, as the desk presents it.
+pub const COLLISION_TEXT: &str = "Two collars now claim TideLedger for Auzi: the Reed Collar of \
+    your own forging, and the Brass Collar another keeper laid on her last spring. \
+    Both are honest work; neither keeper erred. Read what their collision specifies.";
+
+/// One reading of the staged collision.
+pub struct CollisionReading {
+    /// The reading, as the desk offers it.
+    pub text: &'static str,
+    /// Whether this reading holds.
+    pub ok: bool,
+}
+
+/// The three readings of the collision. Exactly one holds.
+pub const COLLISION_READINGS: [CollisionReading; 3] = [
+    CollisionReading {
+        text: "Both collars stand; the door takes whichever was forged first.",
+        ok: false,
+    },
+    CollisionReading {
+        text: "The newer collar replaces the older, as a new roof replaces the old.",
+        ok: false,
+    },
+    CollisionReading {
+        text: "A sigil may be claimed once for a beast: the collision is the rule \
+               stating itself, and the houses must agree a single collar.",
+        ok: true,
+    },
+];
+
+/// The short forms of the three readings, for the holding chips.
+pub const COLLISION_READING_LABELS: [&str; 3] = [
+    "First forged stands",
+    "Newer replaces older",
+    "One claim per beast",
+];
+
+// ---------------------------------------------------------------------------
+// Floor 2 — the Herald beat: sealed letters arrive through the floor.
+// ---------------------------------------------------------------------------
+
+/// One sealed letter the Herald leaves at the grounds.
+pub struct HeraldLetter {
+    /// The letter's announcement, read at the desk.
+    pub text: &'static str,
+    /// Whether any beast of the grounds offers the announced service.
+    pub offered: bool,
+}
+
+/// The Herald's three letters, in arrival order. One announces a
+/// service no beast has ever offered.
+pub const HERALD_LETTERS: [HeraldLetter; 3] = [
+    HeraldLetter {
+        text: "For the Hearth Post: a beast is wanted that feels heat through stone, \
+               to stand the night watch.",
+        offered: true,
+    },
+    HeraldLetter {
+        text: "For the Frost Post: a beast is wanted that breathes winter and stills \
+               the ponds, to keep the ice road.",
+        offered: false,
+    },
+    HeraldLetter {
+        text: "For the Valley Post: a swift beast is wanted, to carry the morning \
+               letters to the far houses.",
+        offered: true,
+    },
+];
+
+/// Acting on a true letter.
+pub const HERALD_FILED: &str = "The letter is filed with the post it names. The service is real, \
+    and the roster hears of it.";
+
+/// Acting on the false letter: a free, miniature expedition, wasted.
+pub const HERALD_WRONG_ROOM: &str = "You ride out at dawn for the Frost Post — and find no post, no \
+    keeper, no frost sigil anywhere in the grounds. The letter announced a service no \
+    beast has ever offered. The expedition is free, and miniature, and entirely wasted: \
+    the floor's first wrong room. The letter is filed, marked as what it was.";
 /// The Floor 2 hint ladders, one per chamber, four rungs each —
 /// the same law as Floor 1's: viewing is free, rung 4 names the
 /// seam and forfeits the facet. Chambers beyond the first are
@@ -1178,6 +1409,34 @@ pub fn floor2_hints(chamber: usize) -> [&'static str; 4] {
              Hearth Kennel, whose ash-hound cannot swim — and naturally \
              from the Open Kennel, where the customer names the \
              otter-kind.",
+        ],
+        3 => [
+            "The Wide Door is one routine for every beast alike. It can only \
+             call what a charter promises without knowing the beast's kind — \
+             drive the beasts whose charters keep that promise.",
+            "Three beasts in the registry cannot pass, and each placard states \
+             the shape of its charter. Read the charters, not the coats.",
+            "A charter that hands back the beast's own body, a charter that \
+             names a new kind at every call, a rite with no self to drive — \
+             none of these can be answered through one door for all.",
+            "The seam is plain: Ember, Drizzle, and Vapor pass. Brindle is \
+             barred for returning Self, Tessell for a generic method, and the \
+             Unmounted Bell for a rite that names no self.",
+        ],
+        4 => [
+            "A foreign beast and a foreign sigil: the house owns neither. \
+             What a house may stamp is bounded by what it owns — its sigils, \
+             its beasts, or a thing of its own making.",
+            "The collar is the house's own making. What is stamped on the \
+             collar is stamped on a beast-shape this house owns, though the \
+             river-horse inside it stays foreign.",
+            "For the collision: two honest collars, one sigil, one beast. The \
+             question is not which keeper erred — read the collision as the \
+             rule stating its own shape.",
+            "The seam is plain: forge the guild collar and stamp the sigil on \
+             it. And the two collars specify the coherence rule — a sigil may \
+             be claimed once for a beast, so the houses must agree a single \
+             collar.",
         ],
         _ => [
             "The Sigilwright has not carved this ladder yet.",

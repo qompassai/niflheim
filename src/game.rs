@@ -301,6 +301,19 @@ pub enum El {
     F2Errand(u8),
     /// Floor 2 Chamber 3: name the kennel that runs it naturally.
     F2Kennel(u8),
+    /// Floor 2 Chamber 4: drive the Dawn Round through the Wide Door.
+    F2DriveRound,
+    /// Floor 2 Chamber 4: name one barred beast's bar (the barred
+    /// beast's position in book order, the bar's label index).
+    F2BarLabel(u8, u8),
+    /// Floor 2 Chamber 5: take one joining route, by index.
+    F2Route(u8),
+    /// Floor 2 Chamber 5: hold to one reading of the collision, by index.
+    F2Reading(u8),
+    /// Floor 2 Chamber 5: the panel's sub-view (0 joining, 1 collision).
+    F2PanelTab(u8),
+    /// Floor 2 hub: act on one of the Herald's letters, by index.
+    F2HeraldAct(u8),
     /// Hub: the camp stone.
     CampStone,
     /// The room's subject (desk / engine / chart).
@@ -496,6 +509,8 @@ pub struct Game {
     armed: Option<ArmedFor>,
     /// C1's panel sub-view (0 packing, 1 toll).
     c1_view: u8,
+    /// Floor 2 C5's panel sub-view (0 joining, 1 collision).
+    f2c5_view: u8,
     /// C5's placard page (0 or 1).
     c5_page: u8,
     /// C4's selected record card.
@@ -537,6 +552,7 @@ impl Game {
             focus: None,
             armed: None,
             c1_view: 0,
+            f2c5_view: 0,
             c5_page: 0,
             selected_record: None,
             revision: 1,
@@ -603,6 +619,11 @@ impl Game {
     /// draws the board from `expedition.floor2.roster_collapsed`.
     pub fn c1_view(&self) -> u8 {
         self.c1_view
+    }
+
+    /// Floor 2 C5's panel sub-view, for the shell.
+    pub fn f2c5_view(&self) -> u8 {
+        self.f2c5_view
     }
 
     /// C5's placard page, for the shell.
@@ -727,6 +748,7 @@ impl Game {
         self.overlay = Overlay::None;
         self.armed = None;
         self.c1_view = 0;
+        self.f2c5_view = 0;
         self.c5_page = 0;
         self.selected_record = None;
         self.place_at_spawn();
@@ -872,6 +894,37 @@ pub mod geom {
     /// Floor 2 C3: a kennel chip in the finding column.
     pub fn f2_kennel(kennel: usize) -> Rect {
         Rect::new(808.0, 528.0 + kennel as f32 * 30.0, 200.0, 26.0)
+    }
+
+    /// Floor 2 C4: the drive-the-round button.
+    pub fn f2_drive() -> Rect {
+        Rect::new(808.0, 560.0, 240.0, 30.0)
+    }
+
+    /// Floor 2 C4: a bar-label chip in one barred beast's naming
+    /// row (barred-beast position, bar label).
+    pub fn f2_bar(slot: usize, label: usize) -> Rect {
+        Rect::new(
+            808.0 + label as f32 * 148.0,
+            292.0 + slot as f32 * 84.0,
+            140.0,
+            28.0,
+        )
+    }
+
+    /// Floor 2 C5: a joining-route button.
+    pub fn f2_route(route: usize) -> Rect {
+        Rect::new(808.0, 352.0 + route as f32 * 76.0, 424.0, 30.0)
+    }
+
+    /// Floor 2 C5: a collision-reading chip.
+    pub fn f2_reading(reading: usize) -> Rect {
+        Rect::new(808.0 + reading as f32 * 148.0, 452.0, 140.0, 28.0)
+    }
+
+    /// Floor 2 hub: a Herald letter's act button, in the room.
+    pub fn f2_herald_act(letter: usize) -> Rect {
+        Rect::new(646.0, 468.0 + letter as f32 * 56.0, 122.0, 30.0)
     }
 
     pub fn panel_tab(view: usize) -> Rect {
@@ -1435,14 +1488,14 @@ impl Game {
             }
             El::Floor2Door(index) => {
                 let index = index as usize;
-                if index <= 2
+                if index <= 4
                     && (index == 0
                         || self.expedition.floor2.chambers[index - 1].state
                             == ChamberState::Repaired)
                 {
                     self.enter_screen(Screen::Floor2Chamber(index));
                     self.say(StatusKind::Info, F2_DOOR_TEXTS[index]);
-                } else if index <= 2 {
+                } else if index <= 4 {
                     self.say(
                         StatusKind::Refusal,
                         format!(
@@ -1549,6 +1602,71 @@ impl Game {
                     self.changed();
                 }
             }
+            El::F2DriveRound => {
+                if let Screen::Floor2Chamber(index) = self.screen {
+                    if let Some(progress) = self.expedition.floor2.chambers.get_mut(index) {
+                        progress.work.drove_round = true;
+                    }
+                    self.say(
+                        StatusKind::Info,
+                        "The Dawn Round is driven through the Wide Door: \
+                         three beasts answer in their own bodies and pass; \
+                         three the door refuses. Their placards stand in \
+                         the panel — name each bar.",
+                    );
+                    self.changed();
+                }
+            }
+            El::F2BarLabel(slot, label) => {
+                if let Screen::Floor2Chamber(index) = self.screen {
+                    if let Some(progress) = self.expedition.floor2.chambers.get_mut(index) {
+                        let work = &mut progress.work;
+                        let barred = content::REGISTRY_BEASTS
+                            .iter()
+                            .filter(|entry| !entry.passes)
+                            .count();
+                        if work.bar_choices.len() < barred {
+                            work.bar_choices.resize(barred, None);
+                        }
+                        if let Some(choice) = work.bar_choices.get_mut(slot as usize) {
+                            *choice = Some(label as usize);
+                        }
+                    }
+                    self.floor2_unfile(index);
+                    self.changed();
+                }
+            }
+            El::F2Route(route) => {
+                if let Screen::Floor2Chamber(index) = self.screen {
+                    if let Some(progress) = self.expedition.floor2.chambers.get_mut(index) {
+                        progress.work.route_choice = Some(route as usize);
+                    }
+                    self.floor2_unfile(index);
+                    self.changed();
+                }
+            }
+            El::F2Reading(reading) => {
+                if let Screen::Floor2Chamber(index) = self.screen {
+                    if let Some(progress) = self.expedition.floor2.chambers.get_mut(index) {
+                        progress.work.collision_choice = Some(reading as usize);
+                    }
+                    self.floor2_unfile(index);
+                    self.changed();
+                }
+            }
+            El::F2PanelTab(view) => {
+                self.f2c5_view = view;
+                self.bump();
+            }
+            El::F2HeraldAct(letter) => match self.expedition.floor2_herald_act(letter as usize) {
+                Ok(text) => {
+                    self.say(StatusKind::Info, text);
+                    self.changed();
+                }
+                Err(refusal) => {
+                    self.say(StatusKind::Refusal, refusal.message());
+                }
+            },
             El::CampStone => {
                 self.overlay = Overlay::Reading(ReadingKind::FloorIntro);
                 self.bump();
@@ -2195,7 +2313,7 @@ impl Game {
 
 /// Per-chamber door narrations, Floor 2, for the chambers whose
 /// builds have landed.
-const F2_DOOR_TEXTS: [&str; 3] = [
+const F2_DOOR_TEXTS: [&str; 5] = [
     "Chamber 1 — Traits and impls. The forge where every beast is \
      marked: watch the call, strike the sigil, name the body.",
     "Chamber 2 — Generics and bounds. The Generic Stable: loosen the \
@@ -2204,10 +2322,14 @@ const F2_DOOR_TEXTS: [&str; 3] = [
     "Chamber 3 — Associated types. The Two Kennels: run the same \
      errands from both houses, and find the one that runs contorted \
      where the kennel chooses.",
+    "Chamber 4 — Trait objects and the Wide Door. The registry: drive \
+     the Dawn Round through the one door that admits any beast by \
+     sigil, and name the bars on the three it refuses.",
+    "Chamber 5 — Coherence. Foreign Marks: a foreign beast, a foreign \
+     sigil, and the one lawful joining — a collar of your own making.",
 ];
 
-/// Per-chamber Examine narrations, Floor 2. Chambers beyond the
-/// third are described by their own steps when they land.
+/// Per-chamber Examine narrations, Floor 2.
 const F2_EXAMINE_TEXTS: [&str; 5] = [
     "The forge: an anvil, a screen of hammered copper, and the sigil-book \
      open at the Anvil Call.",
@@ -2216,8 +2338,12 @@ const F2_EXAMINE_TEXTS: [&str; 5] = [
      reasons.",
     "The Two Kennels: two courier houses, one service, and a wall of \
      delivery records waiting to be read.",
-    "The Sigilwright is still building this chamber.",
-    "The Sigilwright is still building this chamber.",
+    "The registry: six beasts in the book, one service routine, and \
+     a door wide enough for any beast whose charter can be answered \
+     without knowing its kind.",
+    "The forge and the desk: a river-horse with the floods' mud on \
+     her legs, a foreign sigil, and two collars claiming the same \
+     mark.",
 ];
 
 /// Per-chamber Examine narrations.
@@ -2368,6 +2494,9 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             for group in 0..content::ROSTER_GROUPS.len() {
                 els.push((El::RosterToggle(group as u8), geom::roster_group(group)));
             }
+            for letter in 0..content::HERALD_LETTERS.len() {
+                els.push((El::F2HeraldAct(letter as u8), geom::f2_herald_act(letter)));
+            }
         }
         Screen::Chamber(index) => {
             els.push((El::Desk, geom::desk()));
@@ -2469,7 +2598,9 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
 /// button, the three charter candidates, and the two bodies the
 /// blind run may be named as. Chamber 2: one sigil toggle per
 /// sigil per stable service. Chamber 3: the run button, the three
-/// errands, and the two kennels of the finding.
+/// errands, and the two kennels of the finding. Chamber 4: the
+/// drive button and the bar-naming chips. Chamber 5: the two
+/// panel tabs, the three routes, and the collision readings.
 fn layout_floor2_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: usize) {
     let _ = game;
     if chamber == 0 {
@@ -2498,6 +2629,31 @@ fn layout_floor2_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
         }
         for kennel in 0..content::KENNELS.len() {
             els.push((El::F2Kennel(kennel as u8), geom::f2_kennel(kennel)));
+        }
+    }
+    if chamber == 3 {
+        els.push((El::F2DriveRound, geom::f2_drive()));
+        let barred = content::REGISTRY_BEASTS
+            .iter()
+            .filter(|entry| !entry.passes)
+            .count();
+        for slot in 0..barred {
+            for label in 0..content::BAR_REASON_LABELS.len() {
+                els.push((
+                    El::F2BarLabel(slot as u8, label as u8),
+                    geom::f2_bar(slot, label),
+                ));
+            }
+        }
+    }
+    if chamber == 4 {
+        els.push((El::F2PanelTab(0), geom::panel_tab(0)));
+        els.push((El::F2PanelTab(1), geom::panel_tab(1)));
+        for route in 0..content::COLLAR_ROUTES.len() {
+            els.push((El::F2Route(route as u8), geom::f2_route(route)));
+        }
+        for reading in 0..content::COLLISION_READINGS.len() {
+            els.push((El::F2Reading(reading as u8), geom::f2_reading(reading)));
         }
     }
 }

@@ -2222,6 +2222,51 @@ fn build_floor2_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
         fonts,
     );
 
+    spawn_text(
+        commands,
+        stage,
+        30.0,
+        440.0,
+        None,
+        "THE HERALD — SEALED LETTERS AT THE DESK",
+        12.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (letter, sealed) in content::HERALD_LETTERS.iter().enumerate() {
+        let rect = geom::f2_herald_act(letter);
+        spawn_text(
+            commands,
+            stage,
+            30.0,
+            rect.y + 2.0,
+            Some(600.0),
+            sealed.text,
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        let filed = game
+            .expedition
+            .floor2
+            .herald_filed
+            .get(letter)
+            .copied()
+            .unwrap_or(false);
+        spawn_button(
+            commands,
+            stage,
+            rect,
+            if filed { "Filed" } else { "Act on it" },
+            pal,
+            filed,
+            fonts,
+        );
+    }
     build_bottom(commands, game, pal, fonts, stage);
 }
 
@@ -2351,6 +2396,8 @@ fn build_floor2_chamber(
         match index {
             1 => "THE STABLE",
             2 => "THE KENNELS",
+            3 => "THE REGISTRY",
+            4 => "FOREIGN MARKS",
             _ => "THE FORGE",
         },
         "the demonstration",
@@ -2407,6 +2454,12 @@ fn build_floor2_chamber(
     }
     if index == 2 {
         build_f2c3(commands, game, pal, fonts, stage);
+    }
+    if index == 3 {
+        build_f2c4(commands, game, pal, fonts, stage);
+    }
+    if index == 4 {
+        build_f2c5(commands, game, pal, fonts, stage);
     }
     let (active, caption) = match progress.state {
         ChamberState::Diagnosed => (true, "The seal wakes — press it to repair."),
@@ -2738,6 +2791,212 @@ fn build_f2c3(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, st
     }
 }
 
+/// Floor 2 C4 — the registry and the Wide Door. Before the drive,
+/// the registry's book stands open: six beasts, their kinds, and
+/// the shapes of their charters. After it, the round's outcome —
+/// and the three refused beasts, to be named bar by bar.
+fn build_f2c4(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor2.chambers[3].work;
+    if !work.drove_round {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            196.0,
+            Some(424.0),
+            content::WIDE_DOOR_SERVICE,
+            12.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        for (index, entry) in content::REGISTRY_BEASTS.iter().enumerate() {
+            spawn_text(
+                commands,
+                stage,
+                808.0,
+                262.0 + index as f32 * 48.0,
+                Some(424.0),
+                &format!("{} — {}: {}", entry.name, entry.kind, entry.charter),
+                12.0,
+                false,
+                pal.ink,
+                Justify::Left,
+                fonts,
+            );
+        }
+        spawn_button(
+            commands,
+            stage,
+            geom::f2_drive(),
+            "Drive the Dawn Round",
+            pal,
+            false,
+            fonts,
+        );
+        return;
+    }
+    let passed: Vec<&str> = content::REGISTRY_BEASTS
+        .iter()
+        .filter(|entry| entry.passes)
+        .map(|entry| entry.name)
+        .collect();
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        196.0,
+        Some(424.0),
+        &format!(
+            "The round is driven. {} answer in their own bodies and pass \
+             the Wide Door. The door refuses three — name the bar on \
+             each placard:",
+            passed.join(", ")
+        ),
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (slot, entry) in content::REGISTRY_BEASTS
+        .iter()
+        .filter(|entry| !entry.passes)
+        .enumerate()
+    {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            256.0 + slot as f32 * 84.0,
+            Some(424.0),
+            &format!("{} — {}", entry.name, entry.charter),
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        for (label, label_text) in content::BAR_REASON_LABELS.iter().enumerate() {
+            spawn_button(
+                commands,
+                stage,
+                geom::f2_bar(slot, label),
+                label_text,
+                pal,
+                work.bar_choices.get(slot).copied().flatten() == Some(label),
+                fonts,
+            );
+        }
+    }
+}
+
+/// Floor 2 C5 — Foreign Marks, in two panel views. The joining:
+/// the foreign beast, the foreign sigil, and the three routes.
+/// The collision: two collars claiming one sigil for one beast,
+/// and the three readings of what their collision specifies.
+fn build_f2c5(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor2.chambers[4].work;
+    spawn_button(
+        commands,
+        stage,
+        geom::panel_tab(0),
+        "The joining",
+        pal,
+        game.f2c5_view() == 0,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::panel_tab(1),
+        "The collision",
+        pal,
+        game.f2c5_view() == 1,
+        fonts,
+    );
+    if game.f2c5_view() == 0 {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            240.0,
+            Some(424.0),
+            content::FOREIGN_MARK_STORY,
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        for (route, collar) in content::COLLAR_ROUTES.iter().enumerate() {
+            let rect = geom::f2_route(route);
+            spawn_button(
+                commands,
+                stage,
+                rect,
+                collar.name,
+                pal,
+                work.route_choice == Some(route),
+                fonts,
+            );
+            spawn_text(
+                commands,
+                stage,
+                808.0,
+                rect.y + 34.0,
+                Some(424.0),
+                collar.detail,
+                12.0,
+                false,
+                pal.ink_dim,
+                Justify::Left,
+                fonts,
+            );
+        }
+        return;
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        240.0,
+        Some(424.0),
+        content::COLLISION_TEXT,
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    for (reading, collision) in content::COLLISION_READINGS.iter().enumerate() {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            316.0 + reading as f32 * 44.0,
+            Some(424.0),
+            &format!("{} — {}", reading + 1, collision.text),
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+    }
+    for (reading, label) in content::COLLISION_READING_LABELS.iter().enumerate() {
+        spawn_button(
+            commands,
+            stage,
+            geom::f2_reading(reading),
+            label,
+            pal,
+            work.collision_choice == Some(reading),
+            fonts,
+        );
+    }
+}
 /// C1 — the packing list and the Toll of Tallies (two sub-views).
 fn build_c1(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
     let work = &game.expedition.chambers[0].work;

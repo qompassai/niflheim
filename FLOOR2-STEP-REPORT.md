@@ -393,3 +393,139 @@ are refused as corrupt (adversarial).
   the mask live, so a mid-revision bound is visible state, not
   yet judged — by design; judgement happens at filing, as on
   Floor 1.
+
+## Step 3 — Chambers 4 and 5 + the Herald (coordinator lane 3)
+
+Chamber 4 (Trait objects and the Wide Door, failure class
+"Unsafe Detour"), Chamber 5 (Coherence and the orphan rule,
+failure class "Orphan's Claim"), and the Herald's secondary beat
+are built, in the landed Steps' idiom throughout.
+
+- content.rs: the Wide Door's service text and the registry's
+  book — six beasts with kind and charter prose, three passing
+  the Dawn Round in their own bodies (Ember, Drizzle, Vapor) and
+  three barred, each with its bar named (Brindle the Mule —
+  Returns Self; Tessell the Turtle — Generic method; The
+  Unmounted Bell — No self). The bar reasons and their placard
+  labels are one list, so judge, panel, and refusal read the same
+  words. Chamber 5: Auzi of the Silt House and the TideLedger
+  sigil (FOREIGN_MARK_STORY, design prose verbatim), the three
+  joining routes with their authored refusals (direct stamp and
+  blanket joining illegal; the guild collar of the player's own
+  forging lawful), and the staged collision with its three
+  readings, only the one-claim reading lawful. The Herald's three
+  sealed letters, the Frost Post letter the false one (the
+  floor's first wrong room), with HERALD_FILED and
+  HERALD_WRONG_ROOM narrations. Hint ladders for both chambers,
+  four rungs each, the fourth naming the working.
+- puzzles.rs: four pure judges — `bar_label_ok` (one beast's bar
+  against a named label), `registry_bars_ok` (every barred
+  beast's bar, keyed in book order; a passing beast's bar is
+  never read), `collar_route_ok`, `collision_reading_ok` — each
+  total over forged indices. Four tests (validation/adversarial
+  pairs): the true bars hold and a passing beast's bar is never
+  consulted; swapped bars and forged labels never hold; exactly
+  one route and one reading are lawful, forged indices refused.
+- state.rs: Floor2Work gains drove_round, bar_choices (indexed
+  by the barred beasts in book order), bars_ok, route_choice,
+  route_ok, collision_choice, collision_ok — all serde-defaulted.
+  Floor2Progress gains herald_filed (serde-defaulted; new saves
+  carry one flag per letter; the load invariant accepts a short
+  record as letters unfiled and refuses a wrong-sized one).
+  floor2_file_proof arms 3 and 4 judge in the house refusal
+  order: Chamber 4 asks the driven round before the naming, names
+  the first unnamed barred beast, and answers a mislabelled bar
+  with the placard's own wording; Chamber 5 asks the route before
+  the reading, answers an unlawful route with the Sigilwright's
+  authored refusal verbatim, and refuses a misread collision
+  without blaming either keeper. floor2_proof_complete arms 3
+  and 4 recompute both proofs, so the load invariants now guard
+  all five chambers. floor2_herald_act files a letter once and
+  narrates the outcome — the false letter wastes the miniature
+  expedition, as designed. Nine tests: per-chamber
+  diagnose+repair (validation) and refusal batteries
+  (adversarial: undriven filing, unnamed beast named, swapped
+  bars, out-of-range forgeries, both unlawful routes with their
+  authored refusals, first-forged reading); the Herald files, the
+  false letter wastes the ride, repeats and nonexistent letters
+  refused, pre-beat saves load unfiled; the Step 3 work
+  round-trips and defaults on old saves; all five chambers
+  repaired survive a save/load and two identical playthroughs
+  produce byte-identical saves; forged Step 3 repairs on empty
+  work refused as corrupt.
+- game.rs: El gains F2DriveRound, F2BarLabel, F2Route,
+  F2Reading, F2PanelTab (Chamber 5's panel sub-view, mirroring
+  Chamber 1's), and F2HeraldAct. The Floor2Door gate widens from
+  chambers 0–2 to 0–4; door and examine narrations land for both
+  chambers; hub actuation gains the Herald's buttons; panel
+  actuation gains the drive button, the bar-naming chips, the
+  panel tabs, the route buttons, and the reading chips. Layout
+  geometry lives in geom, as before.
+- shell.rs: build_f2c4 (the registry book before the drive; the
+  round's outcome and the three placards with their naming chips
+  after) and build_f2c5 (two views — the joining: story, route
+  buttons with their detail lines; the collision: the staged
+  text, the three readings, and the reading chips). The hub
+  renders the Herald's strip room-side: the letters' texts with
+  an act button each, reading Filed once acted. Desk labels:
+  Chamber 4 "THE REGISTRY", Chamber 5 "FOREIGN MARKS".
+- lib.rs: the crate doc now records all five chambers playable
+  with the Herald at the desk; the FOE and the gate remain
+  Steps 4–5.
+
+### Gates (coordinator-run, primo, pinned toolchain throughout)
+
+- cargo fmt: applied; cargo fmt --check clean afterwards.
+- cargo clippy --all-targets -- -D warnings: clean (rc 0).
+- cargo test: **79 passed / 0 failed** (66 at Step 2's close
+  intact; +4 puzzles, +9 state from this step).
+- theodolite (MCP, protocol 2026-07-28) over the six touched
+  .rs files: 0 diagnostics each, session quiescent (no
+  possibly_incomplete results read as proof). Log:
+  ~/.local/share/pax/niflheim-step3-build-20261110/theodolite-step3.log
+- Determinism: a scripted state-level playthrough of the Step 3
+  surface through the state API (Chambers 4 and 5 solved and
+  repaired, all three Herald letters acted on), run twice in
+  separate processes, produced byte-identical saves (sha256
+  aae272f3c5ab25896091aba4793633c47d27dc321068d2692e97103dddc6adab
+  both runs). The in-suite playthrough test covers all five
+  chambers the same way. The driven GUI playthrough of the floor
+  remains Step 5's evidence, as on Floor 1's programme.
+- Android: cargo build --target aarch64-linux-android --lib:
+  Finished in 19.7 s under the pinned toolchain (incremental over
+  Step 2's dependency build); libniflheim.so 1,344,168,864 B
+  (debug profile).
+- Launch smoke: Xvfb :97, BEVY_ASSET_ROOT at the repo root:
+  cold_start_ms=763, no panics, still running at the 20 s bound.
+
+### Production axes (D-1151) and aspects, for this step
+
+- Characters: no new character work; Auzi and the registry's six
+  are roster prose, the floor-2 roster as designed.
+- Levels: Chambers 4 and 5 of 5 fully playable — the floor's
+  chambers now teach in strict order end to end; only the FOE
+  and the gate remain on the floor.
+- Objects: no new loot; the facet paths for Chambers 4 and 5
+  are live.
+- Music: none — the design's platform note is "No audio".
+- UI-UX: both chambers and the Herald strip delivered in Floor
+  1's idiom on the shared machinery; the registry book and the
+  collision's readings are full text on the panel, touch parity
+  by construction. Chamber 5's two panel views mirror Chamber
+  1's tabbed panel.
+- Aspects: mechanics delivered in full for both chambers (the
+  bar-naming judged beast by beast; the joining judged by route
+  and the collision by its reading) and for the Herald (filing
+  free and final; the false letter's cost is the wasted ride,
+  exactly the design's first wrong room). Animation/economy:
+  none in the design.
+
+### Left open, honestly
+
+- Steps 4 (the FOE with the real cargo gate; failure class #6,
+  The Cartographer's Blind Eye, to be named in the fiction; the
+  FOE's own admission table, never a BEASTS resize) and 5
+  (integration + GUI playthrough evidence) remain.
+- The Herald's narration returns through the status line, as
+  Floor 1's secondary beats do; no dedicated reading overlay
+  was built for it — the letters stand in full on the hub.

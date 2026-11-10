@@ -2,11 +2,14 @@
 //! down to the kernel boundary, by making the player write, build,
 //! and verify real Rust inside the fiction.
 //!
-//! This build is Floor 1 complete — The Lending Vaults (Domain 1,
-//! Ownership) — with Floor 2's scaffolding standing on it: the
-//! chart square, the hub door, the Menagerie Grounds hub with its
-//! roster, and save format v2. Floor 2's chambers, FOE, and gate
-//! land in later steps of the Floor 2 build.
+//! Floor 1 is complete — The Lending Vaults (Domain 1,
+//! Ownership) — and Floor 2, the Menagerie Grounds, stands on it:
+//! the chart square, the hub door, the hub with its roster, save
+//! format v2, and all five chambers playable (Traits and impls;
+//! Generics and bounds; Associated types; Trait objects and the
+//! Wide Door; Coherence), with the Herald's letters at the hub
+//! desk. Floor 2's FOE and gate land in the remaining steps of
+//! the Floor 2 build.
 //!
 //! The crate is layered so the game logic never depends on the
 //! engine: `core` (bounded text machinery), `content` (authored

@@ -9,9 +9,10 @@
 
 use crate::content::MASTER_PLAN;
 use crate::content::{
-    BLIND_RUN_PERFORMANCE, CHARTER, DELIVERIES, PACK_ITEMS, PLACARDS, PORTERS, READERS,
-    RECORD_KEPT, RECORD_KEPT_SECOND, RECORD_RESTORED, STABLE_SERVICES, STABLE_SIGILS,
-    TOLL_KEEPER_A, TOLL_KEEPER_B, TRICK_CHARTER, TRICK_PERFORMERS,
+    BAR_REASONS, BLIND_RUN_PERFORMANCE, CHARTER, COLLAR_ROUTES, COLLISION_READINGS, DELIVERIES,
+    PACK_ITEMS, PLACARDS, PORTERS, READERS, RECORD_KEPT, RECORD_KEPT_SECOND, RECORD_RESTORED,
+    REGISTRY_BEASTS, RegistryBeast, STABLE_SERVICES, STABLE_SIGILS, TOLL_KEEPER_A, TOLL_KEEPER_B,
+    TRICK_CHARTER, TRICK_PERFORMERS,
 };
 use crate::core::{Census, census_of, parse_plan};
 
@@ -410,6 +411,50 @@ pub fn kennel_choice_ok(kennel: usize) -> bool {
             .is_some_and(|run| !run.contorted)
 }
 
+// ---------------------------------------------------------------------------
+// Floor 2, Chamber 4 — Trait objects and the Wide Door.
+// ---------------------------------------------------------------------------
+
+/// Whether `label` names the bar that keeps `beast` from the Wide
+/// Door. A beast that passes has no bar, and no label names one
+/// for it; out-of-range beasts and labels never hold.
+pub fn bar_label_ok(beast: usize, label: usize) -> bool {
+    REGISTRY_BEASTS.get(beast).and_then(|entry| entry.bar) == Some(label)
+        && label < BAR_REASONS.len()
+}
+
+/// Whether the player's naming assigns every barred beast its own
+/// bar. `choices` is keyed by the barred beasts in book order;
+/// a short, long, or partly empty naming never holds.
+pub fn registry_bars_ok(choices: &[Option<usize>]) -> bool {
+    let barred: Vec<&RegistryBeast> = REGISTRY_BEASTS
+        .iter()
+        .filter(|entry| !entry.passes)
+        .collect();
+    choices.len() == barred.len()
+        && barred
+            .iter()
+            .zip(choices.iter())
+            .all(|(entry, choice)| *choice == entry.bar)
+}
+
+// ---------------------------------------------------------------------------
+// Floor 2, Chamber 5 — Coherence.
+// ---------------------------------------------------------------------------
+
+/// Whether the joining route the player chose is the lawful one:
+/// the guild collar of the player's own making.
+pub fn collar_route_ok(choice: usize) -> bool {
+    COLLAR_ROUTES.get(choice).is_some_and(|route| route.legal)
+}
+
+/// Whether the reading of the staged collision the player holds
+/// to is the one that holds.
+pub fn collision_reading_ok(choice: usize) -> bool {
+    COLLISION_READINGS
+        .get(choice)
+        .is_some_and(|reading| reading.ok)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -597,6 +642,60 @@ mod tests {
         assert!(kennel_choice_ok(1));
     }
 
+    /// Validation: the registry's barred beasts carry the three
+    /// bars in book order, and the naming that assigns each its
+    /// own bar holds.
+    #[test]
+    fn registry_bars_are_named_as_authored() {
+        use crate::content::REGISTRY_BEASTS;
+        let barred: Vec<usize> = REGISTRY_BEASTS
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| !entry.passes)
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(barred, [3, 4, 5]);
+        for (position, beast) in barred.iter().enumerate() {
+            assert!(bar_label_ok(*beast, position));
+        }
+        assert!(registry_bars_ok(&[Some(0), Some(1), Some(2)]));
+    }
+
+    /// Adversarial: a passing beast has no bar to name, swapped
+    /// bars fail, a partly empty naming fails, and out-of-range
+    /// beasts and labels never hold.
+    #[test]
+    fn registry_bars_refuse_swaps_and_partial_namings() {
+        assert!(!bar_label_ok(0, 0));
+        assert!(!bar_label_ok(usize::MAX, 0));
+        assert!(!bar_label_ok(3, usize::MAX));
+        assert!(!registry_bars_ok(&[Some(1), Some(0), Some(2)]));
+        assert!(!registry_bars_ok(&[Some(0), None, Some(2)]));
+        assert!(!registry_bars_ok(&[Some(0), Some(1)]));
+        assert!(!registry_bars_ok(&[]));
+    }
+
+    /// Validation: exactly one joining route is lawful — the
+    /// guild collar — and exactly one reading of the collision
+    /// holds — one claim per beast.
+    #[test]
+    fn coherence_judges_hold_as_authored() {
+        assert!(collar_route_ok(1));
+        assert!(collision_reading_ok(2));
+    }
+
+    /// Adversarial: stamping directly and the blanket joining are
+    /// both unlawful, the priority readings do not hold, and
+    /// out-of-range choices never hold.
+    #[test]
+    fn coherence_refuses_foreign_marks_and_priority_readings() {
+        assert!(!collar_route_ok(0));
+        assert!(!collar_route_ok(2));
+        assert!(!collar_route_ok(usize::MAX));
+        assert!(!collision_reading_ok(0));
+        assert!(!collision_reading_ok(1));
+        assert!(!collision_reading_ok(usize::MAX));
+    }
     /// Adversarial: the smooth errands are not the finding, the
     /// choosing kennel cannot be its own remedy, and out-of-range
     /// choices never hold.
