@@ -3681,3 +3681,33 @@ pub fn floor6_chamber_hints(_chamber: usize) -> [&'static str; 4] {
          token.",
     ]
 }
+
+/// Floor 6 Chamber 1's scripted day: six operations on one
+/// heart, walked in order. Each entry names the porter and
+/// the operation, and carries the operation's code for the
+/// flag machine in puzzles: 0 = open shared, 1 = close
+/// shared, 2 = open exclusive, 3 = close exclusive. The day
+/// is authored so exactly one operation is refused — the
+/// fourth, an exclusive opening attempted while a share is
+/// still held — and the machine, not this table, decides it.
+pub const CELL_DAY: [(&str, &str, u8); 6] = [
+    ("Ama", "opens the heart shared", 0),
+    ("Bryn", "opens the heart shared", 0),
+    ("Ama", "closes her share", 1),
+    ("Bryn", "opens the heart exclusive", 2),
+    ("Bryn", "closes his share", 1),
+    ("Ama", "opens the heart exclusive", 2),
+];
+
+/// Floor 6 Chamber 2's five calls on the borrow-flag
+/// brazier, walked in order. Whether a call kindles is the
+/// lazy cell's business, computed in puzzles: a call for the
+/// flame kindles it only if it stands dark; a read never
+/// kindles. The light-count is shown after every call.
+pub const BRAZIER_CALLS: [&str; 5] = [
+    "Ama calls for the flame",
+    "Bryn calls for the flame",
+    "Ama reads the flame",
+    "Bryn calls for the flame",
+    "Both porters read the flame",
+];

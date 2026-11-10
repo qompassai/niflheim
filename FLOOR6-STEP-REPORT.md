@@ -65,5 +65,49 @@ Gates, all on primo under pinned rustc 1.99.0 (evidence:
 - Xvfb smoke: fresh save path, `cold_start_ms=1051`, zero
   panics. `#![forbid(unsafe_code)]` intact (src/lib.rs:26).
 
-Commit: recorded at Step 2 (the report rides each step's
-commit; its own hash lands with the next).
+Commit: `3994899` on `pax/floor2-build-20261109`.
+
+## Step 2 — The Cell Heart and the Borrow-Flag Brazier
+
+The first two chambers work. The Cell Heart walks a
+scripted day of six operations over a real flag machine in
+puzzles.rs (Free / Shared(n) / Exclusive; exclusive opens
+only from Free): both shared openings, a closing, the
+exclusive opening refused while Bryn's share stands — the
+bell strikes, set from the replay, not by hand — the last
+closing, and the exclusive opening from free. Operations
+walk only in the day's order. The Brazier runs five calls
+over a lazy cell that kindles exactly once: three calls for
+the flame and two reads, the light-count shown after every
+call and standing at one at the end, computed by the sim.
+Both judges require the demonstration watched. One curative
+fix on the way: clippy's result-unit-err sent `flag_step`
+from `Result<_, ()>` to `Option` — refused is None — with
+callers and tests following; no lint allowed or narrowed.
+
+Gates, all on primo under pinned rustc 1.99.0 (evidence:
+`~/.local/share/pax/niflheim-floor6-step2-build-20261110/`):
+
+- `cargo fmt --check`: clean.
+- `cargo test`: **173 passed, 0 failed** (164 at Step 1 +
+  six puzzles tests, two state tests, one GUI test; no test
+  deleted, skipped, or weakened).
+- `cargo clippy --all-targets -- -D warnings`: exit 0.
+- Theodolite (cured protocol): planted run — puzzles.rs
+  count=9, all E0308 from the planted control at line 1981,
+  the other four touched files 0 in the same session;
+  restore sha256-verified (9e96416e…); clean run — all
+  five files (puzzles, content, state, game, shell)
+  count=0; PASS both modes.
+- Determinism: the playthrough probe extended through
+  both chambers at state level (day replayed op by op,
+  proofs filed, repairs struck, load-back asserted), run
+  twice on the final tree: byte-identical, sha256
+  a23c36d3703b435762e9e573b89f6be2901cdabf84ad9379056ad5bc7deef8a6.
+  Probe removed after the runs.
+- Android: lib builds, exit 0 (libniflheim.so
+  1,348,981,552 bytes).
+- Xvfb smoke: `cold_start_ms=1276`, zero panics.
+  `#![forbid(unsafe_code)]` intact.
+
+Commit: recorded at Step 3.

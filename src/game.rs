@@ -338,6 +338,10 @@ pub enum El {
     F5Watch,
     /// Floor 6: watch the demonstration.
     F6Watch,
+    /// Floor 6 Chamber 1: walk one operation of the day.
+    F6DayOp(u8),
+    /// Floor 6 Chamber 2: make one call on the brazier.
+    F6BrazierCall(u8),
     /// Floor 5 Chamber 1: read one step's card.
     F5Card(u8),
     /// Floor 5 Chamber 1: walk the next step.
@@ -1212,6 +1216,11 @@ pub mod geom {
     /// FOE's door below.
     pub fn door_floor6() -> Rect {
         Rect::new(640.0, 150.0, 124.0, 124.0)
+    }
+
+    /// Floor 6 chambers 1-4: one operation/call row.
+    pub fn f6_op_row(index: usize) -> Rect {
+        Rect::new(380.0, 100.0 + index as f32 * 56.0, 300.0, 30.0)
     }
 
     /// Floor 5 Chamber 1: one step's card row.
@@ -3690,6 +3699,93 @@ impl Game {
                 }
             }
 
+            El::F6DayOp(op) => {
+                if let Screen::Floor6Chamber(0) = self.screen {
+                    let op = op as usize;
+                    let walked = self.expedition.floor6.chambers[0].work.day_walked;
+                    if walked.get(op).copied().unwrap_or(false) {
+                        self.say(
+                            StatusKind::Info,
+                            "That operation already stands on the day.",
+                        );
+                    } else if walked.iter().take(op).any(|done| !*done) {
+                        self.say(
+                            StatusKind::Refusal,
+                            "The day is walked in order: an operation \
+                             stands only on the ones before it.",
+                        );
+                    } else {
+                        self.expedition.floor6.chambers[0].work.day_walked[op] = true;
+                        let walked = self.expedition.floor6.chambers[0].work.day_walked;
+                        let (state, refused) = puzzles::cell_day_replay(&walked);
+                        let (porter, action, _) = content::CELL_DAY[op];
+                        if refused == Some(op) {
+                            self.expedition.floor6.chambers[0].work.bell_struck = true;
+                            self.say(
+                                StatusKind::Good,
+                                format!(
+                                    "{porter} {action} — and the heart refuses: \
+                                     a share still stands held. The bell strikes, \
+                                     and the refusal stands on the record."
+                                ),
+                            );
+                        } else {
+                            self.say(
+                                StatusKind::Info,
+                                format!(
+                                    "{porter} {action} — the heart stands {}.",
+                                    puzzles::flag_state_name(state)
+                                ),
+                            );
+                        }
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F6BrazierCall(call) => {
+                if let Screen::Floor6Chamber(1) = self.screen {
+                    let call = call as usize;
+                    let calls = self.expedition.floor6.chambers[1].work.calls;
+                    if calls.get(call).copied().unwrap_or(false) {
+                        let (_, count) = puzzles::brazier_replay(&calls);
+                        self.say(
+                            StatusKind::Info,
+                            format!(
+                                "That call already stands. The brazier has \
+                                 been kindled {count} time in all."
+                            ),
+                        );
+                    } else if calls.iter().take(call).any(|done| !*done) {
+                        self.say(
+                            StatusKind::Refusal,
+                            "The calls are made in order: a call stands \
+                             only on the ones before it.",
+                        );
+                    } else {
+                        self.expedition.floor6.chambers[1].work.calls[call] = true;
+                        let calls = self.expedition.floor6.chambers[1].work.calls;
+                        let (lit, count) = puzzles::brazier_replay(&calls);
+                        self.say(
+                            StatusKind::Info,
+                            format!(
+                                "{} — {}.",
+                                content::BRAZIER_CALLS[call],
+                                if lit {
+                                    format!(
+                                        "the flame stands lit; kindled {count} \
+                                         time in all"
+                                    )
+                                } else {
+                                    "the brazier stands dark".to_string()
+                                }
+                            ),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
             El::F6Watch => {
                 if let Screen::Floor6Chamber(index) = self.screen {
                     if let Some(progress) = self.expedition.floor6.chambers.get_mut(index) {
@@ -5988,8 +6084,20 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
 /// chamber's own controls land with its step.
 fn layout_floor6_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: usize) {
     let _ = game;
-    let _ = chamber;
     els.push((El::F6Watch, geom::f2_watch()));
+    match chamber {
+        0 => {
+            for op in 0..6 {
+                els.push((El::F6DayOp(op as u8), geom::f6_op_row(op)));
+            }
+        }
+        1 => {
+            for call in 0..5 {
+                els.push((El::F6BrazierCall(call as u8), geom::f6_op_row(call)));
+            }
+        }
+        _ => {}
+    }
 }
 
 /// The Floor 5 chambers' panel elements: the watch; each
@@ -7257,6 +7365,86 @@ mod tests {
         assert_eq!(game.screen, Screen::Floor5Hub);
     }
 
+    /// Floor 6 Step 2, driven on the GUI surface: the Cell
+    /// Heart's day is walked in order — out-of-order refused,
+    /// the exclusive refused with the bell — and the
+    /// Brazier's five calls kindle once; both chambers
+    /// through the seal.
+    #[test]
+    fn floor6_chambers_one_and_two_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn to_floor6_hub(game: &mut Game) {
+            game.screen = Screen::Hub;
+            game.expedition.foe.state = FoeState::Fallen;
+            game.expedition.foe.gate_passed = true;
+            game.expedition.floor2.foe.state = FoeState::Fallen;
+            game.expedition.floor3.foe.gate_passed = true;
+            for chamber in game.expedition.floor2.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            for chamber in game.expedition.floor4.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor4.foe.state = FoeState::Fallen;
+            for chamber in game.expedition.floor5.chambers.iter_mut().take(3) {
+                chamber.state = ChamberState::Repaired;
+            }
+            click(game, El::DoorFloor4);
+            click(game, El::DoorFloor5);
+            assert_eq!(game.screen, Screen::Floor5Hub);
+            click(game, El::DoorFloor6);
+            assert_eq!(game.screen, Screen::Floor6Hub);
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        to_floor6_hub(&mut game);
+        // Chamber 1 — the Cell Heart.
+        click(&mut game, El::Floor6Door(0));
+        click(&mut game, El::F6Watch);
+        // Out of order: the day refuses to skip ahead.
+        click(&mut game, El::F6DayOp(2));
+        assert_eq!(
+            game.expedition.floor6.chambers[0].work.day_walked,
+            [false; 6]
+        );
+        for op in 0..6u8 {
+            click(&mut game, El::F6DayOp(op));
+        }
+        assert!(game.expedition.floor6.chambers[0].work.bell_struck);
+        assert!(game.expedition.floor6_diagnosed(0));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor6.chambers[0].state,
+            ChamberState::Repaired
+        );
+        // Chamber 2 — the Borrow-Flag Brazier.
+        click(&mut game, El::TabFloor);
+        to_floor6_hub(&mut game);
+        click(&mut game, El::Floor6Door(1));
+        click(&mut game, El::F6Watch);
+        for call in 0..5u8 {
+            click(&mut game, El::F6BrazierCall(call));
+        }
+        assert!(game.expedition.floor6_diagnosed(1));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor6.chambers[1].state,
+            ChamberState::Repaired
+        );
+    }
     /// Floor 6's door answers the pointer when the Veilworks
     /// stands charted through its third chamber, and refuses
     /// it while any of the first three chambers waits —

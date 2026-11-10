@@ -645,6 +645,16 @@ pub struct LockWork {
     /// The demonstration has been watched.
     #[serde(default)]
     pub watched: bool,
+    /// Chamber 1: the scripted day's operations, walked.
+    #[serde(default)]
+    pub day_walked: [bool; 6],
+    /// Chamber 1: the bell struck — the machine refused the
+    /// exclusive opening on the record.
+    #[serde(default)]
+    pub bell_struck: bool,
+    /// Chamber 2: the brazier's five calls, made.
+    #[serde(default)]
+    pub calls: [bool; 5],
 }
 
 /// Floor 6, one chamber's progress.
@@ -3190,10 +3200,19 @@ impl Expedition {
     /// No chamber proves yet: the judges land with their
     /// chambers in Steps 2–4.
     pub fn floor6_diagnosed(&self, chamber: usize) -> bool {
-        let Some(_progress) = self.floor6.chambers.get(chamber) else {
+        let Some(progress) = self.floor6.chambers.get(chamber) else {
             return false;
         };
-        false
+        let work = &progress.work;
+        match chamber {
+            0 => work.watched && work.day_walked.iter().all(|walked| *walked) && work.bell_struck,
+            1 => {
+                work.watched
+                    && work.calls.iter().all(|called| *called)
+                    && crate::puzzles::brazier_replay(&work.calls).1 == 1
+            }
+            _ => false,
+        }
     }
 
     /// File one Floor 6 chamber's proof once its work proves:
@@ -4296,6 +4315,65 @@ mod tests {
         assert!(!expedition.floor5_complete());
     }
 
+    /// Floor 6 Step 2 state: the Cell Heart judges on the
+    /// walked day and the struck bell; the Brazier on five
+    /// calls and a single kindling.
+    #[test]
+    fn floor6_first_chambers_judged() {
+        let mut expedition = Expedition::new();
+        // The day walked without the bell: not proven.
+        {
+            let work = &mut expedition.floor6.chambers[0].work;
+            work.watched = true;
+            work.day_walked = [true; 6];
+        }
+        assert!(!expedition.floor6_diagnosed(0));
+        assert!(expedition.floor6_file_proof(0).is_err());
+        // The bell struck: proven, filed, repaired.
+        expedition.floor6.chambers[0].work.bell_struck = true;
+        assert!(expedition.floor6_diagnosed(0));
+        assert!(expedition.floor6_file_proof(0).is_ok());
+        assert!(expedition.floor6_repair_chamber(0).is_ok());
+        assert_eq!(expedition.floor6.chambers[0].state, ChamberState::Repaired);
+        // The brazier: four calls are not five.
+        {
+            let work = &mut expedition.floor6.chambers[1].work;
+            work.watched = true;
+            work.calls = [true, true, true, true, false];
+        }
+        assert!(!expedition.floor6_diagnosed(1));
+        expedition.floor6.chambers[1].work.calls = [true; 5];
+        assert!(expedition.floor6_diagnosed(1));
+        assert!(expedition.floor6_file_proof(1).is_ok());
+        assert!(expedition.floor6_repair_chamber(1).is_ok());
+    }
+
+    /// Adversarial: the unwatched day proves nothing, and a
+    /// reset clears the walked day and the calls alike.
+    #[test]
+    fn floor6_first_chambers_adversarial() {
+        let mut expedition = Expedition::new();
+        {
+            let work = &mut expedition.floor6.chambers[0].work;
+            work.day_walked = [true; 6];
+            work.bell_struck = true;
+        }
+        assert!(!expedition.floor6_diagnosed(0), "the watch is required");
+        assert!(expedition.floor6_repair_chamber(0).is_err());
+        expedition.floor6_reset_chamber(0);
+        let work = &expedition.floor6.chambers[0].work;
+        assert_eq!(work.day_walked, [false; 6]);
+        assert!(!work.bell_struck);
+        {
+            let work = &mut expedition.floor6.chambers[1].work;
+            work.watched = true;
+            work.calls = [true; 5];
+        }
+        assert!(expedition.floor6_diagnosed(1));
+        expedition.floor6_reset_chamber(1);
+        assert_eq!(expedition.floor6.chambers[1].work.calls, [false; 5]);
+        assert!(!expedition.floor6_diagnosed(1));
+    }
     /// Validation: a version-5 save (no floor6 field at all)
     /// loads with a fresh Floor 6, and re-saves as version 6.
     #[test]

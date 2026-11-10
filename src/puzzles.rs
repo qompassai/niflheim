@@ -1753,3 +1753,224 @@ mod floor5_tests {
         assert!(!beam_case_holds(5));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Floor 6 — the Lockheart: the Cell Heart and the Borrow-Flag
+// Brazier. Both chambers run on real machines, not tables:
+// the flag machine (Free / Shared(n) / Exclusive) decides
+// every opening and closing, and the brazier is a lazy cell
+// that kindles once no matter how many call. The census on
+// Floor 6 and the FOE's broken staff reuse the flag machine.
+// ---------------------------------------------------------------------------
+
+/// The flag machine's state: one heart, one occupant rule.
+/// Shared carries its reader count — the count is part of
+/// the state, never a side tally.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FlagState {
+    /// No hand on the heart.
+    Free,
+    /// This many readers inside.
+    Shared(u8),
+    /// One hand, alone.
+    Exclusive,
+}
+
+/// One operation on the flag machine.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FlagOp {
+    /// Open shared: join the readers.
+    OpenShared,
+    /// Close shared: a reader leaves.
+    CloseShared,
+    /// Open exclusive: take the heart alone — lawful only
+    /// from Free.
+    OpenExclusive,
+    /// Close exclusive: the lone hand leaves.
+    CloseExclusive,
+}
+
+/// Decode a content operation code (see CELL_DAY).
+pub fn flag_op(code: u8) -> Option<FlagOp> {
+    match code {
+        0 => Some(FlagOp::OpenShared),
+        1 => Some(FlagOp::CloseShared),
+        2 => Some(FlagOp::OpenExclusive),
+        3 => Some(FlagOp::CloseExclusive),
+        _ => None,
+    }
+}
+
+/// One transition of the flag machine. A refused operation
+/// returns None and the state stands unchanged — the
+/// machine never half-moves.
+pub fn flag_step(state: FlagState, op: FlagOp) -> Option<FlagState> {
+    match (state, op) {
+        (FlagState::Free, FlagOp::OpenShared) => Some(FlagState::Shared(1)),
+        (FlagState::Shared(n), FlagOp::OpenShared) => Some(FlagState::Shared(n + 1)),
+        (FlagState::Shared(1), FlagOp::CloseShared) => Some(FlagState::Free),
+        (FlagState::Shared(n), FlagOp::CloseShared) => Some(FlagState::Shared(n - 1)),
+        (FlagState::Free, FlagOp::OpenExclusive) => Some(FlagState::Exclusive),
+        (FlagState::Exclusive, FlagOp::CloseExclusive) => Some(FlagState::Free),
+        _ => None,
+    }
+}
+
+/// Replay the Cell Heart's day over the walked prefix:
+/// returns the state the heart stands in and the index of
+/// a walked operation the machine refused, if any. The day
+/// is fixed in content; only the walked flags vary.
+pub fn cell_day_replay(walked: &[bool; 6]) -> (FlagState, Option<usize>) {
+    let mut state = FlagState::Free;
+    let mut refused = None;
+    for (index, (_, _, code)) in crate::content::CELL_DAY.iter().enumerate() {
+        if !walked[index] {
+            continue;
+        }
+        let Some(op) = flag_op(*code) else {
+            continue;
+        };
+        match flag_step(state, op) {
+            Some(next) => state = next,
+            None => {
+                if refused.is_none() {
+                    refused = Some(index);
+                }
+            }
+        }
+    }
+    (state, refused)
+}
+
+/// The words for a flag state, for the chamber face and the
+/// day's account.
+pub fn flag_state_name(state: FlagState) -> &'static str {
+    match state {
+        FlagState::Free => "free — no hand on it",
+        FlagState::Shared(1) => "shared — one reader inside",
+        FlagState::Shared(_) => "shared — readers inside",
+        FlagState::Exclusive => "exclusive — one hand, alone",
+    }
+}
+
+/// Replay the brazier's calls over the walked prefix: the
+/// brazier is a lazy cell — the first call for the flame
+/// kindles it and raises the light-count to one; every
+/// later call, for the flame or to read, finds it lit and
+/// kindles nothing. Returns whether it stands lit and how
+/// many times it has been kindled. Calls 0, 1, and 3 call
+/// for the flame; calls 2 and 4 only read.
+pub fn brazier_replay(calls: &[bool; 5]) -> (bool, u32) {
+    let mut lit = false;
+    let mut light_count: u32 = 0;
+    for (index, walked) in calls.iter().enumerate() {
+        if !walked {
+            continue;
+        }
+        let calls_for_flame = matches!(index, 0 | 1 | 3);
+        if calls_for_flame && !lit {
+            lit = true;
+            light_count += 1;
+        }
+    }
+    (lit, light_count)
+}
+
+#[cfg(test)]
+mod floor6_tests {
+    use super::*;
+
+    /// Validation: the machine's lawful transitions.
+    #[test]
+    fn flag_machine_lawful_transitions() {
+        assert_eq!(
+            flag_step(FlagState::Free, FlagOp::OpenShared),
+            Some(FlagState::Shared(1))
+        );
+        assert_eq!(
+            flag_step(FlagState::Shared(1), FlagOp::OpenShared),
+            Some(FlagState::Shared(2))
+        );
+        assert_eq!(
+            flag_step(FlagState::Shared(2), FlagOp::CloseShared),
+            Some(FlagState::Shared(1))
+        );
+        assert_eq!(
+            flag_step(FlagState::Shared(1), FlagOp::CloseShared),
+            Some(FlagState::Free)
+        );
+        assert_eq!(
+            flag_step(FlagState::Free, FlagOp::OpenExclusive),
+            Some(FlagState::Exclusive)
+        );
+        assert_eq!(
+            flag_step(FlagState::Exclusive, FlagOp::CloseExclusive),
+            Some(FlagState::Free)
+        );
+    }
+
+    /// Adversarial: every unlawful transition is refused and
+    /// the state stands unchanged — most of all, exclusive
+    /// never opens over a held share.
+    #[test]
+    fn flag_machine_refusals() {
+        for state in [
+            FlagState::Shared(1),
+            FlagState::Shared(3),
+            FlagState::Exclusive,
+        ] {
+            assert_eq!(flag_step(state, FlagOp::OpenExclusive), None);
+        }
+        assert_eq!(flag_step(FlagState::Free, FlagOp::CloseShared), None);
+        assert_eq!(flag_step(FlagState::Free, FlagOp::CloseExclusive), None);
+        assert_eq!(flag_step(FlagState::Exclusive, FlagOp::OpenShared), None);
+        assert_eq!(flag_step(FlagState::Exclusive, FlagOp::CloseShared), None);
+        assert_eq!(
+            flag_step(FlagState::Shared(2), FlagOp::CloseExclusive),
+            None
+        );
+    }
+
+    /// Validation: the full day ends exclusive, and the one
+    /// refusal is the fourth operation.
+    #[test]
+    fn cell_day_full_walk() {
+        let (state, refused) = cell_day_replay(&[true; 6]);
+        assert_eq!(state, FlagState::Exclusive);
+        assert_eq!(refused, Some(3));
+    }
+
+    /// Adversarial: a partial day refuses nothing early —
+    /// the first three operations are all lawful.
+    #[test]
+    fn cell_day_partial_walk_refuses_nothing() {
+        let (state, refused) = cell_day_replay(&[true, true, true, false, false, false]);
+        assert_eq!(state, FlagState::Shared(1));
+        assert_eq!(refused, None);
+        let (state, refused) = cell_day_replay(&[false; 6]);
+        assert_eq!(state, FlagState::Free);
+        assert_eq!(refused, None);
+    }
+
+    /// Validation: five calls, one kindling — the lazy cell
+    /// lights once no matter how many call.
+    #[test]
+    fn brazier_five_calls_one_light() {
+        assert_eq!(brazier_replay(&[true; 5]), (true, 1));
+    }
+
+    /// Adversarial: reads alone never kindle, and no calls
+    /// leave the brazier dark.
+    #[test]
+    fn brazier_reads_never_kindle() {
+        assert_eq!(
+            brazier_replay(&[false, false, true, false, true]),
+            (false, 0)
+        );
+        assert_eq!(brazier_replay(&[false; 5]), (false, 0));
+        assert_eq!(
+            brazier_replay(&[true, false, false, false, false]),
+            (true, 1)
+        );
+    }
+}

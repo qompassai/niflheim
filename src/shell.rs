@@ -7367,10 +7367,144 @@ fn build_floor6_chamber(
         meta.slot_wants,
         progress.facet,
     );
+    match index {
+        0 => build_f6c1(commands, game, pal, fonts, stage),
+        1 => build_f6c2(commands, game, pal, fonts, stage),
+        _ => {}
+    }
 }
 
 /// Floor 6's hub: the Lockheart — five chamber doors, the camp
 /// stone, and the panel with the chambers and the FOE's standing.
+/// Chamber 1's panel: the scripted day's six operations
+/// with their outcomes, and the heart's standing.
+fn build_f6c1(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor6.chambers[0].work;
+    for (index, (porter, action, _)) in content::CELL_DAY.iter().enumerate() {
+        let rect = geom::f6_op_row(index);
+        spawn_button(
+            commands,
+            stage,
+            rect,
+            &format!("OP {} — {}", index + 1, porter.to_uppercase()),
+            pal,
+            work.day_walked[index],
+            fonts,
+        );
+        let state = if work.day_walked[index] {
+            let mut prefix = [false; 6];
+            prefix[..=index].copy_from_slice(&work.day_walked[..=index]);
+            let (state, refused) = crate::puzzles::cell_day_replay(&prefix);
+            if refused == Some(index) {
+                "refused — the bell struck; the heart held its rule".to_string()
+            } else {
+                format!(
+                    "walked — the heart stood {}",
+                    crate::puzzles::flag_state_name(state)
+                )
+            }
+        } else {
+            format!("{porter} {action} — not yet walked")
+        };
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 34.0,
+            Some(400.0),
+            &state,
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    let (state, _) = crate::puzzles::cell_day_replay(&work.day_walked);
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &format!(
+            "The heart stands {}; the bell {}.",
+            crate::puzzles::flag_state_name(state),
+            if work.bell_struck {
+                "has struck"
+            } else {
+                "has not struck"
+            }
+        ),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// Chamber 2's panel: the five calls with the light-count
+/// after each, and the brazier's standing.
+fn build_f6c2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor6.chambers[1].work;
+    for (index, call) in content::BRAZIER_CALLS.iter().enumerate() {
+        let rect = geom::f6_op_row(index);
+        spawn_button(
+            commands,
+            stage,
+            rect,
+            &format!("CALL {}", index + 1),
+            pal,
+            work.calls[index],
+            fonts,
+        );
+        let state = if work.calls[index] {
+            let mut prefix = [false; 5];
+            prefix[..=index].copy_from_slice(&work.calls[..=index]);
+            let (lit, count) = crate::puzzles::brazier_replay(&prefix);
+            if lit {
+                format!("called — the flame stands lit; light-count {count}")
+            } else {
+                "called — the brazier stands dark; light-count 0".to_string()
+            }
+        } else {
+            format!("{call} — not yet called")
+        };
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 34.0,
+            Some(400.0),
+            &state,
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    let (lit, count) = crate::puzzles::brazier_replay(&work.calls);
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &format!(
+            "The brazier stands {}; kindled {count} time in all — \
+             five calls, one light.",
+            if lit { "lit" } else { "dark" }
+        ),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
 fn build_floor6_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
     build_header(commands, game, pal, fonts, stage);
     build_room_base(
