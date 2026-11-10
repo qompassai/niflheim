@@ -2493,6 +2493,206 @@ fn build_chamber(
     build_bottom(commands, game, pal, fonts, stage);
 }
 
+/// Floor 3 C3 — the Audit of Shouts: the charter, the ledger of
+/// four shouts, and under each its verdict button and the
+/// invariant button for the shouts that stand.
+fn build_f3c3(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor3.chambers[2].work;
+    spawn_button(
+        commands,
+        stage,
+        geom::f2_watch(),
+        if work.watched {
+            "Read the charter again"
+        } else {
+            "Read the booth's charter"
+        },
+        pal,
+        work.watched,
+        fonts,
+    );
+    if !work.watched {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            196.0,
+            Some(424.0),
+            "The booth's charter hangs by the ledger. Read it before \
+             judging the shouts — the audit is judged against it.",
+            12.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        return;
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        196.0,
+        Some(424.0),
+        content::SHOUT_CHARTER,
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        420.0,
+        Some(424.0),
+        "The invariants on record:",
+        12.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (index, invariant) in content::INVARIANT_CANDIDATES.iter().enumerate() {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            444.0 + index as f32 * 40.0,
+            Some(424.0),
+            &format!("{}. {invariant}", index + 1),
+            11.5,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+    }
+    for (case, entry) in content::SHOUT_CASES.iter().enumerate() {
+        let rect = geom::f3_shout(case);
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            rect.y - 22.0,
+            Some(360.0),
+            entry.text,
+            11.5,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        let verdict = match work.shout_choices[case] {
+            Some(0) => "A named refusal",
+            Some(_) => "The shout stands",
+            None => "— unjudged —",
+        };
+        spawn_button(commands, stage, rect, verdict, pal, false, fonts);
+        let invariant_label = match work.invariant_choices[case] {
+            Some(index) => format!("Invariant {}", index + 1),
+            None => "Invariant —".to_string(),
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f3_invariant(case),
+            &invariant_label,
+            pal,
+            false,
+            fonts,
+        );
+    }
+}
+
+/// Floor 3 C4 — the Sealed Request: the charter, and the rail
+/// of three slips, each with its stage and its three irons —
+/// advance, seal, return.
+fn build_f3c4(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor3.chambers[3].work;
+    spawn_button(
+        commands,
+        stage,
+        geom::f2_watch(),
+        if work.watched {
+            "Read the charter again"
+        } else {
+            "Read the rail's charter"
+        },
+        pal,
+        work.watched,
+        fonts,
+    );
+    if !work.watched {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            196.0,
+            Some(424.0),
+            "The rail's charter hangs over the press. Read it before \
+             working the slips — the rail is judged against it.",
+            12.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        return;
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        196.0,
+        Some(424.0),
+        content::RAIL_CHARTER,
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (slip, meta) in content::REQUEST_SLIPS.iter().enumerate() {
+        let stage_now = work.slip_stages[slip];
+        let first = geom::f3_slip(slip, 0);
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            first.y - 24.0,
+            Some(360.0),
+            &format!(
+                "{} — {}{}",
+                meta.name,
+                content::stage_name(stage_now),
+                if meta.body_missing && stage_now < 3 {
+                    " · its body page is missing"
+                } else {
+                    ""
+                },
+            ),
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        for (action, label) in ["Advance", "Seal", "Return"].iter().enumerate() {
+            spawn_button(
+                commands,
+                stage,
+                geom::f3_slip(slip, action),
+                label,
+                pal,
+                false,
+                fonts,
+            );
+        }
+    }
+}
+
 /// A Floor 3 chamber: the desk, the rule stone, the panel, the
 /// chamber's own field, and the seal.
 fn build_floor3_chamber(
@@ -2590,6 +2790,12 @@ fn build_floor3_chamber(
     }
     if index == 1 {
         build_f3c2(commands, game, pal, fonts, stage);
+    }
+    if index == 2 {
+        build_f3c3(commands, game, pal, fonts, stage);
+    }
+    if index == 3 {
+        build_f3c4(commands, game, pal, fonts, stage);
     }
     let (active, caption) = match progress.state {
         ChamberState::Diagnosed => (true, "The seal wakes — press it to repair."),

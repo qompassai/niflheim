@@ -293,7 +293,7 @@ pub struct Floor3ChamberProgress {
 /// Floor 3's chamber work record. Fields land with their
 /// chambers (FLOOR3-BRIEF steps 2–4), each serde-defaulted so
 /// saves written by earlier steps load whole.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct GatehouseWork {
     /// Chambers 1–2: the desk/belt charter has been read.
     #[serde(default)]
@@ -310,6 +310,36 @@ pub struct GatehouseWork {
     /// Chamber 2: the gate's setting.
     #[serde(default)]
     pub halt_choice: Option<usize>,
+    /// Chamber 3: the verdict for each ledger entry
+    /// (0 = named refusal, 1 = the shout stands).
+    #[serde(default)]
+    pub shout_choices: [Option<usize>; 4],
+    /// Chamber 3: the invariant named for each entry.
+    #[serde(default)]
+    pub invariant_choices: [Option<usize>; 4],
+    /// Chamber 4: each slip's stage on the rail (0 unaddressed,
+    /// 1 addressed, 2 bodied, 3 sealed, 4 returns tray). The
+    /// authored starts live in the manual `Default` below.
+    #[serde(default)]
+    pub slip_stages: [u8; 3],
+}
+
+impl Default for GatehouseWork {
+    fn default() -> Self {
+        Self {
+            watched: false,
+            pair_choices: [None; 4],
+            portion_choice: None,
+            dedup_choice: None,
+            halt_choice: None,
+            shout_choices: [None; 4],
+            invariant_choices: [None; 4],
+            // The rail's authored arrivals: the key request
+            // unaddressed, the tally and the stranger's slip
+            // addressed (content::REQUEST_SLIPS).
+            slip_stages: [0, 1, 1],
+        }
+    }
 }
 
 /// The Floor 3 FOE's progress: the release arc. The slate, the
@@ -1674,8 +1704,8 @@ impl Expedition {
     }
 
     /// Whether a Floor 3 chamber's diagnosis is complete.
-    /// Chambers 1–2 judge their work here; the rest open in
-    /// their own steps.
+    /// Chambers 1–4 judge their work here; the Inspection
+    /// opens in its own step.
     pub fn floor3_diagnosed(&self, chamber: usize) -> bool {
         let Some(progress) = self.floor3.chambers.get(chamber) else {
             return false;
@@ -1700,7 +1730,98 @@ impl Expedition {
                             if crate::puzzles::conveyor_diagnosed(portion, dedup, halt)
                     )
             }
+            2 => {
+                work.watched
+                    && work
+                        .shout_choices
+                        .iter()
+                        .enumerate()
+                        .all(|(case, verdict)| {
+                            crate::puzzles::shout_case_ok(
+                                case,
+                                *verdict,
+                                work.invariant_choices[case],
+                            )
+                        })
+            }
+            3 => work.watched && crate::puzzles::rail_complete(&work.slip_stages),
             _ => false,
+        }
+    }
+
+    /// Act on one slip of Chamber 4's rail: advance it one
+    /// stage in its order, seal it (only from bodied — the
+    /// press's interlock refuses earlier), or send it to the
+    /// returns tray (only the body-less slip belongs there).
+    /// Actions: 0 advance, 1 seal, 2 return.
+    pub fn floor3_slip_act(&mut self, slip: usize, action: usize) -> Result<String, Refusal> {
+        let Some(meta) = crate::content::REQUEST_SLIPS.get(slip) else {
+            return Err(Refusal("no such slip".to_string()));
+        };
+        let work = &mut self.floor3.chambers[3].work;
+        let stage = work.slip_stages[slip];
+        match action {
+            0 => {
+                if stage >= 3 {
+                    return Err(Refusal(
+                        "the slip has left the rail — there is nothing to advance".to_string(),
+                    ));
+                }
+                if stage == 1 && meta.body_missing {
+                    return Err(Refusal(
+                        "the body tray is empty: this slip's body page is \
+                         missing, and the rail will not pretend one. It \
+                         belongs in the returns tray"
+                            .to_string(),
+                    ));
+                }
+                work.slip_stages[slip] = stage + 1;
+                Ok(format!(
+                    "{} moves on: now {}.",
+                    meta.name,
+                    crate::content::stage_name(stage + 1)
+                ))
+            }
+            1 => {
+                if stage == 3 {
+                    return Err(Refusal("the slip already stands sealed".to_string()));
+                }
+                if stage == 4 {
+                    return Err(Refusal(
+                        "the slip stands in the returns tray; the press does \
+                         not reach there"
+                            .to_string(),
+                    ));
+                }
+                if stage < 2 {
+                    return Err(Refusal(
+                        "the press will not fall: the rail has not brought a \
+                         bodied request beneath it. Iron, not policy"
+                            .to_string(),
+                    ));
+                }
+                work.slip_stages[slip] = 3;
+                Ok(format!("{} is sealed under the press.", meta.name))
+            }
+            _ => {
+                if stage == 4 {
+                    return Err(Refusal(
+                        "the slip already stands in the returns tray".to_string(),
+                    ));
+                }
+                if !meta.body_missing {
+                    return Err(Refusal(
+                        "the returns tray is for slips that cannot be bodied \
+                         honestly — this one can"
+                            .to_string(),
+                    ));
+                }
+                work.slip_stages[slip] = 4;
+                Ok(format!(
+                    "{} goes to the returns tray, its missing page noted.",
+                    meta.name
+                ))
+            }
         }
     }
 
@@ -1714,6 +1835,12 @@ impl Expedition {
                     .to_string(),
                 1 => "the belt does not yet deliver the slate: set the \
                       three stations and let the desk run the chain"
+                    .to_string(),
+                2 => "the audit is not yet true: every shout under its \
+                      kind, and every standing shout carrying its invariant"
+                    .to_string(),
+                3 => "the rail is not yet true: both honest slips sealed, \
+                      and the body-less slip in the returns tray"
                     .to_string(),
                 _ => "this desk is not open yet".to_string(),
             }));
@@ -1733,14 +1860,23 @@ impl Expedition {
                   Broken bin stands empty for the first time in the \
                   Gatewright's keeping."
                 .to_string(),
-            _ => "Proof filed. The desk ran the chain itself: the whole \
+            1 => "Proof filed. The desk ran the chain itself: the whole \
                   belt taken, first sightings kept, the cracked gear \
                   lifted off — gear, spring, cam, bell, in order, and \
                   silence past the end."
                 .to_string(),
+            2 => "Proof filed. Two shouts are struck from the ledger and \
+                  re-entered as named refusals, posted where travellers \
+                  can read them; two stand, each with its invariant \
+                  written beneath in the keeper's hand."
+                .to_string(),
+            _ => "Proof filed. Two seals stand in the wax, and the \
+                  returns tray holds the third slip with its missing \
+                  page noted — nothing sealed that was not bodied, \
+                  nothing bodied that was not addressed."
+                .to_string(),
         })
     }
-
     /// Repair a Floor 3 chamber whose proof stands filed, and
     /// settle its facet when the hints stayed shallow — the
     /// two-step seal's second step.
@@ -1979,7 +2115,7 @@ impl Expedition {
         if self.floor3.chambers.len() != 5 {
             return Err(corrupt("the save does not hold five Floor 3 chambers"));
         }
-        for chamber in 0..2 {
+        for chamber in 0..4 {
             if self.floor3.chambers[chamber].state != ChamberState::Unworked
                 && !self.floor3_diagnosed(chamber)
             {
@@ -2533,6 +2669,71 @@ mod tests {
     fn forged_floor3_proof_is_refused() {
         let mut expedition = Expedition::new();
         expedition.floor3.chambers[0].state = ChamberState::Repaired;
+        let text = expedition.save_json().expect("save");
+        assert!(Expedition::load_json(&text).is_err());
+    }
+
+    /// Validation: Chamber 3's audit is judged verdict by
+    /// verdict — a standing shout without its invariant files
+    /// nothing, and the proof completes only at the true sort.
+    #[test]
+    fn floor3_chamber3_audit_is_judged() {
+        let mut expedition = Expedition::new();
+        {
+            let work = &mut expedition.floor3.chambers[2].work;
+            work.watched = true;
+            work.shout_choices = [Some(0), Some(1), Some(0), Some(1)];
+            work.invariant_choices = [None, Some(0), None, None];
+        }
+        assert!(
+            !expedition.floor3_diagnosed(2),
+            "one shout lacks its invariant"
+        );
+        expedition.floor3.chambers[2].work.invariant_choices[3] = Some(1);
+        assert!(expedition.floor3_diagnosed(2));
+        expedition.floor3_file_proof(2).expect("proof files");
+        expedition.floor3_repair_chamber(2).expect("repair lands");
+        assert_eq!(expedition.floor3.chambers[2].state, ChamberState::Repaired);
+    }
+
+    /// Validation and adversarial: Chamber 4's rail enforces
+    /// its order in iron — the press refuses an unbodied slip,
+    /// the body-less slip cannot advance, the honest slips
+    /// cannot be returned, and the true end state files.
+    #[test]
+    fn floor3_chamber4_rail_enforces_its_order() {
+        let mut expedition = Expedition::new();
+        expedition.floor3.chambers[3].work.watched = true;
+        // The press will not fall on an unaddressed slip.
+        assert!(expedition.floor3_slip_act(0, 1).is_err());
+        // Nor on an addressed one.
+        expedition.floor3_slip_act(0, 0).expect("address it");
+        assert!(expedition.floor3_slip_act(0, 1).is_err());
+        // Body it, then the seal falls.
+        expedition.floor3_slip_act(0, 0).expect("body it");
+        expedition.floor3_slip_act(0, 1).expect("seal it");
+        // The winter tally arrives addressed.
+        expedition.floor3_slip_act(1, 0).expect("body the tally");
+        expedition.floor3_slip_act(1, 1).expect("seal the tally");
+        // The stranger's slip cannot be bodied, and cannot be
+        // sealed from the rail; it goes to the returns tray.
+        assert!(expedition.floor3_slip_act(2, 0).is_err());
+        assert!(expedition.floor3_slip_act(2, 1).is_err());
+        expedition.floor3_slip_act(2, 2).expect("return it");
+        // An honest slip cannot be returned.
+        assert!(expedition.floor3_slip_act(0, 2).is_err());
+        assert!(expedition.floor3_diagnosed(3));
+        expedition.floor3_file_proof(3).expect("proof files");
+        expedition.floor3_repair_chamber(3).expect("repair lands");
+        assert_eq!(expedition.floor3_chambers_repaired(), 1);
+    }
+
+    /// Adversarial: a save claiming a Chamber 4 proof with the
+    /// rail unrun is refused — the recompute covers it now.
+    #[test]
+    fn forged_floor3_rail_proof_is_refused() {
+        let mut expedition = Expedition::new();
+        expedition.floor3.chambers[3].state = ChamberState::Diagnosed;
         let text = expedition.save_json().expect("save");
         assert!(Expedition::load_json(&text).is_err());
     }

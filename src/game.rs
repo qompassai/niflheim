@@ -307,6 +307,13 @@ pub enum El {
     /// Floor 3 Chamber 2: cycle one station's setting, by slot
     /// (0 portioner, 1 joiner, 2 gate).
     F3Station(u8),
+    /// Floor 3 Chamber 3: cycle one ledger entry's verdict.
+    F3Shout(u8),
+    /// Floor 3 Chamber 3: cycle one entry's invariant.
+    F3Invariant(u8),
+    /// Floor 3 Chamber 4: work one slip (slip, action:
+    /// 0 advance, 1 seal, 2 return).
+    F3Slip(u8, u8),
     /// Floor 2 Chamber 1: strike a charter candidate, by index.
     F2Charter(u8),
     /// Floor 2 Chamber 1: name the blind run's body, by performer index.
@@ -959,6 +966,27 @@ pub mod geom {
     /// Floor 3 Chamber 2: one station's setting button.
     pub fn f3_station(slot: usize) -> Rect {
         Rect::new(380.0, 150.0 + slot as f32 * 90.0, 360.0, 30.0)
+    }
+
+    /// Floor 3 Chamber 3: one entry's verdict button.
+    pub fn f3_shout(case: usize) -> Rect {
+        Rect::new(380.0, 104.0 + case as f32 * 120.0, 170.0, 30.0)
+    }
+
+    /// Floor 3 Chamber 3: one entry's invariant button.
+    pub fn f3_invariant(case: usize) -> Rect {
+        Rect::new(566.0, 104.0 + case as f32 * 120.0, 174.0, 30.0)
+    }
+
+    /// Floor 3 Chamber 4: one slip's iron, by action
+    /// (0 advance, 1 seal, 2 return).
+    pub fn f3_slip(slip: usize, action: usize) -> Rect {
+        Rect::new(
+            380.0 + action as f32 * 122.0,
+            130.0 + slip as f32 * 120.0,
+            114.0,
+            30.0,
+        )
     }
 
     /// Floor 2 C2: a sigil toggle in a service's bound row.
@@ -1752,7 +1780,7 @@ impl Game {
             }
             El::Floor3Door(index) => {
                 let index = index as usize;
-                if index < 2 {
+                if index < 4 {
                     self.enter_screen(Screen::Floor3Chamber(index));
                     self.say(StatusKind::Info, content::FLOOR3_CHAMBER_INTROS[index]);
                 } else {
@@ -1888,6 +1916,74 @@ impl Game {
                         line = format!("{line}. The belt would deliver: {}", out.join(" · "));
                     }
                     self.say(StatusKind::Info, line);
+                    self.changed();
+                }
+            }
+
+            El::F3Shout(case) => {
+                if self.screen == Screen::Floor3Chamber(2) {
+                    let case = case as usize;
+                    let verdict = {
+                        let work = &mut self.expedition.floor3.chambers[2].work;
+                        match work.shout_choices.get_mut(case) {
+                            Some(slot) => {
+                                *slot = Some(match *slot {
+                                    None => 0,
+                                    Some(0) => 1,
+                                    Some(_) => 0,
+                                });
+                                *slot
+                            }
+                            None => None,
+                        }
+                    };
+                    if verdict.is_some() {
+                        self.say(
+                            StatusKind::Info,
+                            match verdict {
+                                Some(0) => {
+                                    "A named refusal: the traveller is told \
+                                            what was wrong, and may correct it."
+                                }
+                                _ => "The shout stands — if its invariant can be named.",
+                            },
+                        );
+                    }
+                    self.changed();
+                }
+            }
+            El::F3Invariant(case) => {
+                if self.screen == Screen::Floor3Chamber(2) {
+                    let case = case as usize;
+                    let picked = {
+                        let work = &mut self.expedition.floor3.chambers[2].work;
+                        match work.invariant_choices.get_mut(case) {
+                            Some(slot) => {
+                                *slot = Some(match *slot {
+                                    None => 0,
+                                    Some(3) => 0,
+                                    Some(choice) => choice + 1,
+                                });
+                                *slot
+                            }
+                            None => None,
+                        }
+                    };
+                    if let Some(choice) = picked {
+                        self.say(StatusKind::Info, content::INVARIANT_CANDIDATES[choice]);
+                    }
+                    self.changed();
+                }
+            }
+            El::F3Slip(slip, action) => {
+                if self.screen == Screen::Floor3Chamber(3) {
+                    match self
+                        .expedition
+                        .floor3_slip_act(slip as usize, action as usize)
+                    {
+                        Ok(text) => self.say(StatusKind::Info, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
                     self.changed();
                 }
             }
@@ -2776,6 +2872,8 @@ impl Game {
                 Screen::Floor3Chamber(index) => match index {
                     0 => content::FAILURE_CHARTER.to_string(),
                     1 => content::CONVEYOR_CHARTER.to_string(),
+                    2 => content::SHOUT_CHARTER.to_string(),
+                    3 => content::RAIL_CHARTER.to_string(),
                     _ => content::FLOOR3_CHAMBER_INTROS[index].to_string(),
                 },
                 Screen::Foe => content::FOE_DEMONSTRATION.to_string(),
@@ -3173,6 +3271,22 @@ fn layout_floor3_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
             els.push((El::F3Station(slot as u8), geom::f3_station(slot)));
         }
     }
+    if chamber == 2 {
+        for case in 0..content::SHOUT_CASES.len() {
+            els.push((El::F3Shout(case as u8), geom::f3_shout(case)));
+            els.push((El::F3Invariant(case as u8), geom::f3_invariant(case)));
+        }
+    }
+    if chamber == 3 {
+        for slip in 0..content::REQUEST_SLIPS.len() {
+            for action in 0..3 {
+                els.push((
+                    El::F3Slip(slip as u8, action as u8),
+                    geom::f3_slip(slip, action),
+                ));
+            }
+        }
+    }
 }
 
 /// The Floor 3 chamber facet lines for the Examine verb.
@@ -3183,14 +3297,15 @@ const F3_EXAMINE_TEXTS: [&str; 5] = [
     "The Conveyor: gear, gear, spring, a cracked gear, spring, \
      cam, cam, bell — and three stations between the belt and \
      the office.",
-    "The Audit of Shouts: a soundproof booth and a ledger of \
-     shouts. This desk is not open yet.",
-    "The Sealed Request: a press, a wax pot, and three trays on \
-     a rail. This desk is not open yet.",
+    "The Audit of Shouts: a soundproof booth, a ledger of four \
+     shouts, and two chairs — one for the failures a traveller \
+     can cause, one for the ones only the house can.",
+    "The Sealed Request: a press, a wax pot, and three slips on \
+     a rail that runs unaddressed, addressed, bodied, sealed — \
+     and nowhere else.",
     "The Inspection: the Guidelines wall and the Hoard open under \
      audit. This desk is not open yet.",
 ];
-
 /// The Floor 2 chamber panels' elements. Chamber 1: the watch
 /// button, the three charter candidates, and the two bodies the
 /// blind run may be named as. Chamber 2: one sigil toggle per
@@ -3721,6 +3836,86 @@ mod tests {
         click(&mut game, El::SealConfirm);
         assert_eq!(
             game.expedition.floor3.chambers[1].state,
+            ChamberState::Repaired
+        );
+        assert_eq!(game.expedition.floor3_chambers_repaired(), 2);
+    }
+
+    /// Driven playthrough: Floor 3's third and fourth chambers
+    /// on the GUI surface — the audit judged (one shout first
+    /// left invariant-less, and the filing refused), and the
+    /// rail worked against its interlock (the press refused
+    /// early, twice, before it may fall).
+    #[test]
+    fn floor3_chambers_3_and_4_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        game.screen = Screen::Floor3Hub;
+
+        // Chamber 3 — the Audit of Shouts.
+        click(&mut game, El::Floor3Door(2));
+        assert_eq!(game.screen, Screen::Floor3Chamber(2));
+        click(&mut game, El::F3Watch);
+        // Verdicts cycle unjudged → refusal → stands: cases 0,2
+        // take one press, cases 1,3 take two.
+        click(&mut game, El::F3Shout(0));
+        click(&mut game, El::F3Shout(1));
+        click(&mut game, El::F3Shout(1));
+        click(&mut game, El::F3Shout(2));
+        click(&mut game, El::F3Shout(3));
+        click(&mut game, El::F3Shout(3));
+        // Invariant buttons cycle unjudged → 1 → 2 → 3 → 4:
+        // case 1 carries invariant 1 (one press), case 3
+        // invariant 2 (two presses).
+        click(&mut game, El::F3Invariant(1));
+        click(&mut game, El::F3Invariant(3));
+        assert!(!game.expedition.floor3_diagnosed(2));
+        click(&mut game, El::F3Invariant(3));
+        assert!(game.expedition.floor3_diagnosed(2));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor3.chambers[2].state,
+            ChamberState::Repaired
+        );
+
+        // Chamber 4 — the Sealed Request.
+        game.screen = Screen::Floor3Hub;
+        click(&mut game, El::Floor3Door(3));
+        assert_eq!(game.screen, Screen::Floor3Chamber(3));
+        click(&mut game, El::F3Watch);
+        // The press refuses the first slip unbodied (state
+        // unchanged), then the order is worked honestly.
+        click(&mut game, El::F3Slip(0, 1));
+        assert_eq!(game.expedition.floor3.chambers[3].work.slip_stages[0], 0);
+        click(&mut game, El::F3Slip(0, 0));
+        click(&mut game, El::F3Slip(0, 0));
+        click(&mut game, El::F3Slip(0, 1));
+        click(&mut game, El::F3Slip(1, 0));
+        click(&mut game, El::F3Slip(1, 1));
+        // The stranger's slip cannot advance; it returns.
+        click(&mut game, El::F3Slip(2, 0));
+        assert_eq!(game.expedition.floor3.chambers[3].work.slip_stages[2], 1);
+        click(&mut game, El::F3Slip(2, 2));
+        assert!(game.expedition.floor3_diagnosed(3));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor3.chambers[3].state,
             ChamberState::Repaired
         );
         assert_eq!(game.expedition.floor3_chambers_repaired(), 2);

@@ -885,3 +885,61 @@ mod floor3_tests {
         assert_eq!(out, ["gear", "spring", "spring", "cam", "bell"]);
     }
 }
+
+/// Floor 3 Chamber 3's judge: a ledger entry is sorted when
+/// its verdict matches its kind — a traveller-reachable failure
+/// under "named refusal", an invariant-only failure under
+/// "the shout stands" with its own invariant named.
+pub fn shout_case_ok(case: usize, verdict: Option<usize>, invariant: Option<usize>) -> bool {
+    let Some(entry) = crate::content::SHOUT_CASES.get(case) else {
+        return false;
+    };
+    match (entry.shout, verdict) {
+        (false, Some(0)) => true,
+        (true, Some(1)) => invariant == entry.invariant,
+        _ => false,
+    }
+}
+
+/// Floor 3 Chamber 4's judge: the rail is complete when both
+/// honest slips stand sealed and the body-less slip stands in
+/// the returns tray.
+pub fn rail_complete(stages: &[u8; 3]) -> bool {
+    *stages == [3, 3, 4]
+}
+
+#[cfg(test)]
+mod floor3_step3_tests {
+    use super::*;
+
+    /// The audit judge: refusals sort under refusal, shouts
+    /// under their own invariant only — a decoy invariant or a
+    /// swapped verdict fails the entry.
+    #[test]
+    fn shout_cases_judge_verdict_and_invariant() {
+        assert!(shout_case_ok(0, Some(0), None));
+        assert!(!shout_case_ok(0, Some(1), Some(2)));
+        assert!(shout_case_ok(1, Some(1), Some(0)));
+        assert!(
+            !shout_case_ok(1, Some(1), Some(1)),
+            "the pot is not the belt"
+        );
+        assert!(
+            !shout_case_ok(1, Some(0), None),
+            "the house's failure is no refusal"
+        );
+        assert!(shout_case_ok(3, Some(1), Some(1)));
+        assert!(!shout_case_ok(2, Some(1), Some(3)));
+        assert!(!shout_case_ok(1, None, Some(0)), "unsorted is unsorted");
+        assert!(!shout_case_ok(99, Some(0), None));
+    }
+
+    /// The rail judge: only the one true end state completes.
+    #[test]
+    fn rail_judges_its_end_state() {
+        assert!(rail_complete(&[3, 3, 4]));
+        assert!(!rail_complete(&[3, 3, 3]), "the body-less slip cannot seal");
+        assert!(!rail_complete(&[3, 2, 4]));
+        assert!(!rail_complete(&[0, 1, 1]));
+    }
+}

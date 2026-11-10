@@ -1963,16 +1963,28 @@ pub fn floor3_chamber_hints(chamber: usize) -> [&'static str; 4] {
              the chain stays silent past its end.",
         ],
         2 => [
-            "This desk is not open yet.",
-            "This desk is not open yet.",
-            "This desk is not open yet.",
-            "This desk is not open yet.",
+            "Four shouts. Ask of each: could a traveller have caused \
+             this, by handing the house something wrong?",
+            "What a traveller causes leaves by a named door. What only \
+             the house can cause may stand — but never naked.",
+            "Two entries are the house breaking its own promises: the \
+             belt's tally, and the pot's oath. A standing shout needs \
+             its promise named.",
+            "Refusals for the address-less request and the ninth piece; \
+             the tally's invariant (candidate 1) under the belt's shout, \
+             the pot's (candidate 2) under the press's.",
         ],
         3 => [
-            "This desk is not open yet.",
-            "This desk is not open yet.",
-            "This desk is not open yet.",
-            "This desk is not open yet.",
+            "The order is the machine: unaddressed, addressed, bodied, \
+             sealed. The press knows it even if a clerk forgets.",
+            "Work the first slip down the whole rail. The press refuses \
+             it twice before it may fall — that refusal is the lesson \
+             working.",
+            "One slip's body page is missing. It cannot be bodied, and \
+             the rail will not pretend; there is a tray for exactly this.",
+            "Key and tally sealed (the tally starts addressed — one \
+             advance fewer); the stranger's slip returned. The rail \
+             reads sealed, sealed, returned.",
         ],
         _ => [
             "This desk is not open yet.",
@@ -1980,5 +1992,123 @@ pub fn floor3_chamber_hints(chamber: usize) -> [&'static str; 4] {
             "This desk is not open yet.",
             "This desk is not open yet.",
         ],
+    }
+}
+
+/// Floor 3 Chamber 3's booth charter, read at the watch.
+pub const SHOUT_CHARTER: &str = "A shout is the house's last \
+    resort, not its first answer. Two kinds of failure reach \
+    this booth. A failure a traveller can cause — a request \
+    with no address, a belt asked for more than it carries — \
+    must leave by a named door: it is the traveller's to \
+    correct, and shouting at them teaches nothing. A failure \
+    only the house can cause — its own machinery breaking a \
+    promise the house itself made — may stand as a shout, \
+    with the broken promise, its invariant, written under it. \
+    A shout without its invariant is just noise in the hall.";
+
+/// One entry in Chamber 3's ledger of shouts.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ShoutCase {
+    /// The ledger entry, as recorded.
+    pub text: &'static str,
+    /// True when the shout stands (invariant-only); false when
+    /// it should have been a named refusal.
+    pub shout: bool,
+    /// The invariant's index in `INVARIANT_CANDIDATES`, when
+    /// the shout stands.
+    pub invariant: Option<usize>,
+}
+
+/// The ledger of shouts on Chamber 3's wall.
+pub const SHOUT_CASES: [ShoutCase; 4] = [
+    ShoutCase {
+        text: "A traveller hands in a request bearing no address; \
+               the clerk SHOUTS, and the hall empties.",
+        shout: false,
+        invariant: None,
+    },
+    ShoutCase {
+        text: "The belt reaches the gate with two cracked pieces \
+               in a row; the run's own tally had promised one at \
+               most. The station SHOUTS.",
+        shout: true,
+        invariant: Some(0),
+    },
+    ShoutCase {
+        text: "A traveller asks the portioner for a ninth piece \
+               from an eight-piece belt; the station SHOUTS.",
+        shout: false,
+        invariant: None,
+    },
+    ShoutCase {
+        text: "The seal press fires over a cold wax pot; the \
+               pot's keeper had sworn the pot is lit before the \
+               press is ever armed. The press SHOUTS.",
+        shout: true,
+        invariant: Some(1),
+    },
+];
+
+/// The invariants a standing shout can carry. Two are sworn by
+/// the house; two are travellers' premises wearing the house's
+/// clothes.
+pub const INVARIANT_CANDIDATES: [&str; 4] = [
+    "The run's tally bounds cracked pieces to one in a row.",
+    "The press is armed only over a lit pot.",
+    "A traveller's request always bears an address.",
+    "The belt never carries a ninth piece.",
+];
+
+/// Floor 3 Chamber 4's rail charter, read at the watch.
+pub const RAIL_CHARTER: &str = "A request is built in its \
+    order, and no other: unaddressed, addressed, bodied, \
+    sealed. The rail enforces what the order means — the seal \
+    press cannot fall on a request the rail has not brought \
+    bodied beneath it, not from policy but from iron: the \
+    press and the rail are one machine. A slip whose body page \
+    is missing cannot be bodied honestly; it goes to the \
+    returns tray, and the rail keeps moving.";
+
+/// One slip on Chamber 4's rail.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RequestSlip {
+    /// The slip's name.
+    pub name: &'static str,
+    /// Its stage on arrival: 0 unaddressed, 1 addressed,
+    /// 2 bodied.
+    pub start: u8,
+    /// True when its body page is missing from the tray.
+    pub body_missing: bool,
+}
+
+/// The slips on Chamber 4's rail. Stages: 0 unaddressed,
+/// 1 addressed, 2 bodied, 3 sealed, 4 in the returns tray.
+pub const REQUEST_SLIPS: [RequestSlip; 3] = [
+    RequestSlip {
+        name: "A request for a second key",
+        start: 0,
+        body_missing: false,
+    },
+    RequestSlip {
+        name: "A request for the winter tally",
+        start: 1,
+        body_missing: false,
+    },
+    RequestSlip {
+        name: "A request in a stranger's hand",
+        start: 1,
+        body_missing: true,
+    },
+];
+
+/// A rail stage's name.
+pub fn stage_name(stage: u8) -> &'static str {
+    match stage {
+        0 => "unaddressed",
+        1 => "addressed",
+        2 => "bodied",
+        3 => "sealed",
+        _ => "in the returns tray",
     }
 }

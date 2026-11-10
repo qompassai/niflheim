@@ -188,3 +188,68 @@ gates caught every one.
 
 - Chambers 3–4 land in Step 3, Chamber 5 and the FOE in
   Step 4, the driven whole-floor playthrough in Step 5.
+
+## Step 3 — Chambers 3–4 (the Audit of Shouts; the Sealed Request)
+
+Landed 2026-11-10. The Gatehouse's middle desks are open.
+
+### What landed
+
+- **Chamber 3 — panic discipline.** `SHOUT_CHARTER`,
+  `SHOUT_CASES` (four ledger entries: two traveller-reachable
+  failures that must become named refusals; two invariant-only
+  failures whose shouts stand), `INVARIANT_CANDIDATES` (two
+  sworn by the house, two travellers' premises as decoys).
+  The judge (`shout_case_ok`) requires verdict **and**
+  invariant to match: a standing shout without its own
+  invariant named is unsorted. The booth renders the ledger
+  with a verdict and an invariant button per entry, and the
+  candidate list numbered in the panel.
+- **Chamber 4 — typestate builders.** `RAIL_CHARTER`,
+  `REQUEST_SLIPS` (three slips at authored stages; the third's
+  body page is missing). The rail is a state machine in
+  `floor3_slip_act`: advance walks unaddressed → addressed →
+  bodied; the seal press refuses any stage before bodied
+  ("Iron, not policy"); advancing the body-less slip is
+  refused at the empty tray; the returns tray refuses honest
+  slips. Judged complete only at [sealed, sealed, returned].
+- **`state.rs`** — `GatehouseWork` gains `shout_choices`,
+  `invariant_choices`, `slip_stages`, and a manual `Default`
+  (the slips arrive at their authored stages, [0, 1, 1]).
+  `floor3_diagnosed` and `floor3_file_proof` now cover four
+  chambers; the save invariant's recompute extends to
+  Chambers 3–4.
+- **`game.rs` / `shell.rs`** — elements `F3Shout`,
+  `F3Invariant`, `F3Slip(slip, action)`; the hub door opens
+  four desks; hint ladders for Chambers 3–4 replace the
+  placeholder rungs; the charters serve as the demonstrations.
+
+Build notes: one borrow error (E0499) in the new press arms —
+the verdict text was computed from the borrowed slot while
+`say` needed `self`; fixed by scoping the borrow and speaking
+after it ends, the same shape Step 4 of Floor 2 taught. One
+splice dropped a struct field that shared its anchor with a
+closing brace; the compiler caught it and it was restored.
+
+### Gates (primo, pinned rustc 1.99.0)
+
+- `cargo fmt --check`: clean. `cargo clippy --all-targets --
+  -D warnings`: exit 0.
+- `cargo test`: **108 passed / 0 failed** (was 102; +6:
+  puzzles 2 — the audit judge and the rail judge; state 3 —
+  the judged audit, the rail's enforced order, the forged
+  rail proof refused; game 1 — both chambers played on the
+  GUI surface, the press refused early on the record).
+  Log: `~/.local/share/pax/niflheim-floor3-step3-build-20261110/cargo-test.log`.
+- Theodolite: **0 diagnostics** on all five touched files.
+- Determinism: the probe extended through both chambers,
+  run twice; saves byte-identical, sha256
+  `3083015a1bee9a4977b9d665e40a779a2c201f4bc2324d47be146d4217db5411`.
+- Android lib under the pin: 1,345,008,040 bytes. Launch
+  smoke under Xvfb: `cold_start_ms=2168`, no panics.
+
+### Left open
+
+- Chamber 5 (the Inspection) and the FOE (the Gatehouse
+  Release) land in Step 4; the driven whole-floor playthrough
+  in Step 5.
