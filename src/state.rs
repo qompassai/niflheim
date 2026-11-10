@@ -2028,6 +2028,18 @@ impl Expedition {
         }
     }
 
+    /// Reset one Floor 3 chamber's work to its starting
+    /// state: hint usage stays on the record. (Lands late —
+    /// D-1189 fold-in: the button existed from Floor 3's
+    /// first step but the press had nowhere to land.)
+    pub fn floor3_reset_chamber(&mut self, chamber: usize) {
+        if let Some(progress) = self.floor3.chambers.get_mut(chamber) {
+            progress.state = ChamberState::Unworked;
+            progress.facet = false;
+            progress.work = GatehouseWork::default();
+        }
+    }
+
     /// File a Floor 3 chamber's proof: the diagnosis is checked
     /// facet by facet and the chamber moves to Diagnosed.
     pub fn floor3_file_proof(&mut self, chamber: usize) -> Result<String, Refusal> {

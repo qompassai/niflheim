@@ -3220,6 +3220,16 @@ impl Game {
                     );
                     self.changed();
                 }
+                Screen::Floor3Chamber(index) => {
+                    self.expedition.floor3_reset_chamber(index);
+                    self.say(
+                        StatusKind::Info,
+                        "The proof is reset: the chamber stands as it was first \
+                         entered. Hint rungs already climbed stay on the record.",
+                    );
+                    self.changed();
+                }
+
                 Screen::Floor4Chamber(index) => {
                     self.expedition.floor4_reset_chamber(index);
                     self.say(
@@ -5478,6 +5488,49 @@ mod tests {
     /// are cut to their niches and measured, and the treaty
     /// wall is seated, proven, and its book amended — both
     /// chambers through the seal.
+    /// Regression (D-1189 fold-in): Floor 3's chambers lay
+    /// out a ResetChamber button whose press used to fall
+    /// through to the match's catch-all — the reset now
+    /// works, and hint usage stays on the record.
+    #[test]
+    fn floor3_chamber_reset_button_resets_the_work() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        // Floor 3's prerequisite: both earlier FOEs fallen.
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.foe.gate_passed = true;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        game.screen = Screen::Hub;
+        click(&mut game, El::DoorFloor2);
+        click(&mut game, El::DoorFloor3);
+        assert_eq!(game.screen, Screen::Floor3Hub);
+        click(&mut game, El::Floor3Door(0));
+        click(&mut game, El::F3Watch);
+        click(&mut game, El::F3Pair(0));
+        {
+            let work = &game.expedition.floor3.chambers[0].work;
+            assert!(work.watched);
+            assert_eq!(work.pair_choices[0], Some(0));
+        }
+        game.expedition.floor3_view_hint(0);
+        click(&mut game, El::ResetChamber);
+        let progress = &game.expedition.floor3.chambers[0];
+        assert_eq!(progress.state, ChamberState::Unworked);
+        assert!(!progress.work.watched);
+        assert_eq!(progress.work.pair_choices[0], None);
+        assert_eq!(progress.hints_used, 1, "hint rungs stay on the record");
+    }
+
     #[test]
     fn floor4_chambers_3_and_4_played_on_the_gui() {
         fn click(game: &mut Game, el: El) {

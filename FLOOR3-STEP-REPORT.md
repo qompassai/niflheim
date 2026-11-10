@@ -411,3 +411,22 @@ the Lantern Stone in the codex, the Gatehouse Key in the
 pack — the key the descent wields again on Floor 17.
 Stratum I is complete: Floors 1, 2, and 3 all stand, and
 the stairs' third clause reads all three lanterns lit.
+
+## Addendum (2026-11-10, D-1189 fold-in) — the chamber reset, repaired
+
+Floor 3's chambers laid out a ResetChamber button from
+their first step, but the press fell through to the match's
+catch-all: `floor3_reset_chamber` did not exist. Found while
+mirroring the pattern for Floor 4 (whose chambers reset
+properly), flagged in FLOOR4-STEP-REPORT.md Step 2, and
+fixed here as its own gated commit at the Owner's word:
+`floor3_reset_chamber` in the house shape (state →
+Unworked, facet cleared, work defaulted, hints kept), the
+`Screen::Floor3Chamber` arm in the reset match, and a
+regression test that works a chamber on the GUI surface,
+resets it, and reads the work given back. Gates: 130
+passed / 0 failed (was 129, +1 regression), clippy clean,
+fmt clean, theodolite 0 diagnostics on state.rs/game.rs,
+determinism unchanged (sha256 92f009fa…), Android lib
+1,346,850,528 bytes, smoke cold_start_ms=884, no panics.
+Evidence: `~/.local/share/pax/niflheim-f3reset-build-20261110/`.
