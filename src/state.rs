@@ -18,8 +18,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::content::{
-    FOE_CHALLENGE, GATE_SCAFFOLD, INTERNERS_HOARD, LEASES_INITIAL, PACK_ITEMS, PLACARDS,
-    PLANK_STONE,
+    ADMISSION_SERVICES, BEASTS, FOE_CHALLENGE, GATE_SCAFFOLD, INTERNERS_HOARD, LEASES_INITIAL,
+    PACK_ITEMS, PLACARDS, PLANK_STONE, ROSTER_GROUPS,
 };
 use crate::core::{SAVE_FORMAT_VERSION, SAVE_MAGIC, SaveError, Settings, TextScale};
 use crate::puzzles::{
@@ -145,6 +145,83 @@ impl ChamberWork {
     }
 }
 
+/// One Floor 2 chamber's progress.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor2ChamberProgress {
+    /// Resolution state.
+    pub state: ChamberState,
+    /// The deepest hint rung viewed for this chamber (0 = none).
+    pub hints_used: u8,
+    /// The facet: earned by a repair at full standard (rung ≤ 3).
+    pub facet: bool,
+}
+
+/// The Floor 2 FOE's progress: the audit arc.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor2FoeProgress {
+    /// Resolution state.
+    pub state: FoeState,
+    /// Per admission service: the audit has read this service's bound.
+    pub audited: Vec<bool>,
+    /// The Lens stands calibrated against the roster.
+    pub calibrated: bool,
+    /// The roster crate has passed the cargo gate.
+    pub gate_passed: bool,
+    /// The strike's phase.
+    pub strike: StrikePhase,
+    /// The date inscribed when the FOE fell (`YYYY-MM-DD`).
+    pub fallen_date: Option<String>,
+}
+
+/// Floor 2's whole progress record: five chambers, the FOE, the
+/// admissions ledger, and the roster board's view state.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor2Progress {
+    /// The five chambers, in design order.
+    pub chambers: Vec<Floor2ChamberProgress>,
+    /// The FOE.
+    pub foe: Floor2FoeProgress,
+    /// The deepest hint rung viewed for the FOE.
+    pub foe_hints_used: u8,
+    /// Per beast on the roster: admitted past its service's bound.
+    pub admissions: Vec<bool>,
+    /// Per roster group: the board shows it collapsed.
+    pub roster_collapsed: Vec<bool>,
+}
+
+impl Floor2Progress {
+    /// A fresh Floor 2: nothing repaired, nothing admitted, the
+    /// roster standing open.
+    pub fn new() -> Self {
+        Self {
+            chambers: (0..5)
+                .map(|_| Floor2ChamberProgress {
+                    state: ChamberState::Unworked,
+                    hints_used: 0,
+                    facet: false,
+                })
+                .collect(),
+            foe: Floor2FoeProgress {
+                state: FoeState::Standing,
+                audited: vec![false; ADMISSION_SERVICES.len()],
+                calibrated: false,
+                gate_passed: false,
+                strike: StrikePhase::Idle,
+                fallen_date: None,
+            },
+            foe_hints_used: 0,
+            admissions: vec![false; BEASTS.len()],
+            roster_collapsed: vec![false; ROSTER_GROUPS.len()],
+        }
+    }
+}
+
+impl Default for Floor2Progress {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// One chamber's progress.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ChamberProgress {
@@ -201,6 +278,8 @@ struct SaveFile {
     pack: Vec<String>,
     editor_code: String,
     gate_record: Option<String>,
+    #[serde(default)]
+    floor2: Floor2Progress,
 }
 
 /// The whole expedition: the campaign's one source of truth.
@@ -226,6 +305,8 @@ pub struct Expedition {
     pub editor_code: String,
     /// The last gate verdict's summary, for the gate record.
     pub gate_record: Option<String>,
+    /// Floor 2's progress record.
+    pub floor2: Floor2Progress,
 }
 
 impl Default for Expedition {
@@ -235,7 +316,6 @@ impl Default for Expedition {
 }
 
 impl Expedition {
-    /// A fresh expedition at the top of Floor 1.
     pub fn new() -> Self {
         let census_rows = foe_census().rows.len();
         Self {
@@ -264,6 +344,7 @@ impl Expedition {
             pack: Vec::new(),
             editor_code: GATE_SCAFFOLD.to_string(),
             gate_record: None,
+            floor2: Floor2Progress::new(),
         }
     }
 
@@ -275,6 +356,26 @@ impl Expedition {
             let excess = self.log.len() - crate::core::MAX_LOG_LINES;
             self.log.drain(0..excess);
         }
+    }
+
+    /// Whether Floor 2 stands open to the expedition: Floor 1's
+    /// FOE has fallen.
+    pub fn floor2_reachable(&self) -> bool {
+        self.foe.state == FoeState::Fallen
+    }
+
+    /// How many Floor 2 chambers stand repaired.
+    pub fn floor2_chambers_repaired(&self) -> usize {
+        self.floor2
+            .chambers
+            .iter()
+            .filter(|c| c.state == ChamberState::Repaired)
+            .count()
+    }
+
+    /// Whether Floor 2 is fully charted (all chambers + the FOE).
+    pub fn floor2_complete(&self) -> bool {
+        self.floor2_chambers_repaired() == 5 && self.floor2.foe.state == FoeState::Fallen
     }
 
     /// How many chambers stand repaired.
@@ -712,8 +813,12 @@ impl Expedition {
                 "FOE 1, the Borrowed Hoard, has fallen".to_string(),
             ),
             (
-                false,
-                "FOE 2 or FOE 3 has fallen — Floors 2 and 3 lie beyond this build".to_string(),
+                self.floor2.foe.state == FoeState::Fallen,
+                if self.floor2.foe.state == FoeState::Fallen {
+                    "FOE 2, the Menagerie, has fallen".to_string()
+                } else {
+                    "FOE 2 or FOE 3 has fallen — Floor 3 lies beyond this build".to_string()
+                },
             ),
             (
                 false,
@@ -755,6 +860,7 @@ impl Expedition {
             pack: self.pack.clone(),
             editor_code: self.editor_code.clone(),
             gate_record: self.gate_record.clone(),
+            floor2: self.floor2.clone(),
         };
         serde_json::to_string(&file).map_err(|error| SaveError::Corrupt {
             reason: error.to_string(),
@@ -818,6 +924,7 @@ impl Expedition {
             pack: file.pack,
             editor_code: file.editor_code,
             gate_record: file.gate_record,
+            floor2: file.floor2,
         };
         expedition.validate_invariants()?;
         Ok(expedition)
@@ -840,6 +947,26 @@ impl Expedition {
         let census_rows = foe_census().rows.len();
         if self.foe.verified.len() != census_rows {
             return Err(corrupt("the census record is the wrong size"));
+        }
+        if self.floor2.chambers.len() != 5 {
+            return Err(corrupt("the save does not hold five Floor 2 chambers"));
+        }
+        if self.floor2.foe.audited.len() != ADMISSION_SERVICES.len() {
+            return Err(corrupt("the audit record is the wrong size"));
+        }
+        if self.floor2.admissions.len() != BEASTS.len() {
+            return Err(corrupt("the roster record is the wrong size"));
+        }
+        if self.floor2.roster_collapsed.len() != ROSTER_GROUPS.len() {
+            return Err(corrupt("the roster view record is the wrong size"));
+        }
+        for chamber in &self.floor2.chambers {
+            if chamber.facet && (chamber.state != ChamberState::Repaired || chamber.hints_used > 3)
+            {
+                return Err(corrupt(
+                    "a Floor 2 facet stands without a full-standard repair",
+                ));
+            }
         }
         for (index, chamber) in self.chambers.iter().enumerate() {
             let work = &chamber.work;
@@ -1060,7 +1187,7 @@ mod tests {
     fn load_refuses_future_versions() {
         let expedition = Expedition::new();
         let text = expedition.save_json().expect("save");
-        let future = text.replace("\"version\":1", "\"version\":99");
+        let future = text.replace("\"version\":2", "\"version\":99");
         assert_eq!(
             Expedition::load_json(&future),
             Err(SaveError::FutureVersion { found: 99 })
@@ -1103,5 +1230,68 @@ mod tests {
         assert_eq!(expedition.chambers[0].state, ChamberState::Unworked);
         let fresh = Expedition::new();
         assert_eq!(expedition.chambers[0].work, fresh.chambers[0].work);
+    }
+
+    /// Validation: Floor 2 state round-trips through the save.
+    #[test]
+    fn floor2_state_round_trips() {
+        let mut expedition = Expedition::new();
+        expedition.floor2.admissions[0] = true;
+        expedition.floor2.roster_collapsed[1] = true;
+        let text = expedition.save_json().expect("save");
+        let loaded = Expedition::load_json(&text).expect("load");
+        assert_eq!(loaded, expedition);
+        assert!(loaded.floor2.admissions[0]);
+        assert!(loaded.floor2.roster_collapsed[1]);
+    }
+
+    /// Validation: a version-1 save (no floor2 field at all) loads
+    /// with a fresh Floor 2, and re-saves as version 2.
+    #[test]
+    fn version_one_saves_load_with_default_floor2() {
+        let expedition = Expedition::new();
+        let text = expedition.save_json().expect("save");
+        let mut value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        value.as_object_mut().expect("object").remove("floor2");
+        value["version"] = serde_json::json!(1);
+        let loaded = Expedition::load_json(&value.to_string()).expect("v1 loads");
+        assert_eq!(loaded.floor2, Floor2Progress::new());
+        let resaved = loaded.save_json().expect("re-save");
+        assert!(resaved.contains("\"version\":2"));
+    }
+
+    /// Validation: Floor 2 opens only when the Hoard has fallen.
+    #[test]
+    fn floor2_reachable_follows_the_hoard() {
+        let mut expedition = Expedition::new();
+        assert!(!expedition.floor2_reachable());
+        expedition.foe_enumerate();
+        let double = crate::puzzles::foe_double_row().expect("double row");
+        expedition.foe_exhibit_row(double).expect("exhibit");
+        for row in foe_uncopiable_rows() {
+            expedition.foe_verify_row(row).expect("verify");
+        }
+        expedition.foe_mark_gate_passed();
+        expedition.foe_arm_strike().expect("arm");
+        expedition.foe_confirm_strike("2026-11-09").expect("strike");
+        assert!(expedition.floor2_reachable());
+        assert!(!expedition.floor2_complete());
+    }
+
+    /// Adversarial: a forged Floor 2 record of the wrong size is
+    /// refused as corrupt.
+    #[test]
+    fn load_refuses_forged_floor2_lengths() {
+        let expedition = Expedition::new();
+        let text = expedition.save_json().expect("save");
+        let mut value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        value["floor2"]["chambers"]
+            .as_array_mut()
+            .expect("chambers array")
+            .pop();
+        match Expedition::load_json(&value.to_string()) {
+            Err(SaveError::Corrupt { .. }) => {}
+            other => panic!("expected corrupt refusal, got {other:?}"),
+        }
     }
 }

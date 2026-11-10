@@ -950,6 +950,7 @@ fn rebuild_now(
     match game.screen {
         Screen::Title => build_title(commands, game, &pal, fonts, stage),
         Screen::Hub => build_hub(commands, game, &pal, fonts, stage),
+        Screen::Floor2Hub => build_floor2_hub(commands, game, &pal, fonts, stage),
         Screen::Chamber(index) => build_chamber(commands, game, &pal, fonts, stage, index),
         Screen::Foe => build_foe(commands, game, &pal, fonts, stage),
     }
@@ -1099,6 +1100,7 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
             format!("Floor 1 · Chamber {} — {}", index + 1, CHAMBERS[index].name)
         }
         Screen::Foe => "Floor 1 · The Borrowed Hoard".to_string(),
+        Screen::Floor2Hub => "Niflheim — Floor 2 · The Menagerie Grounds".to_string(),
         Screen::Title => "Niflheim".to_string(),
     };
     spawn_text(
@@ -1690,6 +1692,57 @@ fn build_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, sta
         foe_color,
         fonts,
     );
+    // The Floor 2 door.
+    let floor2 = geom::door_floor2();
+    spawn_box(
+        commands,
+        stage,
+        floor2,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        floor2.cx(),
+        floor2.y + 26.0,
+        floor2.w,
+        "FLOOR 2",
+        14.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        floor2.cx(),
+        floor2.y + 48.0,
+        floor2.w - 16.0,
+        "The Menagerie Grounds",
+        11.0,
+        false,
+        pal.ink,
+        fonts,
+    );
+    let (floor2_tag, floor2_color) = if game.expedition.floor2_reachable() {
+        ("OPEN", pal.good)
+    } else {
+        ("BARRED", pal.bad)
+    };
+    spawn_text_centered(
+        commands,
+        stage,
+        floor2.cx(),
+        floor2.y + 82.0,
+        floor2.w,
+        floor2_tag,
+        12.0,
+        true,
+        floor2_color,
+        fonts,
+    );
     // The panel: the floor's progress.
     build_panel_header(
         commands,
@@ -1823,6 +1876,346 @@ fn build_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, sta
 // ---------------------------------------------------------------------------
 // Chambers.
 // ---------------------------------------------------------------------------
+
+fn build_floor2_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Menagerie Grounds — five chambers, the Menagerie, and the roster",
+    );
+
+    for (index, meta) in content::MENAGERIE_CHAMBERS.iter().enumerate() {
+        let rect = geom::door_chamber(index);
+        let state = game.expedition.floor2.chambers[index].state;
+        spawn_box(
+            commands,
+            stage,
+            rect,
+            Some(pal.card),
+            Some((2.0, pal.edge)),
+            0.0,
+        );
+        spawn_text_centered(
+            commands,
+            stage,
+            rect.cx(),
+            rect.y + 6.0,
+            rect.w,
+            &format!("CHAMBER {}", index + 1),
+            10.5,
+            true,
+            pal.ink,
+            fonts,
+        );
+        spawn_text_centered(
+            commands,
+            stage,
+            rect.cx(),
+            rect.y + 24.0,
+            rect.w - 8.0,
+            meta.name,
+            10.5,
+            false,
+            pal.ink,
+            fonts,
+        );
+        let (tag, color) = match state {
+            ChamberState::Repaired => ("REPAIRED", pal.good),
+            ChamberState::Diagnosed => ("PROOF FILED", pal.accent),
+            ChamberState::Unworked => ("", pal.ink_dim),
+        };
+        if !tag.is_empty() {
+            spawn_text_centered(
+                commands,
+                stage,
+                rect.cx(),
+                rect.y + 64.0,
+                rect.w,
+                tag,
+                10.5,
+                true,
+                color,
+                fonts,
+            );
+        }
+    }
+
+    let stone = geom::camp_stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(Color::srgb_u8(140, 140, 148)),
+        Some((2.0, pal.ink_dim)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 12.0,
+        stone.w,
+        "THE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 26.0,
+        stone.w,
+        "FLOOR",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+
+    spawn_box(
+        commands,
+        stage,
+        rects::PANEL,
+        Some(pal.panel),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        84.0,
+        None,
+        "The Menagerie Grounds",
+        19.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        112.0,
+        None,
+        "Keeper: the Sigilwright · Domain 2 — Traits & the type system",
+        12.5,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        138.0,
+        None,
+        "THE ROSTER",
+        12.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+
+    for (group_idx, group_name) in content::ROSTER_GROUPS.iter().enumerate() {
+        let rect = geom::roster_group(group_idx);
+        spawn_box(
+            commands,
+            stage,
+            rect,
+            Some(pal.card),
+            Some((2.0, pal.edge)),
+            0.0,
+        );
+        let beast_count = content::BEASTS
+            .iter()
+            .filter(|b| &b.group == group_name)
+            .count();
+        let collapsed = game.expedition.floor2.roster_collapsed[group_idx];
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 12.0,
+            rect.y + 5.0,
+            None,
+            &format!(
+                "{} — {} beasts — {}",
+                group_name,
+                beast_count,
+                if collapsed { "collapsed" } else { "expanded" }
+            ),
+            12.5,
+            true,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        if !collapsed {
+            let beasts_in_group: Vec<(usize, &content::Beast)> = content::BEASTS
+                .iter()
+                .enumerate()
+                .filter(|(_, b)| &b.group == group_name)
+                .collect();
+            for (pos_in_group, (beast_index, beast)) in beasts_in_group.iter().enumerate() {
+                let y = rect.y + 34.0 + 22.0 * (pos_in_group as f32);
+                let admitted = game.expedition.floor2.admissions[*beast_index];
+                spawn_text(
+                    commands,
+                    stage,
+                    820.0,
+                    y,
+                    None,
+                    &format!(
+                        "{} — {} · sigils: {} · {}",
+                        beast.name,
+                        beast.kind,
+                        beast.sigils.join(", "),
+                        if admitted { "admitted" } else { "not admitted" }
+                    ),
+                    12.0,
+                    false,
+                    pal.ink,
+                    Justify::Left,
+                    fonts,
+                );
+            }
+        }
+    }
+
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        388.0,
+        None,
+        "THE CHAMBERS",
+        12.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+
+    for (index, meta) in content::MENAGERIE_CHAMBERS.iter().enumerate() {
+        let y = 412.0 + 26.0 * (index as f32);
+        let mark = match game.expedition.floor2.chambers[index].state {
+            ChamberState::Repaired => "■",
+            ChamberState::Diagnosed => "●",
+            ChamberState::Unworked => "○",
+        };
+        let mark_color = match game.expedition.floor2.chambers[index].state {
+            ChamberState::Repaired => pal.good,
+            ChamberState::Diagnosed => pal.accent,
+            ChamberState::Unworked => pal.ink_dim,
+        };
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            y,
+            None,
+            mark,
+            14.0,
+            true,
+            mark_color,
+            Justify::Left,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            834.0,
+            y,
+            None,
+            &format!("Chamber {} — {}", index + 1, meta.name),
+            13.5,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        if game.expedition.floor2.chambers[index].facet {
+            spawn_text_right(
+                commands, stage, 1240.0, y, 120.0, "facet", 12.0, true, pal.accent, fonts,
+            );
+        }
+    }
+
+    let foe_y = 546.0;
+    let foe_mark = match game.expedition.floor2.foe.state {
+        FoeState::Fallen => "■",
+        FoeState::Exposed => "●",
+        FoeState::Standing => "○",
+    };
+    let foe_mark_color = match game.expedition.floor2.foe.state {
+        FoeState::Fallen => pal.good,
+        FoeState::Exposed => pal.accent,
+        FoeState::Standing => pal.ink_dim,
+    };
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        foe_y,
+        None,
+        foe_mark,
+        14.0,
+        true,
+        foe_mark_color,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        834.0,
+        foe_y,
+        None,
+        &format!(
+            "The Menagerie — FOE · {}",
+            match game.expedition.floor2.foe.state {
+                FoeState::Standing => "standing",
+                FoeState::Exposed => "exposed",
+                FoeState::Fallen => "fallen",
+            }
+        ),
+        13.5,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+
+    let lit = game.expedition.stairs_clauses()[1].0;
+    let color = if lit { pal.good } else { pal.ink_dim };
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        578.0,
+        Some(432.0),
+        &format!(
+            "{} Stratum I stairs: FOE 1 fallen, plus FOE 2 or FOE 3.",
+            if lit { "[lit]" } else { "[unlit]" }
+        ),
+        11.5,
+        false,
+        color,
+        Justify::Left,
+        fonts,
+    );
+
+    build_bottom(commands, game, pal, fonts, stage);
+}
 
 /// One chamber screen: room, proof panel, seal, bottom bar.
 fn build_chamber(
@@ -3192,6 +3585,43 @@ fn build_map(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, sta
                     &floor1_status,
                     game.expedition.foe.state == FoeState::Fallen,
                 );
+            } else if index == 1 {
+                let repaired2 = game.expedition.floor2_chambers_repaired();
+                let floor2_status = match game.expedition.floor2.foe.state {
+                    FoeState::Fallen => format!(
+                        "FOE FALLEN — {}",
+                        game.expedition
+                            .floor2
+                            .foe
+                            .fallen_date
+                            .clone()
+                            .unwrap_or_default()
+                    ),
+                    _ if !game.expedition.floor2_reachable() => "BARRED".to_string(),
+                    _ if repaired2 > 0
+                        || game
+                            .expedition
+                            .floor2
+                            .chambers
+                            .iter()
+                            .any(|c| c.state == ChamberState::Diagnosed) =>
+                    {
+                        format!("CHARTING ({repaired2}/5)")
+                    }
+                    _ => "UNCHARTED".to_string(),
+                };
+                build_square(
+                    commands,
+                    pal,
+                    fonts,
+                    stage,
+                    rect,
+                    2,
+                    floor.domain,
+                    floor.class,
+                    &floor2_status,
+                    game.expedition.floor2.foe.state == FoeState::Fallen,
+                );
             } else {
                 build_square(
                     commands,
@@ -3236,7 +3666,7 @@ fn build_map(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, sta
         48.0,
         y + 62.0,
         Some(1180.0),
-        "Stairs to Stratum II: FOE 1 fallen, plus FOE 2 or FOE 3, with every Stratum I boss crate clippy-clean. Only Floor 1 is built in this build; its square fills on the verified gate, with the date inscribed.",
+        "Stairs to Stratum II: FOE 1 fallen, plus FOE 2 or FOE 3, with every Stratum I boss crate clippy-clean. Floors 1 and 2 stand in this build; a square fills on its floor's verified gate, with the date inscribed.",
         12.5,
         false,
         pal.ink_dim,
@@ -3513,6 +3943,22 @@ fn build_codex(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, s
                 );
                 y += 28.0;
             }
+            if stone == content::LENS_STONE {
+                spawn_text(
+                    commands,
+                    stage,
+                    262.0,
+                    y,
+                    None,
+                    content::LENS_STONE_TEXT,
+                    14.0,
+                    false,
+                    pal.good,
+                    Justify::Left,
+                    fonts,
+                );
+                y += 28.0;
+            }
         }
     }
     y += 12.0;
@@ -3537,6 +3983,15 @@ fn build_codex(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, s
         .enumerate()
         .filter(|(_, chamber)| chamber.facet)
         .map(|(index, _)| CHAMBERS[index].name.to_string())
+        .chain(
+            game.expedition
+                .floor2
+                .chambers
+                .iter()
+                .enumerate()
+                .filter(|(_, chamber)| chamber.facet)
+                .map(|(index, _)| content::MENAGERIE_CHAMBERS[index].name.to_string()),
+        )
         .collect();
     let facets_text: String = if facets.is_empty() {
         "None yet — a facet is a chamber repaired without ever naming the seam (hint rung 4)."

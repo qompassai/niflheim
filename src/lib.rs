@@ -2,11 +2,11 @@
 //! down to the kernel boundary, by making the player write, build,
 //! and verify real Rust inside the fiction.
 //!
-//! This build is Floor 1 complete: The Lending Vaults (Domain 1,
-//! Ownership), with the full systems spine — title, the Ferronia
-//! chart, the floor hub, five chambers, the FOE (The Borrowed Hoard)
-//! with its real cargo gate, the Principle Codex, the pack, the
-//! stairs gate, and the versioned portable save.
+//! This build is Floor 1 complete — The Lending Vaults (Domain 1,
+//! Ownership) — with Floor 2's scaffolding standing on it: the
+//! chart square, the hub door, the Menagerie Grounds hub with its
+//! roster, and save format v2. Floor 2's chambers, FOE, and gate
+//! land in later steps of the Floor 2 build.
 //!
 //! The crate is layered so the game logic never depends on the
 //! engine: `core` (bounded text machinery), `content` (authored

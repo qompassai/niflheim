@@ -759,3 +759,162 @@ pub const STRATA: [(&str, usize, usize); 4] = [
     ("Stratum III — Systems", 8, 5),
     ("Stratum IV — The depths", 13, 4),
 ];
+
+// ---------------------------------------------------------------------------
+// Floor 2 — The Menagerie Grounds. Domain 2: Traits & the type
+// system. Keeper: the Sigilwright. FOE: The Menagerie.
+
+/// The floor's name.
+pub const FLOOR2_NAME: &str = "The Menagerie Grounds";
+/// The domain this floor teaches.
+pub const FLOOR2_DOMAIN: &str = "Traits & the type system";
+/// The floor's keeper.
+pub const FLOOR2_KEEPER: &str = "the Sigilwright";
+
+/// The floor inscription, read at the camp stone.
+pub const FLOOR2_INTRO: &str = "Floor 2 — The Menagerie Grounds. The Sigilwright keeps a menagerie where every beast is described by what it can do. Five chambers teach the description's five faces — traits and impls, generics and bounds, associated types, trait objects and the Wide Door, and coherence. At the grounds' heart the Menagerie, a beast with every sigil and none, admits all and answers to nothing.";
+
+/// The Lens Stone's principle (the Principle Codex entry).
+pub const LENS_STONE: &str = "The Lens Stone";
+/// The Lens Stone's text.
+pub const LENS_STONE_TEXT: &str =
+    "Traits: a bound is an admission — say what a thing must do, and only what answers may enter.";
+/// The floor's loot artifact.
+pub const PLUGIN_MENAGERIE: &str = "The Sigilwright's Lens";
+/// The loot's codex text.
+pub const PLUGIN_MENAGERIE_TEXT: &str = "A lens that reads any beast's sigils at a glance. The inventory of capabilities for the descent — wielded wherever a thing must be known by what it can do.";
+
+/// One beast on the Menagerie roster.
+pub struct Beast {
+    /// The beast's name.
+    pub name: &'static str,
+    /// The kind of beast (e.g., "a salamander of the banked coals").
+    pub kind: &'static str,
+    /// The sigils this beast carries.
+    pub sigils: &'static [&'static str],
+    /// The group this beast belongs to.
+    pub group: &'static str,
+}
+
+/// The roster's two watches, in board order.
+pub const ROSTER_GROUPS: [&str; 2] = ["The Fire Watch", "The Mist Watch"];
+
+/// The roster: six beasts, three to a watch.
+pub const BEASTS: [Beast; 6] = [
+    Beast {
+        name: "Ember",
+        kind: "a salamander of the banked coals",
+        sigils: &["FireWard", "Swift"],
+        group: "The Fire Watch",
+    },
+    Beast {
+        name: "Cinder",
+        kind: "a fox of the smoldering ashes",
+        sigils: &["FireWard", "KeenNose"],
+        group: "The Fire Watch",
+    },
+    Beast {
+        name: "Soot",
+        kind: "a raven of the chimney's height",
+        sigils: &["FireWard", "SureFoot"],
+        group: "The Fire Watch",
+    },
+    Beast {
+        name: "Mistveil",
+        kind: "a wolf of the shifting fog",
+        sigils: &["MistSense", "DeepSight"],
+        group: "The Mist Watch",
+    },
+    Beast {
+        name: "Drizzle",
+        kind: "a hare of the dew-laden meadow",
+        sigils: &["MistSense", "Swift"],
+        group: "The Mist Watch",
+    },
+    Beast {
+        name: "Vapor",
+        kind: "a hawk of the cloud's edge",
+        sigils: &["MistSense", "KeenNose"],
+        group: "The Mist Watch",
+    },
+];
+
+/// A post the roster serves, and the bound it asks of a beast.
+pub struct AdmissionService {
+    /// The name of the service post.
+    pub name: &'static str,
+    /// The bounds required to enter this service.
+    pub bound: &'static [&'static str],
+}
+
+/// The three admission services, in audit order.
+pub const ADMISSION_SERVICES: [AdmissionService; 3] = [
+    AdmissionService {
+        name: "The Hearth Post",
+        bound: &["FireWard"],
+    },
+    AdmissionService {
+        name: "The Mist Post",
+        bound: &["MistSense"],
+    },
+    AdmissionService {
+        name: "The Valley Post",
+        bound: &["Swift"],
+    },
+];
+
+/// The five chambers, in design order.
+pub const MENAGERIE_CHAMBERS: [ChamberMeta; 5] = [
+    ChamberMeta {
+        name: "Traits and impls",
+        room: "The forge where every beast is marked",
+        inscription_title: "The Marking",
+        inscription: "A beast's sigils are its deeds. The forge stamps them true.",
+        demonstration: "A cub enters unmarked; it performs, and the anvil rings with its proof.",
+        slot_wants: "a type that can do the deed",
+        prove_label: "Strike the sigil",
+    },
+    ChamberMeta {
+        name: "Generics and bounds",
+        room: "The hall of many doors",
+        inscription_title: "The Door's Rule",
+        inscription: "A door admits only those who bear the sigil. The hall's doors test each beast.",
+        demonstration: "A fire-ward beast passes the hearth door; a mist-sensed beast is turned away.",
+        slot_wants: "a type parameter with a trait bound",
+        prove_label: "Test the door",
+    },
+    ChamberMeta {
+        name: "Associated types",
+        room: "The chamber of hidden forms",
+        inscription_title: "The Hidden Form",
+        inscription: "Some sigils name not what a beast is, but what it becomes. The chamber reveals them.",
+        demonstration: "A beast enters as one kind and leaves as another, its hidden form now plain.",
+        slot_wants: "a trait with an associated type",
+        prove_label: "Reveal the form",
+    },
+    ChamberMeta {
+        name: "Trait objects and the Wide Door",
+        room: "The wide hall of many paths",
+        inscription_title: "The Wide Door",
+        inscription: "A wide door admits any beast that bears any sigil. The hall's paths are many.",
+        demonstration: "A fire-ward beast and a mist-sensed beast both pass through the wide door.",
+        slot_wants: "a trait object",
+        prove_label: "Open the wide door",
+    },
+    ChamberMeta {
+        name: "Coherence",
+        room: "The chamber of the single truth",
+        inscription_title: "The Single Truth",
+        inscription: "A sigil may be stamped only once. The chamber enforces this rule.",
+        demonstration: "Two forges attempt to stamp the same sigil; only one succeeds.",
+        slot_wants: "a coherent impl",
+        prove_label: "Enforce the rule",
+    },
+];
+
+/// The FOE's name.
+pub const FOE2_NAME: &str = "The Menagerie";
+/// The FOE's inscription: the rule it breaks, carved.
+pub const FOE2_INSCRIPTION: &str = "The Menagerie wears every sigil and is bound by none. A thing that claims every trait answers to no bound, and the grounds cannot chart it.";
+/// The FOE demonstrated: the mechanism at its worst.
+pub const FOE2_DEMONSTRATION: &str = "The Menagerie crosses every post unchallenged, wearing the hearth's warmth, the mist's silence, the valley's speed, until no keeper can say what it is.";

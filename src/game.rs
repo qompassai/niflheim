@@ -176,6 +176,8 @@ pub enum Screen {
     Chamber(usize),
     /// The FOE's chamber.
     Foe,
+    /// Floor 2's hub: grounds, doors, roster.
+    Floor2Hub,
 }
 
 /// What a reading overlay is showing.
@@ -276,6 +278,12 @@ pub enum El {
     DoorFoe,
     /// Hub: the stairs door.
     DoorStairs,
+    /// Hub: the Floor 2 door.
+    DoorFloor2,
+    /// Floor 2 hub: a chamber door, by index.
+    Floor2Door(u8),
+    /// Floor 2 hub: collapse or expand a roster group, by index.
+    RosterToggle(u8),
     /// Hub: the camp stone.
     CampStone,
     /// The room's subject (desk / engine / chart).
@@ -549,7 +557,10 @@ impl Game {
 
     /// Whether the token is visible on this screen.
     pub fn token_visible(&self) -> bool {
-        matches!(self.screen, Screen::Hub | Screen::Chamber(_) | Screen::Foe)
+        matches!(
+            self.screen,
+            Screen::Hub | Screen::Floor2Hub | Screen::Chamber(_) | Screen::Foe
+        )
     }
 
     /// The keyboard-focused element, if any.
@@ -557,7 +568,16 @@ impl Game {
         self.focus
     }
 
-    /// C1's panel sub-view (0 packing, 1 toll), for the shell.
+    /// Flip a Floor 2 roster group's collapsed state; the shell
+    /// draws the board from `expedition.floor2.roster_collapsed`.
+    pub fn toggle_roster_group(&mut self, group: usize) {
+        if let Some(flag) = self.expedition.floor2.roster_collapsed.get_mut(group) {
+            *flag = !*flag;
+        }
+        self.changed();
+    }
+    /// Flip a Floor 2 roster group's collapsed state; the shell
+    /// draws the board from `expedition.floor2.roster_collapsed`.
     pub fn c1_view(&self) -> u8 {
         self.c1_view
     }
@@ -704,6 +724,7 @@ impl Game {
         match self.screen {
             Screen::Title => Vec::new(),
             Screen::Hub => vec![Verb::Read, Verb::Map],
+            Screen::Floor2Hub => vec![Verb::Read, Verb::Map],
             Screen::Chamber(_) => vec![
                 Verb::Examine,
                 Verb::Read,
@@ -751,6 +772,15 @@ pub mod geom {
     /// The stairs door, hub bottom-left.
     pub fn door_stairs() -> Rect {
         Rect::new(86.0, 518.0, 124.0, 124.0)
+    }
+    /// The Floor 2 door, hub bottom row between stairs and FOE.
+    pub fn door_floor2() -> Rect {
+        Rect::new(252.0, 518.0, 168.0, 124.0)
+    }
+
+    /// A roster group header row on Floor 2's panel.
+    pub fn roster_group(index: usize) -> Rect {
+        Rect::new(808.0, 176.0 + index as f32 * 104.0, 440.0, 26.0)
     }
 
     /// The camp stone, hub centre.
@@ -883,7 +913,7 @@ impl Game {
             return true;
         }
         match self.screen {
-            Screen::Hub => cy == 0 || cell == (5, 4),
+            Screen::Hub | Screen::Floor2Hub => cy == 0 || cell == (5, 4),
             Screen::Chamber(_) | Screen::Foe => {
                 (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7)
             }
@@ -1114,6 +1144,10 @@ impl Game {
                         "The vaults: five chamber doors, the Hoard's door, and the \
                          stairs — shut, for now."
                     }
+                    Screen::Floor2Hub => {
+                        "The Menagerie Grounds: five chamber doors, the roster \
+                         board, and the Menagerie watching from its wide door."
+                    }
                     Screen::Title => return,
                 };
                 self.say(StatusKind::Info, text);
@@ -1298,6 +1332,36 @@ impl Game {
             El::DoorStairs => {
                 self.overlay = Overlay::Reading(ReadingKind::Stairs);
                 self.bump();
+            }
+            El::DoorFloor2 => {
+                if self.expedition.floor2_reachable() {
+                    self.enter_screen(Screen::Floor2Hub);
+                    self.say(
+                        StatusKind::Info,
+                        "Floor 2 — The Menagerie Grounds. The Sigilwright keeps \
+                         the roster; every beast is described by what it can do.",
+                    );
+                } else {
+                    self.say(
+                        StatusKind::Refusal,
+                        "The way down is barred until the Borrowed Hoard has fallen",
+                    );
+                }
+            }
+            El::Floor2Door(index) => {
+                let index = index as usize;
+                self.say(
+                    StatusKind::Info,
+                    format!(
+                        "Chamber {} — {}: its build lands in a later step; \
+                         the scaffolding shows its door.",
+                        index + 1,
+                        content::MENAGERIE_CHAMBERS[index].name
+                    ),
+                );
+            }
+            El::RosterToggle(group) => {
+                self.toggle_roster_group(group as usize);
             }
             El::CampStone => {
                 self.overlay = Overlay::Reading(ReadingKind::FloorIntro);
@@ -1814,9 +1878,10 @@ impl Game {
             ReadingKind::Demonstration => "The Demonstration".to_string(),
             ReadingKind::Hint => "The Hint Ladder".to_string(),
             ReadingKind::Stairs => "The Stairs Gate — Stratum I to Stratum II".to_string(),
-            ReadingKind::FloorIntro => {
-                format!("Floor 1 — {}", content::FLOOR_NAME)
-            }
+            ReadingKind::FloorIntro => match self.screen {
+                Screen::Floor2Hub => format!("Floor 2 — {}", content::FLOOR2_NAME),
+                _ => format!("Floor 1 — {}", content::FLOOR_NAME),
+            },
             ReadingKind::MasterPlan => "The Master Plan".to_string(),
         }
     }
@@ -1864,7 +1929,10 @@ impl Game {
                 );
                 body
             }
-            ReadingKind::FloorIntro => content::FLOOR_INTRO.to_string(),
+            ReadingKind::FloorIntro => match self.screen {
+                Screen::Floor2Hub => content::FLOOR2_INTRO.to_string(),
+                _ => content::FLOOR_INTRO.to_string(),
+            },
             ReadingKind::MasterPlan => content::MASTER_PLAN.to_string(),
         }
     }
@@ -1989,7 +2057,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             }
             return els;
         }
-        Screen::Hub | Screen::Chamber(_) | Screen::Foe => {
+        Screen::Hub | Screen::Floor2Hub | Screen::Chamber(_) | Screen::Foe => {
             els.push((El::TabFloor, rects::TAB_FLOOR));
             els.push((El::TabMap, rects::TAB_MAP));
             els.push((El::TabLog, rects::TAB_LOG));
@@ -2005,6 +2073,15 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             els.push((El::DoorFoe, geom::door_foe()));
             els.push((El::DoorStairs, geom::door_stairs()));
             els.push((El::CampStone, geom::camp_stone()));
+        }
+        Screen::Floor2Hub => {
+            els.push((El::CampStone, geom::camp_stone()));
+            for index in 0..5 {
+                els.push((El::Floor2Door(index as u8), geom::door_chamber(index)));
+            }
+            for group in 0..content::ROSTER_GROUPS.len() {
+                els.push((El::RosterToggle(group as u8), geom::roster_group(group)));
+            }
         }
         Screen::Chamber(index) => {
             els.push((El::Desk, geom::desk()));
