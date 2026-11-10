@@ -294,7 +294,23 @@ pub struct Floor3ChamberProgress {
 /// chambers (FLOOR3-BRIEF steps 2–4), each serde-defaulted so
 /// saves written by earlier steps load whole.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
-pub struct GatehouseWork {}
+pub struct GatehouseWork {
+    /// Chambers 1–2: the desk/belt charter has been read.
+    #[serde(default)]
+    pub watched: bool,
+    /// Chamber 1: the pair chosen for each report, by report.
+    #[serde(default)]
+    pub pair_choices: [Option<usize>; 4],
+    /// Chamber 2: the portioner's setting.
+    #[serde(default)]
+    pub portion_choice: Option<usize>,
+    /// Chamber 2: the joiner's setting.
+    #[serde(default)]
+    pub dedup_choice: Option<usize>,
+    /// Chamber 2: the gate's setting.
+    #[serde(default)]
+    pub halt_choice: Option<usize>,
+}
 
 /// The Floor 3 FOE's progress: the release arc. The slate, the
 /// rite, the three lanterns, and the draft land with the FOE
@@ -1656,6 +1672,124 @@ impl Expedition {
                 .to_string(),
         )
     }
+
+    /// Whether a Floor 3 chamber's diagnosis is complete.
+    /// Chambers 1–2 judge their work here; the rest open in
+    /// their own steps.
+    pub fn floor3_diagnosed(&self, chamber: usize) -> bool {
+        let Some(progress) = self.floor3.chambers.get(chamber) else {
+            return false;
+        };
+        let work = &progress.work;
+        match chamber {
+            0 => {
+                work.watched
+                    && work
+                        .pair_choices
+                        .iter()
+                        .enumerate()
+                        .all(|(report, choice)| {
+                            matches!(choice, Some(choice) if crate::puzzles::failure_pair_ok(report, *choice))
+                        })
+            }
+            1 => {
+                work.watched
+                    && matches!(
+                        (work.portion_choice, work.dedup_choice, work.halt_choice),
+                        (Some(portion), Some(dedup), Some(halt))
+                            if crate::puzzles::conveyor_diagnosed(portion, dedup, halt)
+                    )
+            }
+            _ => false,
+        }
+    }
+
+    /// File a Floor 3 chamber's proof: the diagnosis is checked
+    /// facet by facet and the chamber moves to Diagnosed.
+    pub fn floor3_file_proof(&mut self, chamber: usize) -> Result<String, Refusal> {
+        if !self.floor3_diagnosed(chamber) {
+            return Err(Refusal(match chamber {
+                0 => "the sort is not yet true: every report under its own \
+                      pair, and the Broken bin untouched"
+                    .to_string(),
+                1 => "the belt does not yet deliver the slate: set the \
+                      three stations and let the desk run the chain"
+                    .to_string(),
+                _ => "this desk is not open yet".to_string(),
+            }));
+        }
+        let progress = self
+            .floor3
+            .chambers
+            .get_mut(chamber)
+            .ok_or_else(|| Refusal("no such chamber".to_string()))?;
+        if progress.state == ChamberState::Repaired {
+            return Err(Refusal("this chamber already stands repaired".to_string()));
+        }
+        progress.state = ChamberState::Diagnosed;
+        Ok(match chamber {
+            0 => "Proof filed. Four reports hang under four named doors, \
+                  each with its remedy written under the name — and the \
+                  Broken bin stands empty for the first time in the \
+                  Gatewright's keeping."
+                .to_string(),
+            _ => "Proof filed. The desk ran the chain itself: the whole \
+                  belt taken, first sightings kept, the cracked gear \
+                  lifted off — gear, spring, cam, bell, in order, and \
+                  silence past the end."
+                .to_string(),
+        })
+    }
+
+    /// Repair a Floor 3 chamber whose proof stands filed, and
+    /// settle its facet when the hints stayed shallow — the
+    /// two-step seal's second step.
+    pub fn floor3_repair_chamber(&mut self, chamber: usize) -> Result<String, Refusal> {
+        let progress = self
+            .floor3
+            .chambers
+            .get_mut(chamber)
+            .ok_or_else(|| Refusal("no such chamber".to_string()))?;
+        match progress.state {
+            ChamberState::Repaired => {
+                Err(Refusal("this chamber already stands repaired".to_string()))
+            }
+            ChamberState::Unworked => Err(Refusal(
+                "there is nothing to repair yet — assemble the proof first".to_string(),
+            )),
+            ChamberState::Diagnosed => {
+                progress.state = ChamberState::Repaired;
+                if progress.hints_used <= 3 {
+                    progress.facet = true;
+                    Ok("Repaired at full standard. A facet of the Lantern \
+                         Stone settles into the codex."
+                        .to_string())
+                } else {
+                    Ok("Repaired — though the seam was named, and the record \
+                         keeps it. No facet, but the floor still completes."
+                        .to_string())
+                }
+            }
+        }
+    }
+
+    /// Record that the player read a Floor 3 hint rung.
+    pub fn floor3_view_hint(&mut self, chamber: usize) -> u8 {
+        let Some(progress) = self.floor3.chambers.get_mut(chamber) else {
+            return 0;
+        };
+        progress.hints_used = (progress.hints_used + 1).min(4);
+        progress.hints_used
+    }
+
+    /// The deepest hint rung recorded for a Floor 3 chamber.
+    pub fn floor3_hints_used(&self, chamber: usize) -> u8 {
+        self.floor3
+            .chambers
+            .get(chamber)
+            .map_or(0, |progress| progress.hints_used)
+    }
+
     /// Floor 3 stands open when both valley FOEs have fallen
     /// (FULL-DESIGN §5.2: Floor 3 requires Floors 1 and 2).
     pub fn floor3_reachable(&self) -> bool {
@@ -1844,6 +1978,15 @@ impl Expedition {
         }
         if self.floor3.chambers.len() != 5 {
             return Err(corrupt("the save does not hold five Floor 3 chambers"));
+        }
+        for chamber in 0..2 {
+            if self.floor3.chambers[chamber].state != ChamberState::Unworked
+                && !self.floor3_diagnosed(chamber)
+            {
+                return Err(corrupt(
+                    "the save claims a Floor 3 proof its work does not hold",
+                ));
+            }
         }
         if self.floor2.foe.audited.len() != ADMISSION_SERVICES.len() {
             return Err(corrupt("the audit record is the wrong size"));
@@ -2324,6 +2467,74 @@ mod tests {
             Err(SaveError::Corrupt { .. }) => {}
             other => panic!("expected corrupt refusal, got {other:?}"),
         }
+    }
+
+    /// Validation: Chamber 1's sort is judged pair by pair —
+    /// the Broken bin files nothing, the proof files only when
+    /// all four reports stand under their own pairs, and the
+    /// repair follows the seal's order.
+    #[test]
+    fn floor3_chamber1_sort_is_judged() {
+        let mut expedition = Expedition::new();
+        expedition.floor3.chambers[0].work.watched = true;
+        for (report, entry) in crate::content::FAILURE_REPORTS.iter().enumerate() {
+            expedition.floor3.chambers[0].work.pair_choices[report] = Some(entry.pair);
+        }
+        assert!(expedition.floor3_diagnosed(0));
+        // One report under the Broken pair unmakes the sort.
+        expedition.floor3.chambers[0].work.pair_choices[2] = Some(4);
+        assert!(!expedition.floor3_diagnosed(0));
+        assert!(expedition.floor3_file_proof(0).is_err());
+        expedition.floor3.chambers[0].work.pair_choices[2] =
+            Some(crate::content::FAILURE_REPORTS[2].pair);
+        expedition.floor3_file_proof(0).expect("proof files");
+        assert_eq!(expedition.floor3.chambers[0].state, ChamberState::Diagnosed);
+        expedition.floor3_repair_chamber(0).expect("repair lands");
+        assert_eq!(expedition.floor3.chambers[0].state, ChamberState::Repaired);
+        assert!(expedition.floor3.chambers[0].facet);
+    }
+
+    /// Adversarial: the sort unwatched files nothing, however
+    /// true the pairs — the charter is a facet, not a garnish.
+    #[test]
+    fn floor3_chamber1_sort_needs_the_charter() {
+        let mut expedition = Expedition::new();
+        for (report, entry) in crate::content::FAILURE_REPORTS.iter().enumerate() {
+            expedition.floor3.chambers[0].work.pair_choices[report] = Some(entry.pair);
+        }
+        assert!(!expedition.floor3_diagnosed(0));
+        assert!(expedition.floor3_file_proof(0).is_err());
+    }
+
+    /// Validation: Chamber 2's belt files only at the one true
+    /// setting, and the repair completes the pair of chambers.
+    #[test]
+    fn floor3_chamber2_belt_is_judged() {
+        let mut expedition = Expedition::new();
+        {
+            let work = &mut expedition.floor3.chambers[1].work;
+            work.watched = true;
+            work.portion_choice = Some(2);
+            work.dedup_choice = Some(0);
+            work.halt_choice = Some(1);
+        }
+        assert!(!expedition.floor3_diagnosed(1), "run-joining is not enough");
+        expedition.floor3.chambers[1].work.dedup_choice = Some(1);
+        assert!(expedition.floor3_diagnosed(1));
+        expedition.floor3_file_proof(1).expect("proof files");
+        expedition.floor3_repair_chamber(1).expect("repair lands");
+        assert_eq!(expedition.floor3_chambers_repaired(), 1);
+    }
+
+    /// Adversarial: a save claiming a Floor 3 proof its work
+    /// does not hold is refused — the record is recomputed,
+    /// never trusted.
+    #[test]
+    fn forged_floor3_proof_is_refused() {
+        let mut expedition = Expedition::new();
+        expedition.floor3.chambers[0].state = ChamberState::Repaired;
+        let text = expedition.save_json().expect("save");
+        assert!(Expedition::load_json(&text).is_err());
     }
 
     /// Adversarial: a forged Floor 2 record of the wrong size is

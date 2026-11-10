@@ -184,6 +184,8 @@ pub enum Screen {
     Floor2Chamber(usize),
     /// Floor 3's hub: the release office.
     Floor3Hub,
+    /// A Floor 3 chamber, by index (0–4).
+    Floor3Chamber(usize),
 }
 
 /// What a reading overlay is showing.
@@ -298,6 +300,13 @@ pub enum El {
     RosterToggle(u8),
     /// Floor 2 Chamber 1: watch both beasts perform the call.
     F2Watch,
+    /// Floor 3 chambers: read the desk's charter.
+    F3Watch,
+    /// Floor 3 Chamber 1: cycle one report's pair, by report.
+    F3Pair(u8),
+    /// Floor 3 Chamber 2: cycle one station's setting, by slot
+    /// (0 portioner, 1 joiner, 2 gate).
+    F3Station(u8),
     /// Floor 2 Chamber 1: strike a charter candidate, by index.
     F2Charter(u8),
     /// Floor 2 Chamber 1: name the blind run's body, by performer index.
@@ -475,6 +484,8 @@ enum ArmedFor {
     Chamber(usize),
     /// A Floor 2 chamber's repair.
     Floor2Chamber(usize),
+    /// A Floor 3 chamber's repair.
+    Floor3Chamber(usize),
     /// The FOE's strike.
     Foe,
     /// Floor 2 FOE's strike.
@@ -625,6 +636,7 @@ impl Game {
                 | Screen::Floor3Hub
                 | Screen::Chamber(_)
                 | Screen::Floor2Chamber(_)
+                | Screen::Floor3Chamber(_)
                 | Screen::Foe
                 | Screen::Floor2Foe
         )
@@ -669,6 +681,7 @@ impl Game {
         match self.screen {
             Screen::Chamber(index) => self.armed == Some(ArmedFor::Chamber(index)),
             Screen::Floor2Chamber(index) => self.armed == Some(ArmedFor::Floor2Chamber(index)),
+            Screen::Floor3Chamber(index) => self.armed == Some(ArmedFor::Floor3Chamber(index)),
             Screen::Foe => self.expedition.foe.strike == StrikePhase::Armed,
             Screen::Floor2Foe => self.expedition.floor2.foe.strike == StrikePhase::Armed,
             _ => false,
@@ -815,7 +828,7 @@ impl Game {
             Screen::Title => Vec::new(),
             Screen::Hub => vec![Verb::Read, Verb::Map],
             Screen::Floor2Hub | Screen::Floor3Hub => vec![Verb::Read, Verb::Map],
-            Screen::Chamber(_) | Screen::Floor2Chamber(_) => vec![
+            Screen::Chamber(_) | Screen::Floor2Chamber(_) | Screen::Floor3Chamber(_) => vec![
                 Verb::Examine,
                 Verb::Read,
                 Verb::Prove,
@@ -934,6 +947,18 @@ pub mod geom {
     /// Floor 2 C1: the watch-performances button.
     pub fn f2_watch() -> Rect {
         Rect::new(808.0, 500.0, 220.0, 30.0)
+    }
+
+    /// Floor 3 Chamber 1: one report's pair button, right of
+    /// the desk; the report's text stands above it, its chosen
+    /// remedy below.
+    pub fn f3_pair(report: usize) -> Rect {
+        Rect::new(380.0, 104.0 + report as f32 * 120.0, 360.0, 30.0)
+    }
+
+    /// Floor 3 Chamber 2: one station's setting button.
+    pub fn f3_station(slot: usize) -> Rect {
+        Rect::new(380.0, 150.0 + slot as f32 * 90.0, 360.0, 30.0)
     }
 
     /// Floor 2 C2: a sigil toggle in a service's bound row.
@@ -1112,9 +1137,11 @@ impl Game {
         }
         match self.screen {
             Screen::Hub | Screen::Floor2Hub | Screen::Floor3Hub => cy == 0 || cell == (5, 4),
-            Screen::Chamber(_) | Screen::Floor2Chamber(_) | Screen::Foe | Screen::Floor2Foe => {
-                (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7)
-            }
+            Screen::Chamber(_)
+            | Screen::Floor2Chamber(_)
+            | Screen::Floor3Chamber(_)
+            | Screen::Foe
+            | Screen::Floor2Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
             Screen::Title => true,
         }
     }
@@ -1341,6 +1368,7 @@ impl Game {
                 let text = match self.screen {
                     Screen::Chamber(index) => EXAMINE_TEXTS[index],
                     Screen::Floor2Chamber(index) => F2_EXAMINE_TEXTS[index],
+                    Screen::Floor3Chamber(index) => F3_EXAMINE_TEXTS[index],
                     Screen::Foe => {
                         "The hoard-engine: a ledger the size of a door, turning its \
                          pages by itself, smiling with every leaf."
@@ -1440,9 +1468,29 @@ impl Game {
                     }
                     self.changed();
                 }
+                if let Screen::Floor3Chamber(index) = self.screen {
+                    match self.expedition.floor3_file_proof(index) {
+                        Ok(text) => {
+                            self.expedition.log_push(format!(
+                                "Proof filed in {}.",
+                                content::GATEHOUSE_CHAMBERS[index].name
+                            ));
+                            self.say(StatusKind::Good, text);
+                        }
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
             }
             Verb::Hint => {
-                if let Screen::Floor2Chamber(index) = self.screen {
+                if let Screen::Floor3Chamber(index) = self.screen {
+                    if self.expedition.floor3_hints_used(index) == 0 {
+                        self.expedition.floor3_view_hint(index);
+                    }
+                    self.hint_showing = self.expedition.floor3_hints_used(index).max(1);
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                } else if let Screen::Floor2Chamber(index) = self.screen {
                     if self.expedition.floor2_hints_used(index) == 0 {
                         self.expedition.floor2_view_hint(index);
                     }
@@ -1702,12 +1750,18 @@ impl Game {
                     );
                 }
             }
-            El::Floor3Door(_index) => {
-                self.say(
-                    StatusKind::Info,
-                    "The Gatewright holds up a hand: this desk is not open \
-                     yet — the office is still being laid out.",
-                );
+            El::Floor3Door(index) => {
+                let index = index as usize;
+                if index < 2 {
+                    self.enter_screen(Screen::Floor3Chamber(index));
+                    self.say(StatusKind::Info, content::FLOOR3_CHAMBER_INTROS[index]);
+                } else {
+                    self.say(
+                        StatusKind::Info,
+                        "The Gatewright holds up a hand: this desk is not \
+                         open yet — the office is still being laid out.",
+                    );
+                }
                 self.bump();
             }
 
@@ -1747,6 +1801,97 @@ impl Game {
             El::RosterToggle(group) => {
                 self.toggle_roster_group(group as usize);
             }
+            El::F3Watch => {
+                if let Screen::Floor3Chamber(index) = self.screen {
+                    if let Some(progress) = self.expedition.floor3.chambers.get_mut(index) {
+                        progress.work.watched = true;
+                    }
+                    self.say(
+                        StatusKind::Info,
+                        match index {
+                            0 => {
+                                "The charter of the Named Failures desk: every \
+                                  failure leaves by a named door, with its \
+                                  remedy written under the name."
+                            }
+                            1 => {
+                                "The belt's charter: portion, join, gate — \
+                                  in that order — and the desk runs the chain \
+                                  itself."
+                            }
+                            _ => "The Gatewright nods at the desk.",
+                        },
+                    );
+                    self.changed();
+                }
+            }
+            El::F3Pair(report) => {
+                if self.screen == Screen::Floor3Chamber(0) {
+                    let report = report as usize;
+                    let next = match self.expedition.floor3.chambers[0]
+                        .work
+                        .pair_choices
+                        .get(report)
+                    {
+                        Some(Some(4)) | None | Some(None) => Some(0),
+                        Some(Some(choice)) => Some(choice + 1),
+                    };
+                    if let Some(slot) = self.expedition.floor3.chambers[0]
+                        .work
+                        .pair_choices
+                        .get_mut(report)
+                    {
+                        *slot = next;
+                    }
+                    if let Some(pair) = next {
+                        let (kind, remedy) = content::FAILURE_PAIRS[pair];
+                        self.say(
+                            StatusKind::Info,
+                            if pair == 4 {
+                                "The Gatewright's voice, mildly: 'That bin is \
+                                 emptied into the river at night.'"
+                                    .to_string()
+                            } else {
+                                format!("Filed under {kind} — {remedy}")
+                            },
+                        );
+                    }
+                    self.changed();
+                }
+            }
+            El::F3Station(slot) => {
+                if self.screen == Screen::Floor3Chamber(1) {
+                    let slot = slot as usize;
+                    let work = &mut self.expedition.floor3.chambers[1].work;
+                    let choice = match slot {
+                        0 => &mut work.portion_choice,
+                        1 => &mut work.dedup_choice,
+                        _ => &mut work.halt_choice,
+                    };
+                    *choice = Some(match *choice {
+                        None => 0,
+                        Some(2) => 0,
+                        Some(choice) => choice + 1,
+                    });
+                    let picked = *choice;
+                    let work = &self.expedition.floor3.chambers[1].work;
+                    let (options, picked): (&[&str; 3], usize) = match slot {
+                        0 => (&content::PORTION_OPTIONS, picked.unwrap_or(0)),
+                        1 => (&content::DEDUP_OPTIONS, picked.unwrap_or(0)),
+                        _ => (&content::HALT_OPTIONS, picked.unwrap_or(0)),
+                    };
+                    let mut line = options[picked].to_string();
+                    if let (Some(portion), Some(dedup), Some(halt)) =
+                        (work.portion_choice, work.dedup_choice, work.halt_choice)
+                    {
+                        let (out, _) = puzzles::conveyor_run(portion, dedup, halt);
+                        line = format!("{line}. The belt would deliver: {}", out.join(" · "));
+                    }
+                    self.say(StatusKind::Info, line);
+                    self.changed();
+                }
+            }
+
             El::F2Watch => {
                 if let Screen::Floor2Chamber(index) = self.screen {
                     if let Some(progress) = self.expedition.floor2.chambers.get_mut(index) {
@@ -2233,6 +2378,26 @@ impl Game {
                     );
                 }
             },
+            Screen::Floor3Chamber(index) => match self.expedition.floor3.chambers[index].state {
+                ChamberState::Diagnosed => {
+                    self.armed = Some(ArmedFor::Floor3Chamber(index));
+                    self.say(
+                        StatusKind::Info,
+                        "The seal is pressed. Confirm to strike the repair home, or \
+                         stand down.",
+                    );
+                }
+                ChamberState::Repaired => {
+                    self.say(StatusKind::Info, "This chamber already stands repaired.");
+                }
+                ChamberState::Unworked => {
+                    self.say(
+                        StatusKind::Refusal,
+                        "The seal sleeps until the proof is complete.",
+                    );
+                }
+            },
+
             Screen::Chamber(index) => match self.expedition.chambers[index].state {
                 ChamberState::Diagnosed => {
                     self.armed = Some(ArmedFor::Chamber(index));
@@ -2296,6 +2461,21 @@ impl Game {
                 }
                 self.changed();
             }
+            Some(ArmedFor::Floor3Chamber(index)) => {
+                self.armed = None;
+                match self.expedition.floor3_repair_chamber(index) {
+                    Ok(text) => {
+                        self.expedition.log_push(format!(
+                            "{} repaired.",
+                            content::GATEHOUSE_CHAMBERS[index].name
+                        ));
+                        self.say(StatusKind::Good, text);
+                    }
+                    Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                }
+                self.changed();
+            }
+
             Some(ArmedFor::Chamber(index)) => {
                 self.armed = None;
                 match self.expedition.repair_chamber(index) {
@@ -2554,6 +2734,11 @@ impl Game {
                 Screen::Floor2Chamber(index) => content::MENAGERIE_CHAMBERS[index]
                     .inscription_title
                     .to_string(),
+                Screen::Floor3Chamber(index) => format!(
+                    "Chamber {} — {}",
+                    index + 1,
+                    content::GATEHOUSE_CHAMBERS[index].name
+                ),
                 Screen::Foe => "The Hoard's Inscription".to_string(),
                 Screen::Floor2Foe => "The Menagerie's Inscription".to_string(),
                 _ => "The Inscription".to_string(),
@@ -2578,6 +2763,7 @@ impl Game {
                 Screen::Floor2Chamber(index) => {
                     content::MENAGERIE_CHAMBERS[index].inscription.to_string()
                 }
+                Screen::Floor3Chamber(index) => content::FLOOR3_CHAMBER_INTROS[index].to_string(),
                 Screen::Foe => content::FOE_INSCRIPTION.to_string(),
                 Screen::Floor2Foe => content::FOE2_INSCRIPTION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
@@ -2587,6 +2773,11 @@ impl Game {
                 Screen::Floor2Chamber(index) => {
                     content::MENAGERIE_CHAMBERS[index].demonstration.to_string()
                 }
+                Screen::Floor3Chamber(index) => match index {
+                    0 => content::FAILURE_CHARTER.to_string(),
+                    1 => content::CONVEYOR_CHARTER.to_string(),
+                    _ => content::FLOOR3_CHAMBER_INTROS[index].to_string(),
+                },
                 Screen::Foe => content::FOE_DEMONSTRATION.to_string(),
                 Screen::Floor2Foe => content::FOE2_DEMONSTRATION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
@@ -2595,6 +2786,7 @@ impl Game {
                 let rung = self.hint_showing.max(1) as usize;
                 let text = match self.screen {
                     Screen::Floor2Chamber(index) => content::floor2_hints(index)[rung - 1],
+                    Screen::Floor3Chamber(index) => content::floor3_chamber_hints(index)[rung - 1],
                     Screen::Floor2Foe => content::floor2_foe_hints()[rung - 1],
                     _ => {
                         let challenge = self.current_challenge().unwrap_or(0);
@@ -2795,6 +2987,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor2Hub
         | Screen::Chamber(_)
         | Screen::Floor2Chamber(_)
+        | Screen::Floor3Chamber(_)
         | Screen::Foe
         | Screen::Floor2Foe
         | Screen::Floor3Hub => {
@@ -2842,6 +3035,14 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             layout_chamber_panel(&mut els, game, index);
             layout_seal(&mut els, game);
         }
+        Screen::Floor3Chamber(index) => {
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.push((El::ResetChamber, rects::RESET_BTN));
+            layout_floor3_chamber_panel(&mut els, game, index);
+            layout_seal(&mut els, game);
+        }
+
         Screen::Floor2Chamber(index) => {
             els.push((El::Desk, geom::desk()));
             els.push((El::Stone, geom::stone()));
@@ -2945,6 +3146,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
     let armed = match game.screen {
         Screen::Chamber(index) => game.armed == Some(ArmedFor::Chamber(index)),
         Screen::Floor2Chamber(index) => game.armed == Some(ArmedFor::Floor2Chamber(index)),
+        Screen::Floor3Chamber(index) => game.armed == Some(ArmedFor::Floor3Chamber(index)),
         Screen::Foe => game.expedition.foe.strike == StrikePhase::Armed,
         Screen::Floor2Foe => game.expedition.floor2.foe.strike == StrikePhase::Armed,
         _ => false,
@@ -2955,6 +3157,39 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         els.push((El::SealCancel, rects::SEAL_CANCEL));
     }
 }
+
+/// The Floor 3 chambers' panel elements: the watch, Chamber 1's
+/// four pair buttons, Chamber 2's three station buttons.
+fn layout_floor3_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: usize) {
+    let _ = game;
+    els.push((El::F3Watch, geom::f2_watch()));
+    if chamber == 0 {
+        for report in 0..content::FAILURE_REPORTS.len() {
+            els.push((El::F3Pair(report as u8), geom::f3_pair(report)));
+        }
+    }
+    if chamber == 1 {
+        for slot in 0..3 {
+            els.push((El::F3Station(slot as u8), geom::f3_station(slot)));
+        }
+    }
+}
+
+/// The Floor 3 chamber facet lines for the Examine verb.
+const F3_EXAMINE_TEXTS: [&str; 5] = [
+    "The Named Failures desk: four reports on the wall, five pairs \
+     on the desk, and the great bin chalked BROKEN standing fuller \
+     than every named door together.",
+    "The Conveyor: gear, gear, spring, a cracked gear, spring, \
+     cam, cam, bell — and three stations between the belt and \
+     the office.",
+    "The Audit of Shouts: a soundproof booth and a ledger of \
+     shouts. This desk is not open yet.",
+    "The Sealed Request: a press, a wax pot, and three trays on \
+     a rail. This desk is not open yet.",
+    "The Inspection: the Guidelines wall and the Hoard open under \
+     audit. This desk is not open yet.",
+];
 
 /// The Floor 2 chamber panels' elements. Chamber 1: the watch
 /// button, the three charter candidates, and the two bodies the
@@ -3407,6 +3642,88 @@ mod tests {
         game.pointer_down(rect.cx(), rect.cy());
         game.pointer_up(rect.cx(), rect.cy());
         assert_eq!(game.screen, Screen::Floor3Hub);
+    }
+
+    /// Driven playthrough: Floor 3's first two chambers played
+    /// on the GUI surface — the sort judged pair by pair (the
+    /// Broken bin refused by the filing), the belt set station
+    /// by station, both proofs filed, both seals struck.
+    #[test]
+    fn floor3_chambers_1_and_2_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        game.screen = Screen::Floor3Hub;
+
+        // Chamber 1 — Named Failures.
+        click(&mut game, El::Floor3Door(0));
+        assert_eq!(game.screen, Screen::Floor3Chamber(0));
+        click(&mut game, El::F3Watch);
+        assert!(game.expedition.floor3.chambers[0].work.watched);
+        // Sort each report: from unsorted, the pair button cycles
+        // 0,1,2,3,4 — report r's own pair takes pair+1 presses.
+        for (report, entry) in content::FAILURE_REPORTS.iter().enumerate() {
+            for _ in 0..=entry.pair {
+                click(&mut game, El::F3Pair(report as u8));
+            }
+        }
+        assert!(game.expedition.floor3_diagnosed(0));
+        // One report re-sorted under Broken unmakes the proof.
+        click(&mut game, El::F3Pair(0));
+        assert!(!game.expedition.floor3_diagnosed(0));
+        assert!(game.expedition.floor3_file_proof(0).is_err());
+        for _ in 0..4 {
+            click(&mut game, El::F3Pair(0));
+        }
+        assert!(game.expedition.floor3_diagnosed(0));
+        game.do_verb(Verb::Prove);
+        assert_eq!(
+            game.expedition.floor3.chambers[0].state,
+            ChamberState::Diagnosed
+        );
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor3.chambers[0].state,
+            ChamberState::Repaired
+        );
+
+        // Chamber 2 — the Conveyor.
+        game.screen = Screen::Floor3Hub;
+        click(&mut game, El::Floor3Door(1));
+        assert_eq!(game.screen, Screen::Floor3Chamber(1));
+        click(&mut game, El::F3Watch);
+        // Stations cycle from unset: portion 2 takes 3 presses,
+        // dedup 1 takes 2, halt 1 takes 2.
+        for _ in 0..3 {
+            click(&mut game, El::F3Station(0));
+        }
+        for _ in 0..2 {
+            click(&mut game, El::F3Station(1));
+        }
+        for _ in 0..2 {
+            click(&mut game, El::F3Station(2));
+        }
+        assert!(game.expedition.floor3_diagnosed(1));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor3.chambers[1].state,
+            ChamberState::Repaired
+        );
+        assert_eq!(game.expedition.floor3_chambers_repaired(), 2);
     }
 
     /// The general pointer path still works outside overlays:

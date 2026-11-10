@@ -763,3 +763,125 @@ mod tests {
         assert!(!kennel_choice_ok(usize::MAX));
     }
 }
+
+/// Floor 3 Chamber 1's judge: a report is sorted when the pair
+/// chosen for it is its own. The generic Broken pair (index 4)
+/// is no report's pair, so choosing it never sorts — the
+/// desk's refusal is the table itself.
+pub fn failure_pair_ok(report: usize, choice: usize) -> bool {
+    crate::content::FAILURE_REPORTS
+        .get(report)
+        .is_some_and(|entry| entry.pair == choice)
+}
+
+/// Floor 3 Chamber 2's judge: run the player's three stations
+/// as one real iterator chain over the belt, in station order —
+/// the portioner takes, the joiner settles duplicates, the gate
+/// decides the cracked piece — then poll the chain past its
+/// end. Returns what came off the belt and whether the chain
+/// stayed silent past its end (fused).
+pub fn conveyor_run(portion: usize, dedup: usize, halt: usize) -> (Vec<&'static str>, bool) {
+    let take = match portion {
+        0 => 2,
+        1 => 3,
+        _ => usize::MAX,
+    };
+    let belt = crate::content::CONVEYOR_BELT.iter().copied().take(take);
+    let deduped: Box<dyn Iterator<Item = crate::content::BeltItem>> = match dedup {
+        0 => {
+            let mut last: Option<crate::content::BeltItem> = None;
+            Box::new(belt.filter(move |item| {
+                if last == Some(*item) {
+                    false
+                } else {
+                    last = Some(*item);
+                    true
+                }
+            }))
+        }
+        1 => {
+            let mut seen: Vec<crate::content::BeltItem> = Vec::new();
+            Box::new(belt.filter(move |item| {
+                if seen.contains(item) {
+                    false
+                } else {
+                    seen.push(*item);
+                    true
+                }
+            }))
+        }
+        _ => Box::new(belt),
+    };
+    let mut chain: Box<dyn Iterator<Item = &'static str>> = match halt {
+        0 => Box::new(
+            deduped
+                .take_while(|item| !matches!(item, crate::content::BeltItem::Spoiled(_)))
+                .map(|item| item.name()),
+        ),
+        1 => Box::new(
+            deduped
+                .filter(|item| !matches!(item, crate::content::BeltItem::Spoiled(_)))
+                .map(|item| item.name()),
+        ),
+        _ => Box::new(deduped.map(|item| item.name())),
+    };
+    let mut out = Vec::new();
+    for name in chain.by_ref() {
+        out.push(name);
+    }
+    let fused = chain.next().is_none() && chain.next().is_none();
+    (out, fused)
+}
+
+/// The belt is set when its chain delivers exactly the desk's
+/// slate, fused past its end.
+pub fn conveyor_diagnosed(portion: usize, dedup: usize, halt: usize) -> bool {
+    let (out, fused) = conveyor_run(portion, dedup, halt);
+    fused && out == crate::content::CONVEYOR_REQUIRED
+}
+
+#[cfg(test)]
+mod floor3_tests {
+    use super::*;
+
+    /// The taxonomy judge: each report sorts only under its own
+    /// pair, and the Broken pair sorts nothing.
+    #[test]
+    fn failure_pairs_judge_each_report() {
+        for (report, entry) in crate::content::FAILURE_REPORTS.iter().enumerate() {
+            assert!(failure_pair_ok(report, entry.pair));
+            assert!(!failure_pair_ok(report, 4), "the Broken bin sorts nothing");
+            assert!(!failure_pair_ok(report, (entry.pair + 1) % 4));
+        }
+        assert!(!failure_pair_ok(99, 0));
+    }
+
+    /// The conveyor's correct setting is unique among its
+    /// neighbours: whole belt, first sightings, lift the cracked
+    /// piece — and every station off by one fails the slate.
+    #[test]
+    fn conveyor_correct_setting_is_unique() {
+        assert!(conveyor_diagnosed(2, 1, 1));
+        for portion in 0..3 {
+            for dedup in 0..3 {
+                for halt in 0..3 {
+                    if (portion, dedup, halt) != (2, 1, 1) {
+                        assert!(
+                            !conveyor_diagnosed(portion, dedup, halt),
+                            "({portion}, {dedup}, {halt}) must not deliver the slate"
+                        );
+                    }
+                }
+            }
+        }
+        let (out, fused) = conveyor_run(2, 1, 1);
+        assert_eq!(out, crate::content::CONVEYOR_REQUIRED);
+        assert!(fused);
+        // Halting at the cracked piece starves the slate.
+        let (out, _) = conveyor_run(2, 1, 0);
+        assert_eq!(out, ["gear", "spring"]);
+        // Joining runs lets the second spring through.
+        let (out, _) = conveyor_run(2, 0, 1);
+        assert_eq!(out, ["gear", "spring", "spring", "cam", "bell"]);
+    }
+}

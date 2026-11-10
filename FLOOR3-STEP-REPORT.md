@@ -109,3 +109,82 @@ were found by E0004 and armed for the new screen.
 - The Stratum II floors' doors (Floor 4 onward) arrive with
   their own floors' scaffolding steps; the stairs already
   report their clauses truthfully in the meantime.
+
+## Step 2 — Chambers 1–2 (Named Failures; the Conveyor)
+
+Landed 2026-11-10. The Gatehouse's first two desks are open
+and playable end to end on the GUI surface.
+
+### What landed
+
+- **`content.rs`** — Chamber 1: `FAILURE_CHARTER`,
+  `FAILURE_PAIRS` (five kind+remedy pairs; the fifth is the
+  generic **Broken** bin, present as a candidate precisely so
+  the desk can refuse it), `FAILURE_REPORTS` (four reports,
+  each with its true pair). Chamber 2: `CONVEYOR_CHARTER`,
+  `BeltItem` (Sound/Spoiled), `CONVEYOR_BELT` (gear, gear,
+  spring, cracked gear, spring, cam, cam, bell),
+  `CONVEYOR_REQUIRED` (gear, spring, cam, bell), and the
+  three stations' option lists. `FLOOR3_CHAMBER_INTROS` for
+  the Read verb, and `floor3_chamber_hints` (real ladders for
+  Chambers 1–2; the unopened desks answer honestly).
+- **`puzzles.rs`** — the judges. `failure_pair_ok`: a report
+  sorts only under its own pair, so the Broken pair sorts
+  nothing — the refusal is the table. `conveyor_run`: the
+  player's three stations composed as one real iterator chain
+  over the belt (take → dedup-by-closure → halt-mode), polled
+  past its end; `conveyor_diagnosed` requires the exact slate
+  and a fused chain. Unit tests prove the correct setting
+  (whole belt, first sightings, lift the cracked piece) is
+  **unique across all 27 settings**.
+- **`state.rs`** — `GatehouseWork` gains the facets
+  (`watched`, `pair_choices`, the three station choices), all
+  serde-defaulted. `floor3_diagnosed` / `floor3_file_proof` /
+  `floor3_repair_chamber` mirror Floor 2's proof discipline,
+  facet rule included; hint counters beside them. The save
+  invariant now recomputes Chambers 1–2: a claimed proof its
+  work does not hold is refused at load.
+- **`game.rs`** — `Screen::Floor3Chamber`, `ArmedFor::
+  Floor3Chamber`, elements `F3Watch` / `F3Pair` / `F3Station`
+  (cycling choices, with the belt's live delivery spoken at
+  each setting), the chamber layout and seal wiring, the
+  Prove/Hint verbs, the reading views (the charters as the
+  demonstrations), and the hub door opening the two desks.
+- **`shell.rs`** — `build_floor3_chamber` with per-chamber
+  fields: the wall of reports with pair buttons and remedies
+  (the Broken remedy prints in the warning colour), and the
+  belt view — belt, slate, three station buttons, and the
+  current setting's computed delivery.
+
+Build notes: the Prove-verb insertion first landed between
+match arms (the splicer's anchor sat at the arm's end, not
+inside it) and two doc comments were stranded by
+insert-before anchors again — all caught by the compiler or
+clippy and fixed in place; the tab-bar op briefly duplicated
+a pattern line (unreachable-pattern error) for the same
+reason. These are the splicer's known failure shapes; the
+gates caught every one.
+
+### Gates (primo, pinned rustc 1.99.0)
+
+- `cargo fmt --check`: clean. `cargo clippy --all-targets --
+  -D warnings`: exit 0.
+- `cargo test`: **102 passed / 0 failed** (was 95; +7:
+  puzzles 2 — the pair judge and the conveyor's unique
+  setting; state 4 — the judged sort, the unwatched sort
+  refused, the judged belt, the forged proof refused; game 1
+  — both chambers played on the GUI surface, including a
+  re-sort under a wrong pair unmaking the proof mid-play).
+  Log: `~/.local/share/pax/niflheim-floor3-step2-build-20261110/cargo-test.log`.
+- Theodolite: **0 diagnostics** on all five touched files;
+  log in the same evidence directory.
+- Determinism: the state-level probe extended through both
+  chambers, run twice; saves byte-identical, sha256
+  `8c465b0506fb05b4fd45be77b3e27cd45fd55a7349018b4417993424e61ce5e4`.
+- Android lib under the pin: 1,345,063,320 bytes. Launch
+  smoke under Xvfb: `cold_start_ms=1629`, no panics.
+
+### Left open
+
+- Chambers 3–4 land in Step 3, Chamber 5 and the FOE in
+  Step 4, the driven whole-floor playthrough in Step 5.

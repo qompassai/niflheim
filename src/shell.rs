@@ -958,6 +958,9 @@ fn rebuild_now(
         Screen::Floor2Chamber(index) => {
             build_floor2_chamber(commands, game, &pal, fonts, stage, index)
         }
+        Screen::Floor3Chamber(index) => {
+            build_floor3_chamber(commands, game, &pal, fonts, stage, index)
+        }
         Screen::Chamber(index) => build_chamber(commands, game, &pal, fonts, stage, index),
         Screen::Foe => build_foe(commands, game, &pal, fonts, stage),
         Screen::Floor2Foe => build_foe2(commands, game, &pal, fonts, stage),
@@ -1116,6 +1119,12 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
             index + 1,
             content::MENAGERIE_CHAMBERS[index].name
         ),
+        Screen::Floor3Chamber(index) => format!(
+            "Floor 3 · Chamber {} — {}",
+            index + 1,
+            content::GATEHOUSE_CHAMBERS[index].name
+        ),
+
         Screen::Title => "Niflheim".to_string(),
     };
     spawn_text(
@@ -2482,6 +2491,339 @@ fn build_chamber(
     };
     build_seal(commands, game, pal, fonts, stage, active, caption);
     build_bottom(commands, game, pal, fonts, stage);
+}
+
+/// A Floor 3 chamber: the desk, the rule stone, the panel, the
+/// chamber's own field, and the seal.
+fn build_floor3_chamber(
+    commands: &mut Commands,
+    game: &Game,
+    pal: &Pal,
+    fonts: &Fonts,
+    stage: Entity,
+    index: usize,
+) {
+    let meta = &content::GATEHOUSE_CHAMBERS[index];
+    let room = match index {
+        0 => "the Named Failures desk",
+        1 => "the Conveyor",
+        2 => "the Audit of Shouts",
+        3 => "the Sealed Request",
+        _ => "the Inspection",
+    };
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        &format!("Chamber {} — {} · {}", index + 1, meta.name, room),
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        Color::srgb_u8(120, 130, 140),
+        match index {
+            0 => "THE NAMED DOORS",
+            1 => "THE BELT",
+            2 => "THE BOOTH",
+            3 => "THE PRESS",
+            _ => "THE GUIDELINES WALL",
+        },
+        "the demonstration",
+    );
+    let stone = geom::stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(Color::srgb_u8(140, 140, 148)),
+        Some((2.0, pal.ink_dim)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 12.0,
+        stone.w,
+        "THE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 26.0,
+        stone.w,
+        "RULE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    build_panel_header(commands, pal, fonts, stage, meta.name, room);
+    let progress = &game.expedition.floor3.chambers[index];
+    build_slot(
+        commands,
+        pal,
+        fonts,
+        stage,
+        progress.state,
+        match index {
+            0 => "a failure named, with its remedy",
+            1 => "a chain that delivers the slate",
+            2 => "a shout sorted by who can cause it",
+            3 => "a request sealed in its order",
+            _ => "a checklist answered line by line",
+        },
+        progress.facet,
+    );
+    if index == 0 {
+        build_f3c1(commands, game, pal, fonts, stage);
+    }
+    if index == 1 {
+        build_f3c2(commands, game, pal, fonts, stage);
+    }
+    let (active, caption) = match progress.state {
+        ChamberState::Diagnosed => (true, "The seal wakes — press it to repair."),
+        ChamberState::Repaired => (false, "Repaired. This chamber's square fills."),
+        ChamberState::Unworked => (false, "The seal sleeps until the proof is complete."),
+    };
+    build_seal(commands, game, pal, fonts, stage, active, caption);
+    build_bottom(commands, game, pal, fonts, stage);
+}
+
+/// Floor 3 C1 — the Named Failures desk: the charter, the four
+/// reports on the wall, and a pair button under each that cycles
+/// the five pairs.
+fn build_f3c1(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor3.chambers[0].work;
+    spawn_button(
+        commands,
+        stage,
+        geom::f2_watch(),
+        if work.watched {
+            "Read the charter again"
+        } else {
+            "Read the desk's charter"
+        },
+        pal,
+        work.watched,
+        fonts,
+    );
+    if !work.watched {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            196.0,
+            Some(424.0),
+            "The desk's charter hangs over the bins. Read it before \
+             sorting — the sort is judged against it.",
+            12.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        return;
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        196.0,
+        Some(424.0),
+        content::FAILURE_CHARTER,
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (report, entry) in content::FAILURE_REPORTS.iter().enumerate() {
+        let rect = geom::f3_pair(report);
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            rect.y - 20.0,
+            Some(360.0),
+            entry.text,
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        let label = match work.pair_choices[report] {
+            Some(pair) => {
+                let (kind, _) = content::FAILURE_PAIRS[pair];
+                format!("File under: {kind}")
+            }
+            None => "File under: — unsorted —".to_string(),
+        };
+        spawn_button(commands, stage, rect, &label, pal, false, fonts);
+        if let Some(pair) = work.pair_choices[report] {
+            let (_, remedy) = content::FAILURE_PAIRS[pair];
+            spawn_text(
+                commands,
+                stage,
+                380.0,
+                rect.y + 38.0,
+                Some(360.0),
+                remedy,
+                11.5,
+                false,
+                if pair == 4 { pal.bad } else { pal.ink_dim },
+                Justify::Left,
+                fonts,
+            );
+        }
+    }
+}
+
+/// Floor 3 C2 — the Conveyor: the belt as it lies, the desk's
+/// slate, the three station buttons, and what the current
+/// setting would deliver.
+fn build_f3c2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor3.chambers[1].work;
+    spawn_button(
+        commands,
+        stage,
+        geom::f2_watch(),
+        if work.watched {
+            "Read the charter again"
+        } else {
+            "Read the belt's charter"
+        },
+        pal,
+        work.watched,
+        fonts,
+    );
+    if !work.watched {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            196.0,
+            Some(424.0),
+            "The belt's charter hangs by the gate. Read it before \
+             setting the stations — the desk runs your chain itself.",
+            12.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        return;
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        196.0,
+        Some(424.0),
+        content::CONVEYOR_CHARTER,
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let belt: Vec<&str> = content::CONVEYOR_BELT
+        .iter()
+        .map(|item| item.name())
+        .collect();
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        84.0,
+        Some(360.0),
+        &format!("On the belt: {}", belt.join(" · ")),
+        12.5,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        110.0,
+        Some(360.0),
+        &format!("The slate: {}", content::CONVEYOR_REQUIRED.join(" · ")),
+        12.5,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    let stations: [(&str, Option<usize>, &[&str; 3]); 3] = [
+        (
+            "The portioner",
+            work.portion_choice,
+            &content::PORTION_OPTIONS,
+        ),
+        ("The joiner", work.dedup_choice, &content::DEDUP_OPTIONS),
+        ("The gate", work.halt_choice, &content::HALT_OPTIONS),
+    ];
+    for (slot, (name, choice, options)) in stations.iter().enumerate() {
+        let rect = geom::f3_station(slot);
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            rect.y - 22.0,
+            Some(360.0),
+            name,
+            12.0,
+            true,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        let label = match choice {
+            Some(choice) => options[*choice].to_string(),
+            None => "— unset —".to_string(),
+        };
+        spawn_button(commands, stage, rect, &label, pal, false, fonts);
+    }
+    if let (Some(portion), Some(dedup), Some(halt)) =
+        (work.portion_choice, work.dedup_choice, work.halt_choice)
+    {
+        let (out, fused) = puzzles::conveyor_run(portion, dedup, halt);
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            420.0,
+            Some(360.0),
+            &format!(
+                "This setting delivers: {}{}",
+                out.join(" · "),
+                if fused {
+                    " — and stays silent past its end"
+                } else {
+                    ""
+                }
+            ),
+            12.5,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+    }
 }
 
 fn build_floor2_chamber(

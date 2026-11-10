@@ -1788,3 +1788,197 @@ pub const GATEHOUSE_CHAMBERS: [ChamberMeta; 5] = [
         prove_label: "Run the checklist",
     },
 ];
+
+/// Floor 3 Chamber 1's desk charter, read at the watch.
+pub const FAILURE_CHARTER: &str = "Every failure leaves this house by a named \
+    door, with its remedy written under the name. A failure with no name is \
+    carried to the Broken bin, and the Broken bin is emptied into the river \
+    at night — which is to say, it is lost, and the house falls down one \
+    unnamed failure at a time. Sort the reports on the wall: each takes the \
+    pair that is truly its own — its kind, and the remedy its kind carries. \
+    The Broken pair is on the desk because clerks reach for it. Reaching \
+    for it is the one sorting this desk refuses.";
+
+/// The failure pairs a report can be sorted under: a kind and the
+/// remedy the kind carries. The last is the generic bin the desk
+/// refuses — it is a candidate only so the refusal has something
+/// to refuse.
+pub const FAILURE_PAIRS: [(&str, &str); 5] = [
+    (
+        "NotFound",
+        "Say what was sought; the caller decides whether to go on.",
+    ),
+    (
+        "Malformed",
+        "Name the bad figure and the slate it came from.",
+    ),
+    (
+        "Refused",
+        "Carry the refusal upward with the door's name on it.",
+    ),
+    ("Mismatch", "Show both faces of the pair that disagree."),
+    ("Broken", "Mend it somehow."),
+];
+
+/// One failure report on Chamber 1's evidence wall.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct FailureReport {
+    /// The report as it reached the desk.
+    pub text: &'static str,
+    /// Its true pair in `FAILURE_PAIRS`.
+    pub pair: usize,
+}
+
+/// The reports on Chamber 1's wall.
+pub const FAILURE_REPORTS: [FailureReport; 4] = [
+    FailureReport {
+        text: "The night ledger is not on its shelf, nor in the returns cart.",
+        pair: 0,
+    },
+    FailureReport {
+        text: "The third figure of the tally slate is written in no hand \
+               the desk knows.",
+        pair: 1,
+    },
+    FailureReport {
+        text: "The sluice gate will not answer its crank; the keeper's \
+               mark is on the refusal.",
+        pair: 2,
+    },
+    FailureReport {
+        text: "The seal on the request does not match the seal on its letter.",
+        pair: 3,
+    },
+];
+
+/// Floor 3 Chamber 2's belt charter, read at the watch.
+pub const CONVEYOR_CHARTER: &str = "The belt carries the release's pieces \
+    past three stations, in this order: the portioner, which takes its \
+    share from the raw belt; the joiner, which settles duplicates; and \
+    the gate, which decides what a cracked piece does to the run. The \
+    desk's slate names what the office must receive. Set the three \
+    stations so the belt delivers exactly the slate — the desk runs \
+    your chain itself, polls it past its end to prove it fused, and \
+    compares what comes off the belt.";
+
+/// One piece on Chamber 2's belt.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BeltItem {
+    /// A sound piece, by name.
+    Sound(&'static str),
+    /// A cracked piece, by name.
+    Spoiled(&'static str),
+}
+
+impl BeltItem {
+    /// The piece's name, sound or cracked.
+    pub fn name(&self) -> &'static str {
+        match self {
+            BeltItem::Sound(name) | BeltItem::Spoiled(name) => name,
+        }
+    }
+}
+
+/// The belt's load, in order.
+pub const CONVEYOR_BELT: [BeltItem; 8] = [
+    BeltItem::Sound("gear"),
+    BeltItem::Sound("gear"),
+    BeltItem::Sound("spring"),
+    BeltItem::Spoiled("cracked gear"),
+    BeltItem::Sound("spring"),
+    BeltItem::Sound("cam"),
+    BeltItem::Sound("cam"),
+    BeltItem::Sound("bell"),
+];
+
+/// What the office must receive, in order.
+pub const CONVEYOR_REQUIRED: [&str; 4] = ["gear", "spring", "cam", "bell"];
+
+/// The portioner's settings.
+pub const PORTION_OPTIONS: [&str; 3] = [
+    "Take two from the belt",
+    "Take three from the belt",
+    "Take the whole belt",
+];
+
+/// The joiner's settings.
+pub const DEDUP_OPTIONS: [&str; 3] = [
+    "Join each run of alike pieces into one",
+    "Keep only the first sighting of each piece",
+    "Keep every piece as it comes",
+];
+
+/// The gate's settings.
+pub const HALT_OPTIONS: [&str; 3] = [
+    "Halt the belt at the cracked piece",
+    "Lift the cracked piece off and carry on",
+    "Send the cracked piece through",
+];
+
+/// The five chambers' reading texts (the Read verb).
+pub const FLOOR3_CHAMBER_INTROS: [&str; 5] = [
+    "The Named Failures desk. Reports come up from every floor of the \
+     house and are pinned to the wall unsorted; below them stands one \
+     great bin chalked BROKEN, and it is fuller than all the named \
+     doors together.",
+    "The Conveyor. A belt of release pieces runs the length of the room \
+     past three stations, and a slate by the gate names what the office \
+     must receive.",
+    "The Audit of Shouts. A soundproof booth, a ledger of everything \
+     ever shouted in the house, and two chairs: one for the failures a \
+     traveller can cause, one for the ones only the house can.",
+    "The Sealed Request. A press, a wax pot, and a rail of requests in \
+     three trays: unaddressed, addressed, bodied. The seal sits at the \
+     end of the rail, and the rail is the point.",
+    "The Inspection. The Guidelines wall, the Interner's Hoard open on \
+     the table under audit, the amendment slate, and — smallest and \
+     last — the Stranger's Anvil in its box.",
+];
+
+/// The Gatehouse's hint ladders, four rungs each (FULL-DESIGN
+/// §5.4). Rung 4 names the chamber facet's location — a FOE has
+/// no facet, but a chamber's ladder closes on its own seal.
+pub fn floor3_chamber_hints(chamber: usize) -> [&'static str; 4] {
+    match chamber {
+        0 => [
+            "Four reports, five pairs. Read the charter first — it \
+             tells you what a sorting is.",
+            "Each report's own words carry its kind: what is absent, \
+             what is misshapen, what refused, what disagrees.",
+            "The remedy is not chosen separately — it rides with the \
+             kind. Find the kind and the pair is whole.",
+            "The Broken pair fits nothing, and the desk refuses it \
+             for all four. The pairs, in the wall's order, begin: \
+             NotFound, Malformed…",
+        ],
+        1 => [
+            "The stations act in order: portion, join, gate. Run the \
+             belt in your head exactly as the desk will run it.",
+            "The slate asks for a bell — the last piece on the belt. \
+             Any portion smaller than the whole belt never reaches it.",
+            "The second spring must not arrive: it is a duplicate, \
+             but not of its neighbour. Joining runs is not enough.",
+            "Whole belt, first sightings only, and the cracked gear \
+             lifted off — the slate comes off the belt exactly, and \
+             the chain stays silent past its end.",
+        ],
+        2 => [
+            "This desk is not open yet.",
+            "This desk is not open yet.",
+            "This desk is not open yet.",
+            "This desk is not open yet.",
+        ],
+        3 => [
+            "This desk is not open yet.",
+            "This desk is not open yet.",
+            "This desk is not open yet.",
+            "This desk is not open yet.",
+        ],
+        _ => [
+            "This desk is not open yet.",
+            "This desk is not open yet.",
+            "This desk is not open yet.",
+            "This desk is not open yet.",
+        ],
+    }
+}
