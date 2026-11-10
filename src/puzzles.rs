@@ -1054,6 +1054,43 @@ mod floor3_step4_tests {
     }
 }
 
+/// Floor 4 Chamber 3's judge helpers: the size of the
+/// smallest encoding of `crest`, measured from the real
+/// types, and whether a choice is that smallest.
+pub fn crest_best(crest: usize) -> usize {
+    let mut best = 0usize;
+    for candidate in 1..3 {
+        let (size, _) = crate::content::crest_candidate_facts(crest, candidate);
+        let (best_size, _) = crate::content::crest_candidate_facts(crest, best);
+        if size < best_size {
+            best = candidate;
+        }
+    }
+    best
+}
+
+/// Whether the crest's chosen encoding is a smallest one.
+pub fn crest_choice_ok(crest: usize, choice: Option<usize>) -> bool {
+    choice == Some(crest_best(crest))
+}
+
+/// The offsets the language itself promises a seating
+/// under the treaty rules: each stone's offset aligned up
+/// to its own alignment, in order. (Chamber 2's
+/// `wall_layout` runs the same accumulation and rounds the
+/// span; the treaty needs the offsets themselves.)
+pub fn c_offsets(stones: &[(u32, u32)]) -> Vec<u32> {
+    let mut offsets = Vec::with_capacity(stones.len());
+    let mut cursor: u32 = 0;
+    for &(size, align) in stones {
+        let align = align.max(1);
+        cursor = cursor.div_ceil(align) * align;
+        offsets.push(cursor);
+        cursor += size;
+    }
+    offsets
+}
+
 #[cfg(test)]
 mod floor4_step2_tests {
     use super::*;
@@ -1117,5 +1154,53 @@ mod floor4_step2_tests {
                 "a seating beat the minimum: {seating:?}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod floor4_step3_tests {
+    use super::*;
+
+    /// Floor 4 Step 3: the crests' prices are the real types'
+    /// prices, the niche wins each crest, and the treaty's
+    /// true offsets differ from the book in exactly one seat.
+    #[test]
+    fn floor4_crest_facts_and_treaty_offsets() {
+        let expect: [[(u32, u32); 3]; 3] = [
+            [(2, 1), (2, 1), (1, 1)],
+            [(24, 8), (16, 8), (24, 8)],
+            [(16, 8), (16, 8), (8, 8)],
+        ];
+        for (crest, row) in expect.iter().enumerate() {
+            for (candidate, wanted) in row.iter().enumerate() {
+                assert_eq!(
+                    crate::content::crest_candidate_facts(crest, candidate),
+                    *wanted,
+                    "crest {crest} candidate {candidate}"
+                );
+            }
+        }
+        assert_eq!(crest_best(0), 2);
+        assert_eq!(crest_best(1), 1);
+        assert_eq!(crest_best(2), 2);
+        assert!(crest_choice_ok(0, Some(2)));
+        assert!(!crest_choice_ok(0, Some(1)));
+        assert!(!crest_choice_ok(1, None));
+        let dims: Vec<(u32, u32)> = crate::content::TREATY_STONES[..4]
+            .iter()
+            .map(|&(_, size, align)| (size, align))
+            .collect();
+        let offsets = c_offsets(&dims);
+        assert_eq!(offsets, vec![0, 3, 8, 16]);
+        let promised = crate::content::TREATY_PROMISES;
+        let mut wrong = 0;
+        for seat in 0..4 {
+            if promised[seat] != offsets[seat] {
+                wrong += 1;
+                assert_eq!(seat, 3, "only the final promise is careless");
+                assert_eq!(offsets[seat] - promised[seat], 6);
+            }
+        }
+        assert_eq!(wrong, 1);
     }
 }

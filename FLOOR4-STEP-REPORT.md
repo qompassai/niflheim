@@ -171,3 +171,79 @@ recorded for Pax's word.
 - Chambers 3–4 land in Step 3 (the Seal Stones, the
   treaty wall); Chamber 5 and the Crooked Foundation in
   Step 4; the driven whole-floor playthrough in Step 5.
+
+## Step 3 — Chambers 3–4: the Seal Stones and the treaty wall
+
+**Method note (D-1189, Owner 2026-11-10):** from the next
+rung boundary the completion programme is Claude-direct
+throughout; no further phlow-stack dispatches. Floor 4
+Steps 1–3 were in fact also authored directly by the
+coordinator (blocks + splicer, recorded here), so the
+authorship line is unbroken; the formal change applies
+from Step 4.
+
+### What landed
+
+- **`content.rs`** — `CRESTS` and `CREST_CANDIDATES`, and
+  `crest_candidate_facts(crest, candidate)`: prices from
+  the real types — the tagged pair, `Option<u8>`,
+  `Option<NonZeroU8>`; the flagged word tuple,
+  `Option<&str>`, the hand-packed triple; the wide pair,
+  `Option<u64>`, `Option<NonZeroU64>`. `TREATY_STONES`
+  (four treaty stones + the free-cut twin) and
+  `TREATY_PROMISES` [0, 3, 8, 10]; the two charters; real
+  hint ladders for both chambers (the treaty ladder names
+  failure class #14 in miniature at its seam).
+- **`puzzles.rs`** — `crest_best` (argmin over measured
+  sizes) and `crest_choice_ok`; `c_offsets`, the treaty
+  accumulation returning the offsets themselves. The unit
+  test asserts every candidate's measured facts outright,
+  the niche winner per crest [2, 1, 2], and that the
+  book's promises differ from the line's offsets in
+  exactly one seat — the last, by exactly the six bytes of
+  forgotten padding.
+- **`state.rs`** — `FoundationWork` gains the crest cuts
+  and their proofs, the treaty seating and its proof, and
+  `final_promise`, which starts at the book's naive figure
+  (hand-written `Default` + serde field default, so fresh
+  and migrated records agree). Judges: Chamber 3 — all
+  crests proven at a smallest cut; Chamber 4 — the treaty
+  order seated, the line dropped, the promise amended to
+  the true final offset. Both chambers refuse the free
+  twin and the unamended book in-suite.
+- **`game.rs`** — elements `F4Crest`, `F4CrestProve`,
+  `F4TreatySeat`, `F4TreatyReset`, `F4TreatyProve`,
+  `F4PromiseUp/Down`, all bounded (the promise walks
+  0..=32); choosing a new cut spends the old proof; the
+  line refuses a short wall and stops at the free stone
+  with the reason spoken; the prove line reads the wall
+  seat by seat, naming the one seat where book and line
+  disagree.
+- **`shell.rs`** — `build_f4c3` (cuts and their measured
+  prices) and `build_f4c4` (the tray with each stone's
+  seat and promise, the amendment steppers, the line's
+  reading against the standing promise).
+
+### Gates (primo, pinned rustc 1.99.0)
+
+- `cargo fmt --check`: clean. `cargo clippy --all-targets
+  -- -D warnings`: exit 0.
+- `cargo test`: **129 passed / 0 failed** (was 126; +3:
+  puzzles 1 — facts, winners, and the one-careless-promise
+  audit; state 1 — both judges with their refusals; game 1
+  — both chambers played on the GUI surface).
+  Log: `~/.local/share/pax/niflheim-floor4-step3-build-20261110/cargo-test.log`.
+- Theodolite: **0 diagnostics** on all five touched files.
+- Determinism: the probe extended through both chambers;
+  saves byte-identical, sha256
+  `92f009fa2be28adf5cd5b1bd71a1f057fcb58797ffc0e6776e47e8f665ba61b4`.
+- Android lib under the pin: 1,346,849,760 bytes. Launch
+  smoke under Xvfb: `cold_start_ms=1415`, no panics.
+
+### Left open
+
+- Chamber 5 and the Crooked Foundation land in Step 4;
+  the driven whole-floor playthrough in Step 5. A small
+  separately-gated fix for Floor 3's inert chamber reset
+  (flagged in Step 2's section) lands before Step 4 per
+  D-1189.

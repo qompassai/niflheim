@@ -2849,6 +2849,12 @@ fn build_floor4_chamber(
     if index == 1 {
         build_f4c2(commands, game, pal, fonts, stage);
     }
+    if index == 2 {
+        build_f4c3(commands, game, pal, fonts, stage);
+    }
+    if index == 3 {
+        build_f4c4(commands, game, pal, fonts, stage);
+    }
 }
 
 /// Chamber 1's panel: the six stones with their slate and
@@ -3129,6 +3135,215 @@ fn build_f4c2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, st
         "CLEAR THE WALL",
         pal,
         false,
+        fonts,
+    );
+}
+
+/// Chamber 3's panel: the crests, their chosen cuts, and
+/// the line's measured prices.
+fn build_f4c3(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor4.chambers[2].work;
+    for crest in 0..3usize {
+        let row = geom::f4_crest_row(crest);
+        spawn_button(
+            commands,
+            stage,
+            row,
+            content::CRESTS[crest],
+            pal,
+            false,
+            fonts,
+        );
+        spawn_button(
+            commands,
+            stage,
+            geom::f4_crest_prove(crest),
+            if work.crest_proven[crest] {
+                "MEASURED"
+            } else {
+                "MEASURE"
+            },
+            pal,
+            false,
+            fonts,
+        );
+        let state = match (work.crest_choices[crest], work.crest_proven[crest]) {
+            (None, _) => "no cut chosen yet".to_string(),
+            (Some(cut), false) => format!(
+                "cut: {} — unmeasured",
+                content::CREST_CANDIDATES[crest][cut]
+            ),
+            (Some(cut), true) => {
+                let (size, align) = content::crest_candidate_facts(crest, cut);
+                format!(
+                    "cut: {} — the line reads size {size}, alignment {align}",
+                    content::CREST_CANDIDATES[crest][cut]
+                )
+            }
+        };
+        spawn_text(
+            commands,
+            stage,
+            row.x + 4.0,
+            row.y + 34.0,
+            Some(440.0),
+            &state,
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        "Three crests, three cuts each. The line measures the cut you chose; \
+         the stone is spent either way.",
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// Chamber 4's panel: the treaty tray, the book's promises,
+/// the line's readings, and the amendment steppers.
+fn build_f4c4(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor4.chambers[3].work;
+    for stone in 0..5usize {
+        let (name, size, align) = content::TREATY_STONES[stone];
+        let row = geom::f4_treaty_row(stone);
+        spawn_button(
+            commands,
+            stage,
+            row,
+            &format!("{name} — {size} · {align}"),
+            pal,
+            false,
+            fonts,
+        );
+        let state = if stone == 4 {
+            "free-cut: under no treaty, promises nothing".to_string()
+        } else if let Some(seat) = work.treaty_order.iter().position(|&s| s == stone as u8) {
+            format!(
+                "seated at seat {} — the book promises {}",
+                seat + 1,
+                content::TREATY_PROMISES[seat]
+            )
+        } else {
+            "on the tray".to_string()
+        };
+        spawn_text(
+            commands,
+            stage,
+            row.x + 4.0,
+            row.y + 34.0,
+            Some(400.0),
+            &state,
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        428.0,
+        None,
+        "THE BOOK'S FINAL PROMISE",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        436.0,
+        458.0,
+        Some(64.0),
+        &work.final_promise.to_string(),
+        13.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_size_down(),
+        "−",
+        pal,
+        false,
+        fonts,
+    );
+    spawn_button(commands, stage, geom::f4_size_up(), "+", pal, false, fonts);
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_treaty_prove(),
+        "DROP THE LINE",
+        pal,
+        false,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_treaty_reset(),
+        "TAKE THE WALL DOWN",
+        pal,
+        false,
+        fonts,
+    );
+    let line = if work.treaty_proven {
+        let dims: Vec<(u32, u32)> = work
+            .treaty_order
+            .iter()
+            .map(|&stone| {
+                let (_, size, align) = content::TREATY_STONES[stone as usize];
+                (size, align)
+            })
+            .collect();
+        let offsets = crate::puzzles::c_offsets(&dims);
+        format!(
+            "The line has read the wall: seats at {}. The book's last promise \
+             stands at {} — the line reads {}.",
+            offsets
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", "),
+            work.final_promise,
+            offsets[3]
+        )
+    } else {
+        "Four seats under treaty; the fifth stone owes nothing and proves \
+         nothing. Seat the wall, drop the line, then amend the book where the \
+         book was careless."
+            .to_string()
+    };
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &line,
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
         fonts,
     );
 }

@@ -2540,6 +2540,19 @@ pub fn floor4_chamber_hints(index: usize) -> [&'static str; 4] {
             "Seat in falling alignment — widest law first — and the voids close. The bench order's wall reads 24; the least span reads 16.",
             "The seam: the beam seated second costs seven bytes of air before it. Nothing about the stones changed; only their order did — the void was never in the stones, it was in the sequence.",
         ],
+        2 => [
+            "Choose a cut for each crest, then let the line measure it — the price is a fact, not a guess.",
+            "An Option of a plain value pays bytes for its tag. Ask what the value itself forbids.",
+            "A count that can never be nothing, a word that can never be null: the absent-mark fits inside the forbidden value.",
+            "The seam, named: the niche. Cut each crest where its mark rides free in a value that can never occur — the line's sizes will say you found it.",
+        ],
+        3 => [
+            "Seat the four treaty stones in the order the book lists them; leave the free-cut arch on the tray.",
+            "Drop the line and read the seats against the book, seat by seat.",
+            "Three of the book's promises are true. The fourth was written by adding sizes and forgetting what alignment costs.",
+            "The seam, named — failure class #14 in miniature: amend the book's final promise to the offset the line reads, neither the sum nor a guess.",
+        ],
+
         _ => [
             "The Plumbmason's galleries reward the measured over the remembered: work the room's own instrument before you guess.",
             "Read the inscription again, slowly. The rule of the room is carved on its stone, and the demonstration at the desk shows it kept once.",
@@ -2548,3 +2561,100 @@ pub fn floor4_chamber_hints(index: usize) -> [&'static str; 4] {
         ],
     }
 }
+
+/// Chamber 3's crests, in bench order.
+pub const CRESTS: [&str; 3] = [
+    "the Count's crest — absent, or a count that is never nothing",
+    "the Herald's crest — absent, or a borrowed word",
+    "the Surveyor's crest — absent, or a wide count that is never nothing",
+];
+
+/// Chamber 3's candidate encodings per crest. Their sizes
+/// are not written here: `crest_candidate_facts` measures
+/// the real types at runtime.
+pub const CREST_CANDIDATES: [[&str; 3]; 3] = [
+    [
+        "a tag stone seated beside the count",
+        "the count as an Option of a plain count",
+        "the count that is never nothing, itself",
+    ],
+    [
+        "a flag stitched to the borrowed word",
+        "the borrowed word as an Option",
+        "word, length, and tag, packed by hand",
+    ],
+    [
+        "a tag stone seated beside the wide count",
+        "the wide count as an Option of a plain count",
+        "the wide count that is never nothing, itself",
+    ],
+];
+
+/// The bench's measure of one crest encoding: (size,
+/// alignment) of the real type behind the candidate, taken
+/// with `size_of` / `align_of` — a candidate's price is a
+/// measured fact, never a table entry.
+pub fn crest_candidate_facts(crest: usize, candidate: usize) -> (u32, u32) {
+    match (crest, candidate) {
+        (0, 0) => (
+            std::mem::size_of::<(u8, u8)>() as u32,
+            std::mem::align_of::<(u8, u8)>() as u32,
+        ),
+        (0, 1) => (
+            std::mem::size_of::<Option<u8>>() as u32,
+            std::mem::align_of::<Option<u8>>() as u32,
+        ),
+        (0, _) => (
+            std::mem::size_of::<Option<std::num::NonZeroU8>>() as u32,
+            std::mem::align_of::<Option<std::num::NonZeroU8>>() as u32,
+        ),
+        (1, 0) => (
+            std::mem::size_of::<(bool, &str)>() as u32,
+            std::mem::align_of::<(bool, &str)>() as u32,
+        ),
+        (1, 1) => (
+            std::mem::size_of::<Option<&str>>() as u32,
+            std::mem::align_of::<Option<&str>>() as u32,
+        ),
+        (1, _) => (
+            std::mem::size_of::<(u64, u64, u8)>() as u32,
+            std::mem::align_of::<(u64, u64, u8)>() as u32,
+        ),
+        (2, 0) => (
+            std::mem::size_of::<(u8, u64)>() as u32,
+            std::mem::align_of::<(u8, u64)>() as u32,
+        ),
+        (2, 1) => (
+            std::mem::size_of::<Option<u64>>() as u32,
+            std::mem::align_of::<Option<u64>>() as u32,
+        ),
+        _ => (
+            std::mem::size_of::<Option<std::num::NonZeroU64>>() as u32,
+            std::mem::align_of::<Option<std::num::NonZeroU64>>() as u32,
+        ),
+    }
+}
+
+/// Chamber 4's stones: the four treaty stones and the free
+/// twin of the last, in tray order — (name, size, alignment).
+/// The treaty's promised offsets live in `TREATY_PROMISES`;
+/// the true offsets are computed by `puzzles::c_offsets`.
+pub const TREATY_STONES: [(&str, u32, u32); 5] = [
+    ("the threshold", 3, 1),
+    ("the jamb", 5, 1),
+    ("the lintel", 2, 2),
+    ("the arch", 8, 8),
+    ("the arch, free-cut", 8, 8),
+];
+
+/// The treaty book's promised offset for each seat, in seat
+/// order. The first three promises are true; the fourth was
+/// written by the naive sum and forgets the arch's padding —
+/// failure class #14, the Last Mile, in miniature.
+pub const TREATY_PROMISES: [u32; 4] = [0, 3, 8, 10];
+
+/// Chamber 3's charter, spoken at the watch.
+pub const CREST_CHARTER: &str = "The Seal Stones' charter: find the niche before you pay for the tag — a value that can never occur is room for a mark that costs nothing, and the bench proves the saving in real sizes.";
+
+/// Chamber 4's charter, spoken at the watch.
+pub const TREATY_CHARTER: &str = "The treaty wall's charter: a treaty stone promises every offset and is held to all of them; a free stone promises nothing and owes nothing. Prove each offset with the line — and where the book itself was written carelessly, amend the book, not the stone.";

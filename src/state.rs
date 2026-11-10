@@ -466,7 +466,7 @@ pub struct Floor4ChamberProgress {
 /// Floor 4's chamber work record. Fields land with their
 /// chambers (FLOOR4-BRIEF steps 2–4), each serde-defaulted so
 /// saves written by earlier steps load whole.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct FoundationWork {
     /// Chambers 1–5: the chamber's charter has been read.
     #[serde(default)]
@@ -486,6 +486,47 @@ pub struct FoundationWork {
     /// Chamber 2: the wall's seating, in order.
     #[serde(default)]
     pub wall_order: Vec<u8>,
+
+    /// Chamber 3: the encoding chosen per crest.
+    #[serde(default)]
+    pub crest_choices: [Option<usize>; 3],
+    /// Chamber 3: the line has measured this crest's choice.
+    #[serde(default)]
+    pub crest_proven: [bool; 3],
+    /// Chamber 4: the wall's seating, in order.
+    #[serde(default)]
+    pub treaty_order: Vec<u8>,
+    /// Chamber 4: the line has dropped on the seated wall.
+    #[serde(default)]
+    pub treaty_proven: bool,
+    /// Chamber 4: the final seat's promise as it currently
+    /// stands — the book's naive figure until amended.
+    #[serde(default = "default_final_promise")]
+    pub final_promise: u32,
+}
+
+/// Chamber 4's final promise starts at the treaty book's
+/// naive figure; the player amends it at the wall.
+fn default_final_promise() -> u32 {
+    crate::content::TREATY_PROMISES[3]
+}
+
+impl Default for FoundationWork {
+    fn default() -> Self {
+        FoundationWork {
+            watched: false,
+            pred_size: [None; 6],
+            pred_align: [None; 6],
+            measured: [false; 6],
+            annotate: [None; 6],
+            wall_order: Vec::new(),
+            crest_choices: [None; 3],
+            crest_proven: [false; 3],
+            treaty_order: Vec::new(),
+            treaty_proven: false,
+            final_promise: default_final_promise(),
+        }
+    }
 }
 
 /// The Floor 4 FOE's progress: the crooked foundation's arc.
@@ -2362,6 +2403,24 @@ impl Expedition {
                     crate::puzzles::wall_layout(&seated).0 == crate::puzzles::wall_minimum(&pairs)
                 }
             }
+            2 => {
+                progress.work.watched
+                    && progress.work.crest_proven.iter().all(|&proven| proven)
+                    && (0..3).all(|crest| {
+                        crate::puzzles::crest_choice_ok(crest, progress.work.crest_choices[crest])
+                    })
+            }
+            3 => {
+                let dims: Vec<(u32, u32)> = crate::content::TREATY_STONES[..4]
+                    .iter()
+                    .map(|&(_, size, align)| (size, align))
+                    .collect();
+                let truth = crate::puzzles::c_offsets(&dims);
+                progress.work.watched
+                    && progress.work.treaty_order == vec![0, 1, 2, 3]
+                    && progress.work.treaty_proven
+                    && progress.work.final_promise == truth[3]
+            }
             _ => false,
         }
     }
@@ -2376,6 +2435,15 @@ impl Expedition {
                     .to_string(),
                 1 => "the wall is not yet the smallest: seat all five \
                       stones so the line reads the least span"
+                    .to_string(),
+                2 => "the crests are not yet cut to their least: choose \
+                      each cut, let the line measure it, and pay for no \
+                      tag a niche would carry free"
+                    .to_string(),
+                3 => "the treaty wall does not yet stand proven: seat \
+                      the four treaty stones in order, drop the line, \
+                      and amend the book's final promise to the offset \
+                      the line reads"
                     .to_string(),
                 _ => "this gallery is not open yet".to_string(),
             }));
@@ -2392,7 +2460,14 @@ impl Expedition {
         Ok(match chamber {
             0 => "Filed: six stones, predicted before they were                   measured, and every surprise owned in writing."
                 .to_string(),
-            1 => "Filed: the same five stones, and the voids counted                   out of the wall."
+            1 => "Filed: the same five stones, and the voids counted \
+                  out of the wall."
+                .to_string(),
+            2 => "Filed: three crests, each cut where its mark rides \
+                  free in a value that can never occur."
+                .to_string(),
+            3 => "Filed: four offsets the line itself read, and a book \
+                  amended where the book was careless."
                 .to_string(),
             _ => "The proof is filed with the Plumbmason's office.".to_string(),
         })
@@ -3133,6 +3208,57 @@ mod tests {
         assert_eq!(loaded.floor4, Floor4Progress::new());
         let resaved = loaded.save_json().expect("re-save");
         assert!(resaved.contains("\"version\":4"));
+    }
+
+    /// Floor 4 Step 3 state: the crests judge on measured
+    /// sizes, and the treaty wall judges the seating, the
+    /// line, and the amended promise together.
+    #[test]
+    fn floor4_crests_and_treaty_judged() {
+        let mut expedition = Expedition::new();
+        // Chamber 3: proven losers do not diagnose.
+        {
+            let work = &mut expedition.floor4.chambers[2].work;
+            work.watched = true;
+            work.crest_choices = [Some(1), Some(1), Some(2)];
+            work.crest_proven = [true; 3];
+        }
+        assert!(!expedition.floor4_diagnosed(2));
+        expedition.floor4.chambers[2].work.crest_choices[0] = Some(2);
+        assert!(expedition.floor4_diagnosed(2));
+        // An unproven crest unmakes it.
+        expedition.floor4.chambers[2].work.crest_proven[1] = false;
+        assert!(!expedition.floor4_diagnosed(2));
+        expedition.floor4.chambers[2].work.crest_proven[1] = true;
+        expedition.floor4_file_proof(2).expect("crest proof");
+        expedition.floor4_repair_chamber(2).expect("crest repair");
+        // Chamber 4: the promise starts at the book's figure.
+        assert_eq!(expedition.floor4.chambers[3].work.final_promise, 10);
+        {
+            let work = &mut expedition.floor4.chambers[3].work;
+            work.watched = true;
+            work.treaty_order = vec![0, 1, 2, 4];
+            work.treaty_proven = true;
+            work.final_promise = 16;
+        }
+        assert!(
+            !expedition.floor4_diagnosed(3),
+            "the free twin cannot hold the treaty's last seat"
+        );
+        expedition.floor4.chambers[3].work.treaty_order = vec![0, 1, 2, 3];
+        expedition.floor4.chambers[3].work.final_promise = 10;
+        assert!(
+            !expedition.floor4_diagnosed(3),
+            "the book's naive promise left standing refuses"
+        );
+        expedition.floor4.chambers[3].work.final_promise = 16;
+        assert!(expedition.floor4_diagnosed(3));
+        expedition.floor4.chambers[3].work.treaty_proven = false;
+        assert!(!expedition.floor4_diagnosed(3));
+        expedition.floor4.chambers[3].work.treaty_proven = true;
+        expedition.floor4_file_proof(3).expect("treaty proof");
+        expedition.floor4_repair_chamber(3).expect("treaty repair");
+        assert_eq!(expedition.floor4_chambers_repaired(), 2);
     }
 
     /// Floor 4 Chambers 1–2: the bench judge (true slates,

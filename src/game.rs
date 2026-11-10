@@ -332,6 +332,20 @@ pub enum El {
     F4Seat(u8),
     /// Floor 4 Chamber 2: clear the wall back to the bench.
     F4WallReset,
+    /// Floor 4 Chamber 3: cycle one crest's cut.
+    F4Crest(u8),
+    /// Floor 4 Chamber 3: let the line measure one crest's cut.
+    F4CrestProve(u8),
+    /// Floor 4 Chamber 4: seat one stone next in the treaty wall.
+    F4TreatySeat(u8),
+    /// Floor 4 Chamber 4: take the treaty wall down.
+    F4TreatyReset,
+    /// Floor 4 Chamber 4: drop the line on the treaty wall.
+    F4TreatyProve,
+    /// Floor 4 Chamber 4: raise the book's final promise.
+    F4PromiseUp,
+    /// Floor 4 Chamber 4: lower the book's final promise.
+    F4PromiseDown,
     /// Floor 3 Chamber 1: cycle one report's pair, by report.
     F3Pair(u8),
     /// Floor 3 Chamber 2: cycle one station's setting, by slot
@@ -1096,6 +1110,31 @@ pub mod geom {
     /// Floor 4 Chamber 2: clear the wall.
     pub fn f4_wall_reset() -> Rect {
         Rect::new(380.0, 500.0, 180.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 3: one crest's row.
+    pub fn f4_crest_row(crest: usize) -> Rect {
+        Rect::new(380.0, 100.0 + crest as f32 * 76.0, 300.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 3: one crest's measure button.
+    pub fn f4_crest_prove(crest: usize) -> Rect {
+        Rect::new(692.0, 100.0 + crest as f32 * 76.0, 76.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 4: one stone's tray row.
+    pub fn f4_treaty_row(stone: usize) -> Rect {
+        Rect::new(380.0, 100.0 + stone as f32 * 56.0, 300.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 4: drop the line.
+    pub fn f4_treaty_prove() -> Rect {
+        Rect::new(380.0, 500.0, 180.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 4: take the wall down.
+    pub fn f4_treaty_reset() -> Rect {
+        Rect::new(580.0, 500.0, 188.0, 30.0)
     }
 
     /// A roster group header row on Floor 2's panel.
@@ -2138,6 +2177,177 @@ impl Game {
             El::RosterToggle(group) => {
                 self.toggle_roster_group(group as usize);
             }
+
+            El::F4Crest(crest) => {
+                if matches!(self.screen, Screen::Floor4Chamber(2)) {
+                    let crest = crest as usize;
+                    let work = &mut self.expedition.floor4.chambers[2].work;
+                    work.crest_choices[crest] = match work.crest_choices[crest] {
+                        None => Some(0),
+                        Some(2) => Some(0),
+                        Some(choice) => Some(choice + 1),
+                    };
+                    work.crest_proven[crest] = false;
+                    let choice = work.crest_choices[crest].unwrap_or(0);
+                    self.say(
+                        StatusKind::Info,
+                        format!(
+                            "{}: cut as {}. Its price is not known until the line \
+                             measures it.",
+                            content::CRESTS[crest],
+                            content::CREST_CANDIDATES[crest][choice]
+                        ),
+                    );
+                    self.changed();
+                }
+            }
+            El::F4CrestProve(crest) => {
+                if matches!(self.screen, Screen::Floor4Chamber(2)) {
+                    let crest = crest as usize;
+                    let work = &self.expedition.floor4.chambers[2].work;
+                    match work.crest_choices[crest] {
+                        None => {
+                            self.say(
+                                StatusKind::Refusal,
+                                "Choose the crest's cut before you ask the line to \
+                                 measure it.",
+                            );
+                        }
+                        Some(choice) => {
+                            let (size, align) = content::crest_candidate_facts(crest, choice);
+                            self.expedition.floor4.chambers[2].work.crest_proven[crest] = true;
+                            self.say(
+                                StatusKind::Info,
+                                format!(
+                                    "The line measures {}: size {size}, alignment \
+                                     {align}. The stone is spent either way — the \
+                                     seat keeps what the line finds.",
+                                    content::CREST_CANDIDATES[crest][choice]
+                                ),
+                            );
+                        }
+                    }
+                    self.changed();
+                }
+            }
+            El::F4TreatySeat(stone) => {
+                if matches!(self.screen, Screen::Floor4Chamber(3)) {
+                    let work = &mut self.expedition.floor4.chambers[3].work;
+                    if work.treaty_order.contains(&stone) {
+                        self.say(
+                            StatusKind::Info,
+                            format!(
+                                "{} already stands in the wall.",
+                                content::TREATY_STONES[stone as usize].0
+                            ),
+                        );
+                    } else if work.treaty_order.len() >= 4 {
+                        self.say(
+                            StatusKind::Refusal,
+                            "The wall has four seats and all are filled.",
+                        );
+                    } else {
+                        let seat = work.treaty_order.len();
+                        work.treaty_order.push(stone);
+                        work.treaty_proven = false;
+                        self.say(
+                            StatusKind::Info,
+                            format!(
+                                "{} takes seat {}, where the book promises offset {}.",
+                                content::TREATY_STONES[stone as usize].0,
+                                seat + 1,
+                                content::TREATY_PROMISES[seat]
+                            ),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+            El::F4TreatyReset => {
+                if matches!(self.screen, Screen::Floor4Chamber(3)) {
+                    let work = &mut self.expedition.floor4.chambers[3].work;
+                    work.treaty_order.clear();
+                    work.treaty_proven = false;
+                    self.say(
+                        StatusKind::Info,
+                        "The wall comes down; the stones return to the tray.",
+                    );
+                    self.changed();
+                }
+            }
+            El::F4TreatyProve => {
+                if matches!(self.screen, Screen::Floor4Chamber(3)) {
+                    let order = self.expedition.floor4.chambers[3].work.treaty_order.clone();
+                    if order.len() < 4 {
+                        self.say(
+                            StatusKind::Refusal,
+                            "The line drops on a finished wall: four seats, no fewer.",
+                        );
+                    } else if order.contains(&4) {
+                        self.say(
+                            StatusKind::Refusal,
+                            "The line stops at the free-cut arch: it is under no \
+                             treaty and promises no offset. A wall that must be \
+                             proven cannot stand on a stone that owes nothing.",
+                        );
+                    } else {
+                        let dims: Vec<(u32, u32)> = order
+                            .iter()
+                            .map(|&stone| {
+                                let (_, size, align) = content::TREATY_STONES[stone as usize];
+                                (size, align)
+                            })
+                            .collect();
+                        let offsets = puzzles::c_offsets(&dims);
+                        self.expedition.floor4.chambers[3].work.treaty_proven = true;
+                        let seats: Vec<String> = (0..4)
+                            .map(|seat| {
+                                let promised = content::TREATY_PROMISES[seat];
+                                if offsets[seat] == promised {
+                                    format!("seat {}: {}", seat + 1, offsets[seat])
+                                } else {
+                                    format!(
+                                        "seat {}: the book says {promised}, the line \
+                                         reads {}",
+                                        seat + 1,
+                                        offsets[seat]
+                                    )
+                                }
+                            })
+                            .collect();
+                        self.say(
+                            StatusKind::Info,
+                            format!("The line reads the wall: {}.", seats.join(" · ")),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+            El::F4PromiseUp => {
+                if matches!(self.screen, Screen::Floor4Chamber(3)) {
+                    let work = &mut self.expedition.floor4.chambers[3].work;
+                    work.final_promise = (work.final_promise + 1).min(32);
+                    let promise = work.final_promise;
+                    self.say(
+                        StatusKind::Info,
+                        format!("The book's final promise now reads {promise}."),
+                    );
+                    self.changed();
+                }
+            }
+            El::F4PromiseDown => {
+                if matches!(self.screen, Screen::Floor4Chamber(3)) {
+                    let work = &mut self.expedition.floor4.chambers[3].work;
+                    work.final_promise = work.final_promise.saturating_sub(1);
+                    let promise = work.final_promise;
+                    self.say(
+                        StatusKind::Info,
+                        format!("The book's final promise now reads {promise}."),
+                    );
+                    self.changed();
+                }
+            }
+
             El::F4Watch => {
                 if let Screen::Floor4Chamber(index) = self.screen {
                     if let Some(progress) = self.expedition.floor4.chambers.get_mut(index) {
@@ -2148,6 +2358,8 @@ impl Game {
                         match index {
                             0 => content::BENCH_CHARTER,
                             1 => content::WALL_CHARTER,
+                            2 => content::CREST_CHARTER,
+                            3 => content::TREATY_CHARTER,
                             _ => "The Plumbmason nods at the gallery.",
                         },
                     );
@@ -3952,6 +4164,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             els.push((El::Stone, geom::stone()));
             els.push((El::ResetChamber, rects::RESET_BTN));
             layout_floor4_chamber_panel(&mut els, game, index);
+            layout_floor4_chamber34(&mut els, index);
             layout_seal(&mut els, game);
         }
 
@@ -4124,6 +4337,29 @@ fn layout_floor4_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
             els.push((El::F4Seat(stone as u8), geom::f4_seat_row(stone)));
         }
         els.push((El::F4WallReset, geom::f4_wall_reset()));
+    }
+}
+
+/// Floor 4 Chambers 3–4 panel elements: the crests' cuts
+/// and proofs; the treaty tray, the line, the amendment.
+fn layout_floor4_chamber34(els: &mut Vec<(El, Rect)>, chamber: usize) {
+    if chamber == 2 {
+        for crest in 0..3u8 {
+            els.push((El::F4Crest(crest), geom::f4_crest_row(crest as usize)));
+            els.push((
+                El::F4CrestProve(crest),
+                geom::f4_crest_prove(crest as usize),
+            ));
+        }
+    }
+    if chamber == 3 {
+        for stone in 0..5u8 {
+            els.push((El::F4TreatySeat(stone), geom::f4_treaty_row(stone as usize)));
+        }
+        els.push((El::F4PromiseDown, geom::f4_size_down()));
+        els.push((El::F4PromiseUp, geom::f4_size_up()));
+        els.push((El::F4TreatyProve, geom::f4_treaty_prove()));
+        els.push((El::F4TreatyReset, geom::f4_treaty_reset()));
     }
 }
 
@@ -5236,6 +5472,82 @@ mod tests {
         game.pointer_down(rect.cx(), rect.cy());
         game.pointer_up(rect.cx(), rect.cy());
         assert_eq!(game.screen, Screen::Floor4Hub);
+    }
+
+    /// Floor 4 Step 3, driven on the GUI surface: the crests
+    /// are cut to their niches and measured, and the treaty
+    /// wall is seated, proven, and its book amended — both
+    /// chambers through the seal.
+    #[test]
+    fn floor4_chambers_3_and_4_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        // The stairs stand lit (the Step 1 fixture).
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.foe.gate_passed = true;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        game.expedition.floor3.foe.gate_passed = true;
+        for chamber in game.expedition.floor2.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        game.screen = Screen::Hub;
+        click(&mut game, El::DoorFloor4);
+        assert_eq!(game.screen, Screen::Floor4Hub);
+        // Chamber 3 — the Seal Stones.
+        click(&mut game, El::Floor4Door(2));
+        assert_eq!(game.screen, Screen::Floor4Chamber(2));
+        click(&mut game, El::F4Watch);
+        for _ in 0..3 {
+            click(&mut game, El::F4Crest(0));
+        }
+        click(&mut game, El::F4CrestProve(0));
+        for _ in 0..2 {
+            click(&mut game, El::F4Crest(1));
+        }
+        click(&mut game, El::F4CrestProve(1));
+        for _ in 0..3 {
+            click(&mut game, El::F4Crest(2));
+        }
+        click(&mut game, El::F4CrestProve(2));
+        assert!(game.expedition.floor4_diagnosed(2));
+        click(&mut game, El::Chip(Verb::Prove));
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_some());
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor4.chambers[2].state,
+            ChamberState::Repaired
+        );
+        // Chamber 4 — the treaty wall.
+        click(&mut game, El::TabFloor);
+        click(&mut game, El::DoorFloor4);
+        click(&mut game, El::Floor4Door(3));
+        assert_eq!(game.screen, Screen::Floor4Chamber(3));
+        click(&mut game, El::F4Watch);
+        for stone in 0..4u8 {
+            click(&mut game, El::F4TreatySeat(stone));
+        }
+        click(&mut game, El::F4TreatyProve);
+        assert!(game.expedition.floor4.chambers[3].work.treaty_proven);
+        assert!(!game.expedition.floor4_diagnosed(3));
+        for _ in 0..6 {
+            click(&mut game, El::F4PromiseUp);
+        }
+        assert!(game.expedition.floor4_diagnosed(3));
+        click(&mut game, El::Chip(Verb::Prove));
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(game.expedition.floor4_chambers_repaired(), 2);
     }
 
     /// Driven playthrough: Floor 4's first two chambers on
