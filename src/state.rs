@@ -663,6 +663,24 @@ pub struct VeilWork {
     /// Chamber 2: per-miss annotation (the deciding rule).
     #[serde(default)]
     pub annotations: [Option<usize>; 8],
+    /// Chamber 3: the chosen phrasing per line, per tool.
+    #[serde(default)]
+    pub card_lines: [[u8; 3]; 4],
+    /// Chamber 4: the chosen seam (words from the left end).
+    #[serde(default)]
+    pub split: u8,
+    /// Chamber 4: the beam stands seamed at the split.
+    #[serde(default)]
+    pub seamed: bool,
+    /// Chamber 4: the referee's over-reach was refused.
+    #[serde(default)]
+    pub access_refused: bool,
+    /// Chamber 4: each half has been worked.
+    #[serde(default)]
+    pub worked: [bool; 2],
+    /// Chamber 4: each half has been dropped, in order.
+    #[serde(default)]
+    pub dropped: [bool; 2],
 }
 
 /// Floor 5, one chamber's progress.
@@ -2755,6 +2773,19 @@ impl Expedition {
                             || work.annotations[index] == Some(crate::content::TENANCIES[index].2)
                     })
             }
+            // Chamber 3: all twelve lines checkable.
+            2 => work.watched && crate::puzzles::cards_all_checkable(&work.card_lines),
+            // Chamber 4: seamed at a sound split, and the
+            // referee's walk complete — the over-reach refused,
+            // both halves worked, both dropped in order.
+            3 => {
+                work.watched
+                    && work.seamed
+                    && crate::puzzles::beam_sound_split(work.split)
+                    && work.access_refused
+                    && work.worked == [true, true]
+                    && work.dropped == [true, true]
+            }
             _ => false,
         }
     }
@@ -3876,6 +3907,61 @@ mod tests {
         assert!(
             !expedition.floor5_diagnosed(1),
             "the wrong rule does not annotate a miss"
+        );
+    }
+
+    /// Floor 5 Step 3 state: the cards judge on all twelve
+    /// lines checkable, and the beam on a sound seam with the
+    /// referee's walk complete — reach refused, halves
+    /// worked, halves dropped in the card's order.
+    #[test]
+    fn floor5_cards_and_beam_judged() {
+        let mut expedition = Expedition::new();
+        // Chamber 3: the key set, unwatched, does not prove.
+        {
+            let work = &mut expedition.floor5.chambers[2].work;
+            for (tool, (_, _, key)) in crate::content::CARD_TOOLS.iter().enumerate() {
+                work.card_lines[tool] = *key;
+            }
+        }
+        assert!(!expedition.floor5_diagnosed(2));
+        expedition.floor5.chambers[2].work.watched = true;
+        assert!(expedition.floor5_diagnosed(2));
+        expedition.floor5.chambers[2].work.card_lines[1][1] = 0;
+        assert!(
+            !expedition.floor5_diagnosed(2),
+            "one vapour line left standing unmakes the rack"
+        );
+        expedition.floor5.chambers[2].work.card_lines[1][1] = 2;
+        assert!(expedition.floor5_diagnosed(2));
+        expedition.floor5_file_proof(2).expect("cards proof");
+        expedition.floor5_repair_chamber(2).expect("cards repair");
+        // Chamber 4: a sound seam alone is not the walk.
+        {
+            let work = &mut expedition.floor5.chambers[3].work;
+            work.watched = true;
+            work.split = 3;
+            work.seamed = true;
+        }
+        assert!(!expedition.floor5_diagnosed(3));
+        {
+            let work = &mut expedition.floor5.chambers[3].work;
+            work.access_refused = true;
+            work.worked = [true, true];
+            work.dropped = [true, false];
+        }
+        assert!(
+            !expedition.floor5_diagnosed(3),
+            "the right half still stands on its trestle"
+        );
+        expedition.floor5.chambers[3].work.dropped = [true, true];
+        assert!(expedition.floor5_diagnosed(3));
+        // An end seam unmakes it even with the walk walked:
+        // the seam's soundness is part of the proof.
+        expedition.floor5.chambers[3].work.split = 0;
+        assert!(
+            !expedition.floor5_diagnosed(3),
+            "no seam stands at the beam's very end"
         );
     }
     /// Floor 4 Step 3 state: the crests judge on measured

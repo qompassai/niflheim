@@ -338,6 +338,22 @@ pub enum El {
     F5Judge,
     /// Floor 5 Chamber 2: cycle one miss's annotation.
     F5Annotate(u8),
+    /// Floor 5 Chamber 3: cycle one line of one tool's card.
+    F5CardLine(u8, u8),
+    /// Floor 5 Chamber 4: move the seam one word left.
+    F5SplitDown,
+    /// Floor 5 Chamber 4: move the seam one word right.
+    F5SplitUp,
+    /// Floor 5 Chamber 4: saw the seam at the chosen split.
+    F5Seam,
+    /// Floor 5 Chamber 4: reach past a half's end.
+    F5Reach,
+    /// Floor 5 Chamber 4: work both halves at once.
+    F5WorkHalves,
+    /// Floor 5 Chamber 4: drop the left half.
+    F5DropLeft,
+    /// Floor 5 Chamber 4: drop the right half.
+    F5DropRight,
     /// Floor 4 Chamber 1: put this stone on the slate.
     F4Stone(u8),
     /// Floor 4 Chamber 1: step the slate's size down.
@@ -1178,6 +1194,46 @@ pub mod geom {
     /// Floor 5 Chamber 2: call the referee.
     pub fn f5_judge_btn() -> Rect {
         Rect::new(380.0, 508.0, 220.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 3: one card line's row (tool-major).
+    pub fn f5_cardline_row(tool: usize, line: usize) -> Rect {
+        Rect::new(380.0, 100.0 + (tool * 3 + line) as f32 * 44.0, 300.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 4: move the seam one word left.
+    pub fn f5_split_down() -> Rect {
+        Rect::new(380.0, 100.0, 120.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 4: move the seam one word right.
+    pub fn f5_split_up() -> Rect {
+        Rect::new(510.0, 100.0, 120.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 4: saw the seam at the chosen split.
+    pub fn f5_seam_btn() -> Rect {
+        Rect::new(640.0, 100.0, 136.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 4: the referee's over-reach.
+    pub fn f5_reach_btn() -> Rect {
+        Rect::new(380.0, 150.0, 180.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 4: work both halves at once.
+    pub fn f5_work_btn() -> Rect {
+        Rect::new(570.0, 150.0, 206.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 4: drop the left half.
+    pub fn f5_drop_left_btn() -> Rect {
+        Rect::new(380.0, 200.0, 180.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 4: drop the right half.
+    pub fn f5_drop_right_btn() -> Rect {
+        Rect::new(570.0, 200.0, 206.0, 30.0)
     }
 
     /// Floor 4 Chamber 1: one bench stone's row.
@@ -2877,6 +2933,270 @@ impl Game {
                             _ => "The Veilwalker nods at the gauze.",
                         },
                     );
+                    self.changed();
+                }
+            }
+
+            El::F5CardLine(tool, line) => {
+                if let Screen::Floor5Chamber(2) = self.screen {
+                    let tool = tool as usize;
+                    let line = line as usize;
+                    if let Some(slot) = self
+                        .expedition
+                        .floor5
+                        .chambers
+                        .get_mut(2)
+                        .and_then(|progress| progress.work.card_lines.get_mut(tool))
+                        .and_then(|lines| lines.get_mut(line))
+                    {
+                        *slot = (*slot + 1) % 3;
+                        let phrasing = *slot;
+                        let (name, lines, _) = &content::CARD_TOOLS[tool];
+                        self.say(
+                            StatusKind::Info,
+                            format!(
+                                "{} — line {} now reads: {}",
+                                name,
+                                line + 1,
+                                lines[line][phrasing as usize]
+                            ),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F5SplitDown => {
+                if let Screen::Floor5Chamber(3) = self.screen {
+                    let message = {
+                        let work = &mut self.expedition.floor5.chambers[3].work;
+                        if work.split == 0 {
+                            None
+                        } else {
+                            work.split -= 1;
+                            if work.seamed {
+                                work.seamed = false;
+                                work.access_refused = false;
+                                work.worked = [false, false];
+                                work.dropped = [false, false];
+                                Some(
+                                    "A new seam chosen: the beam stands \
+                                     unseamed again, and the referee's walk \
+                                     is spent — it begins over at the saw."
+                                        .to_string(),
+                                )
+                            } else {
+                                Some(format!(
+                                    "The chalked seam moves: {} word{} from \
+                                     the left end.",
+                                    work.split,
+                                    if work.split == 1 { "" } else { "s" }
+                                ))
+                            }
+                        }
+                    };
+                    match message {
+                        None => self.say(
+                            StatusKind::Info,
+                            "The seam stands at the beam's left end already.",
+                        ),
+                        Some(text) => self.say(StatusKind::Info, text),
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F5SplitUp => {
+                if let Screen::Floor5Chamber(3) = self.screen {
+                    let message = {
+                        let work = &mut self.expedition.floor5.chambers[3].work;
+                        if work.split >= 6 {
+                            None
+                        } else {
+                            work.split += 1;
+                            if work.seamed {
+                                work.seamed = false;
+                                work.access_refused = false;
+                                work.worked = [false, false];
+                                work.dropped = [false, false];
+                                Some(
+                                    "A new seam chosen: the beam stands \
+                                     unseamed again, and the referee's walk \
+                                     is spent — it begins over at the saw."
+                                        .to_string(),
+                                )
+                            } else {
+                                Some(format!(
+                                    "The chalked seam moves: {} word{} from \
+                                     the left end.",
+                                    work.split,
+                                    if work.split == 1 { "" } else { "s" }
+                                ))
+                            }
+                        }
+                    };
+                    match message {
+                        None => self.say(
+                            StatusKind::Info,
+                            "The seam stands at the beam's right end already.",
+                        ),
+                        Some(text) => self.say(StatusKind::Info, text),
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F5Seam => {
+                if let Screen::Floor5Chamber(3) = self.screen {
+                    let work = &mut self.expedition.floor5.chambers[3].work;
+                    if work.seamed {
+                        self.say(
+                            StatusKind::Info,
+                            "The beam already stands seamed at this split.",
+                        );
+                    } else if work.split == 0 {
+                        self.say(
+                            StatusKind::Refusal,
+                            "A seam at the very start leaves no left half \
+                             at all: the face will not seam air.",
+                        );
+                    } else if work.split >= 6 {
+                        self.say(
+                            StatusKind::Refusal,
+                            "A seam at the very end leaves no right half \
+                             at all: the face will not seam air.",
+                        );
+                    } else {
+                        work.seamed = true;
+                        let (left, right) = puzzles::beam_halves(work.split);
+                        self.say(
+                            StatusKind::Good,
+                            format!(
+                                "Seamed: {} word{} to the left of the seam, \
+                                 {} to the right. The seam's contract now \
+                                 governs both halves.",
+                                left.len(),
+                                if left.len() == 1 { "" } else { "s" },
+                                right.len()
+                            ),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F5Reach => {
+                if let Screen::Floor5Chamber(3) = self.screen {
+                    let work = &mut self.expedition.floor5.chambers[3].work;
+                    if !work.seamed {
+                        self.say(
+                            StatusKind::Refusal,
+                            "Seam the beam first: unseamed, there are no \
+                             halves, and nothing for a hand to reach past.",
+                        );
+                    } else if work.access_refused {
+                        self.say(
+                            StatusKind::Info,
+                            "The face has already refused the over-reach; \
+                             the ruling stands on the record.",
+                        );
+                    } else {
+                        work.access_refused = true;
+                        self.say(
+                            StatusKind::Refusal,
+                            "A hand reaches one word past the left half's \
+                             end — and the face refuses it, by the seam's \
+                             card: a half ends where its contract says it \
+                             ends. The ruling stands on the record.",
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F5WorkHalves => {
+                if let Screen::Floor5Chamber(3) = self.screen {
+                    let work = &mut self.expedition.floor5.chambers[3].work;
+                    if !work.seamed {
+                        self.say(
+                            StatusKind::Refusal,
+                            "Seam the beam first: the crews work halves, \
+                             and unseamed there are none.",
+                        );
+                    } else if work.worked == [true, true] {
+                        self.say(StatusKind::Info, "Both halves already stand worked.");
+                    } else {
+                        work.worked = [true, true];
+                        self.say(
+                            StatusKind::Good,
+                            "Both crews work at once, one to each half; \
+                             neither hand crosses the seam, and the beam \
+                             holds under both.",
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F5DropLeft => {
+                if let Screen::Floor5Chamber(3) = self.screen {
+                    let work = &mut self.expedition.floor5.chambers[3].work;
+                    if !work.seamed {
+                        self.say(
+                            StatusKind::Refusal,
+                            "Seam the beam first: there is nothing to drop \
+                             in order until the halves exist.",
+                        );
+                    } else if work.worked != [true, true] {
+                        self.say(
+                            StatusKind::Refusal,
+                            "Work both halves first: the drop is the \
+                             walk's last ruling, not its first.",
+                        );
+                    } else if work.dropped[0] {
+                        self.say(StatusKind::Info, "The left half already lies on the floor.");
+                    } else {
+                        work.dropped[0] = true;
+                        self.say(
+                            StatusKind::Good,
+                            "The left half comes down first, in the order \
+                             the seam's card prescribes.",
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F5DropRight => {
+                if let Screen::Floor5Chamber(3) = self.screen {
+                    let work = &mut self.expedition.floor5.chambers[3].work;
+                    if !work.seamed {
+                        self.say(
+                            StatusKind::Refusal,
+                            "Seam the beam first: there is nothing to drop \
+                             in order until the halves exist.",
+                        );
+                    } else if !work.dropped[0] {
+                        self.say(
+                            StatusKind::Refusal,
+                            "The card's order is left first: a right-first \
+                             drop is refused, with the reason on the card \
+                             — the left half still stands on its trestle.",
+                        );
+                    } else if work.dropped[1] {
+                        self.say(
+                            StatusKind::Info,
+                            "The right half already lies on the floor.",
+                        );
+                    } else {
+                        work.dropped[1] = true;
+                        self.say(
+                            StatusKind::Good,
+                            "The right half comes down after the left. The \
+                             drop order stands kept, and the beam's walk \
+                             is complete.",
+                        );
+                    }
                     self.changed();
                 }
             }
@@ -5229,6 +5549,25 @@ fn layout_floor5_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
         }
         els.push((El::F5Judge, geom::f5_judge_btn()));
     }
+    if chamber == 2 {
+        for tool in 0..content::CARD_TOOLS.len() {
+            for line in 0..3 {
+                els.push((
+                    El::F5CardLine(tool as u8, line as u8),
+                    geom::f5_cardline_row(tool, line),
+                ));
+            }
+        }
+    }
+    if chamber == 3 {
+        els.push((El::F5SplitDown, geom::f5_split_down()));
+        els.push((El::F5SplitUp, geom::f5_split_up()));
+        els.push((El::F5Seam, geom::f5_seam_btn()));
+        els.push((El::F5Reach, geom::f5_reach_btn()));
+        els.push((El::F5WorkHalves, geom::f5_work_btn()));
+        els.push((El::F5DropLeft, geom::f5_drop_left_btn()));
+        els.push((El::F5DropRight, geom::f5_drop_right_btn()));
+    }
 }
 
 /// The Floor 4 chambers' panel elements: the watch, Chamber
@@ -6528,6 +6867,97 @@ mod tests {
         click(&mut game, El::SealConfirm);
         assert_eq!(
             game.expedition.floor5.chambers[1].state,
+            ChamberState::Repaired
+        );
+    }
+
+    /// Floor 5 Step 3, driven on the GUI surface: the Contract
+    /// Cards are cycled line by line to the checkable
+    /// phrasings, and the Split Beam is seamed, refused at the
+    /// over-reach, worked on both halves, and dropped in the
+    /// card's order — both chambers through the seal.
+    #[test]
+    fn floor5_chambers_three_and_four_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn to_floor5_hub(game: &mut Game) {
+            game.screen = Screen::Hub;
+            game.expedition.foe.state = FoeState::Fallen;
+            game.expedition.foe.gate_passed = true;
+            game.expedition.floor2.foe.state = FoeState::Fallen;
+            game.expedition.floor3.foe.gate_passed = true;
+            for chamber in game.expedition.floor2.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            for chamber in game.expedition.floor4.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor4.foe.state = FoeState::Fallen;
+            click(game, El::DoorFloor4);
+            click(game, El::DoorFloor5);
+            assert_eq!(game.screen, Screen::Floor5Hub);
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        to_floor5_hub(&mut game);
+        // Chamber 3 — the Contract Cards.
+        click(&mut game, El::Floor5Door(2));
+        click(&mut game, El::F5Watch);
+        for (tool, (_, _, key)) in content::CARD_TOOLS.iter().enumerate() {
+            for (line, checkable) in key.iter().enumerate() {
+                for _ in 0..*checkable {
+                    click(&mut game, El::F5CardLine(tool as u8, line as u8));
+                }
+            }
+        }
+        assert!(game.expedition.floor5_diagnosed(2));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor5.chambers[2].state,
+            ChamberState::Repaired
+        );
+        // Chamber 4 — the Split Beam.
+        click(&mut game, El::TabFloor);
+        to_floor5_hub(&mut game);
+        click(&mut game, El::Floor5Door(3));
+        click(&mut game, El::F5Watch);
+        // A right-first drop before the seam is refused outright.
+        click(&mut game, El::F5DropRight);
+        assert_eq!(
+            game.expedition.floor5.chambers[3].work.dropped,
+            [false, false]
+        );
+        click(&mut game, El::F5SplitUp);
+        click(&mut game, El::F5SplitUp);
+        click(&mut game, El::F5SplitUp);
+        click(&mut game, El::F5Seam);
+        assert!(game.expedition.floor5.chambers[3].work.seamed);
+        // The right half cannot come down before the left.
+        click(&mut game, El::F5Reach);
+        click(&mut game, El::F5WorkHalves);
+        click(&mut game, El::F5DropRight);
+        assert_eq!(
+            game.expedition.floor5.chambers[3].work.dropped,
+            [false, false]
+        );
+        click(&mut game, El::F5DropLeft);
+        click(&mut game, El::F5DropRight);
+        assert!(game.expedition.floor5_diagnosed(3));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor5.chambers[3].state,
             ChamberState::Repaired
         );
     }

@@ -3051,6 +3051,105 @@ pub const TENANCIES: [(&str, bool, usize); 8] = [
     ("Two writers share one page, both pens moving.", false, 3),
 ];
 
+/// Floor 5 Chamber 3's four tools: each card carries three
+/// lines, and each line cycles three phrasings of which
+/// exactly one is checkable — a condition a sceptic can test
+/// before the call. The third element of each row is the
+/// checkable phrasing's index, per line (the key of record:
+/// T0 [1,0,1], T1 [0,2,1], T2 [2,0,1], T3 [0,1,2]).
+/// One tool's card: its name, its three lines (three
+/// phrasings apiece), and the checkable phrasing per line.
+pub type CardTool = (&'static str, [[&'static str; 3]; 3], [u8; 3]);
+
+pub const CARD_TOOLS: [CardTool; 4] = [
+    (
+        "The Length-Reader",
+        [
+            [
+                "It only ever touches what it is given.",
+                "The caller's pointer is non-null and aligned for the words it reads.",
+                "The pointer is as sound as the hand that passes it.",
+            ],
+            [
+                "The stated length does not exceed the words actually behind the pointer.",
+                "Lengths are handled the way lengths always are.",
+                "It reads no more than it should.",
+            ],
+            [
+                "Nothing it does can surprise a careful caller.",
+                "It writes nothing; every word it returns comes from the stated range.",
+                "It is safe because it is a reader, and readers do no harm.",
+            ],
+        ],
+        [1, 0, 1],
+    ),
+    (
+        "The Splitter",
+        [
+            [
+                "The seam index lies strictly inside the buffer, so both halves are non-empty.",
+                "The seam is chosen the way seams are chosen.",
+                "Any seam a caller names is a seam the tool can use.",
+            ],
+            [
+                "The halves never trouble each other.",
+                "Two hands may hold it, as hands may hold anything.",
+                "The two halves share no word: the ranges the tool returns are disjoint.",
+            ],
+            [
+                "A bad seam fails politely, in the usual way.",
+                "A seam at either end, or past it, is refused with the seam named.",
+                "It cannot fail at a seam it was told to use.",
+            ],
+        ],
+        [0, 2, 1],
+    ),
+    (
+        "The Keeper",
+        [
+            [
+                "What is lent is looked after, as lent things are.",
+                "The Keeper's care is total and well known.",
+                "While a section is lent out, the store does not grow, shrink, or move it.",
+            ],
+            [
+                "Each lent section is returned exactly once; a second return is refused.",
+                "Sections come back when they come back.",
+                "Nothing lent is ever truly lost.",
+            ],
+            [
+                "Any hand may look in while a section is out.",
+                "No hand reads a lent section through the store while the loan stands.",
+                "The store knows its sections wherever they are.",
+            ],
+        ],
+        [2, 0, 1],
+    ),
+    (
+        "The Lens",
+        [
+            [
+                "The station it reads is whole and initialised before the reading.",
+                "It reads what is there, whatever 'there' means.",
+                "A station under the Lens is a station understood.",
+            ],
+            [
+                "Reading changes nothing worth naming.",
+                "It writes nothing: the station's words are the same after as before.",
+                "It is safe because looking cannot hurt.",
+            ],
+            [
+                "It sees as far as it needs to.",
+                "The whole machine is its proper field.",
+                "It reads only the one station named on its card, and no other.",
+            ],
+        ],
+        [0, 1, 2],
+    ),
+];
+
+/// The four tools' short names, for the bench's buttons.
+pub const CARD_TOOL_SHORT: [&str; 4] = ["READER", "SPLITTER", "KEEPER", "LENS"];
 /// Chamber 1's hint ladder.
 pub fn floor5_walk_hints() -> [&'static str; 4] {
     [
@@ -3086,11 +3185,50 @@ pub fn floor5_tenancy_hints() -> [&'static str; 4] {
     ]
 }
 
+/// Chamber 3's hint ladder.
+pub fn floor5_card_hints() -> [&'static str; 4] {
+    [
+        "Cycle every line: each of the twelve wears three phrasings, and \
+         exactly one of them can be checked by a sceptic with a ruler \
+         and a question.",
+        "A checkable line states a condition the caller can test before \
+         the call — a pointer aligned, a length held against a buffer, \
+         a refusal that names what it refuses.",
+        "Vapour praises the tool and tests nothing: 'safe because it is \
+         safe' is a circle, and 'in the usual way' is a shrug wearing a \
+         card's shape.",
+        "The seam, named on one tool of the four: the Keeper's loan line \
+         stands checkable only as 'while a section is lent out, the \
+         store does not grow, shrink, or move it'. Judge every line by \
+         that standard — could a sceptic test it before the call?",
+    ]
+}
+
+/// Chamber 4's hint ladder.
+pub fn floor5_beam_hints() -> [&'static str; 4] {
+    [
+        "Choose the seam before the saw: the stepper walks the split \
+         from end to end, and only a seam strictly inside the beam \
+         leaves two halves a crew can work.",
+        "A seam at either end leaves nothing standing on one side, and \
+         the face refuses to seam air — the refusal names the empty \
+         half.",
+        "The referee's walk has three rulings, in order: an access past \
+         a half's end, refused by the face; both halves worked at \
+         once; and the halves dropped in the card's order.",
+        "The seam, named: chalk the seam at the beam's middle — three \
+         words to the left, three to the right — reach past a half, \
+         work both halves together, and drop the left half before the \
+         right.",
+    ]
+}
 /// Floor 5's per-chamber hint ladders, dispatched by chamber.
 pub fn floor5_chamber_hints(chamber: usize) -> [&'static str; 4] {
     match chamber {
         0 => floor5_walk_hints(),
         1 => floor5_tenancy_hints(),
+        2 => floor5_card_hints(),
+        3 => floor5_beam_hints(),
         _ => floor5_general_hints(),
     }
 }

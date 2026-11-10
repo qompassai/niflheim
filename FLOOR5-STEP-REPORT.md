@@ -182,3 +182,82 @@ on primo.
 - Chambers 3–4 land in Step 3 (the Contract Cards, the
   Split Beam); Chamber 5 and the Thing Behind the Veil in
   Step 4; the driven whole-floor playthrough in Step 5.
+
+## Step 3 — Chambers 3–4: the Contract Cards, the Split Beam
+
+Built Claude-direct by the Part A coordinator lane under
+the completion spec (splice53.py + blocks/, anchors
+asserted exactly once against the tree at 7e8b767).
+Evidence: `~/.local/share/pax/niflheim-floor5-step3-build-20261110/`
+on primo.
+
+### What landed
+
+- **`state.rs`** — VeilWork gains, all serde-defaulted:
+  C3 `card_lines: [[u8; 3]; 4]`; C4 `split: u8`,
+  `seamed: bool`, `access_refused: bool`,
+  `worked: [bool; 2]`, `dropped: [bool; 2]`.
+  `floor5_diagnosed` now judges chambers 3–4 (twelve
+  checkable lines; a sound seam plus the referee's full
+  walk).
+- **`content.rs`** — `CARD_TOOLS` (a `CardTool` alias names
+  the row shape): the four tools — the Length-Reader, the
+  Splitter, the Keeper, the Lens — three lines each, three
+  phrasings per line, exactly one checkable; the key of
+  record is T0 [1,0,1], T1 [0,2,1], T2 [2,0,1], T3 [0,1,2]
+  per the spec. Plus the two chambers' four-rung hint
+  ladders (the fourth rung names each seam) and the
+  dispatch arms that serve them.
+- **`puzzles.rs`** — `card_line_checkable` /
+  `card_lines_checkable` / `cards_all_checkable`; the beam
+  itself as a real `[u32; 6]` = [2, 5, 1, 4, 2, 3] with
+  `beam_sound_split` and `beam_halves` — a test asserts
+  `size_of_val(&BEAM) == 24`, so the Plumb Line's fact the
+  chamber states is one the suite proves (DS-13).
+- **`game.rs` / `shell.rs`** — the card-line cycling
+  presses; the beam's seam steppers (a new split unseams
+  and spends the walk, per the spec), the saw, the
+  over-reach the face refuses, the two-handed work, and
+  the drops (a right-first drop refused with its reason);
+  the per-chamber builders showing the rack's phrasings
+  and the beam with its chalked seam.
+
+Build notes: two borrow-checker fixes on the way (the seam
+steppers now compose their message inside the work borrow
+and speak after it closes — the F5Walk read-first shape).
+Clippy's first pass caught four lints in the new code —
+a stranded doc comment where the shell builders were
+spliced (the hub's doc returns to its fn; the splicer's
+anchor now names the doc line), the `CARD_TOOLS` type
+complexity (the alias above), a manual range-contains,
+and a needless range loop in a test — all fixed
+curatively and re-gated; no lint was allowed or narrowed.
+
+### Gates (primo, pinned rustc 1.99.0)
+
+- `cargo fmt --check`: clean. `cargo clippy --all-targets
+  -- -D warnings`: exit 0 (after the four fixes above).
+- `cargo test`: **153 passed / 0 failed** (was 145 at
+  Step 2; +8: six puzzles — the key exact, the key scoring
+  twelve, the found rack failing, one vapour line
+  unmaking it, the beam's facts real, the ends not seams;
+  one state judge test; one GUI playthrough of both
+  chambers, including the refused right-first drops).
+- Theodolite (cured route; bacon producer first,
+  `.bacon-locations` present at session start): planted
+  control on puzzles.rs read live E0308 diagnostics in
+  the same session where the other four files read 0;
+  clean session **0 on all five touched files** —
+  verified zeros. puzzles.rs restored byte-identical
+  after the plant (sha256 `5e5a61df…` both sides).
+- Determinism: the Step 3 probe (the playthrough extended
+  through the Contract Cards and the Split Beam) run
+  twice; saves byte-identical, sha256
+  `6ee78608c2f0db7a34220f48a45525ad5c1fee95a6f6438d00d6dd1bd09fb451`.
+- Android lib under the pin: 1,348,158,304 bytes. Launch
+  smoke under Xvfb: `cold_start_ms=1179`, no panics.
+
+### Left open
+
+- Chamber 5 and the Thing Behind the Veil land in Step 4;
+  the driven whole-floor playthrough in Step 5.

@@ -1365,10 +1365,137 @@ pub fn tenancy_missed(predictions: &[u8; 8], index: usize) -> bool {
     called != 0 && (called == 1) != *sound
 }
 
+// ---------------------------------------------------------------------------
+// Floor 5, Step 3 — the Contract Cards and the Split Beam.
+// The cards judge purely over the chosen phrasings against
+// the table's key; the beam is a real buffer, and its seam
+// judges over the split the player chose.
+// ---------------------------------------------------------------------------
+
+/// Whether a chosen card-line phrasing is the checkable one
+/// — the phrasing a sceptic can test before the call.
+pub fn card_line_checkable(tool: usize, line: usize, phrasing: u8) -> bool {
+    crate::content::CARD_TOOLS
+        .get(tool)
+        .and_then(|(_, _, key)| key.get(line))
+        .map(|key| *key == phrasing)
+        .unwrap_or(false)
+}
+
+/// How many of the twelve card lines stand checkable.
+pub fn card_lines_checkable(card_lines: &[[u8; 3]; 4]) -> usize {
+    card_lines
+        .iter()
+        .enumerate()
+        .flat_map(|(tool, lines)| {
+            lines
+                .iter()
+                .enumerate()
+                .map(move |(line, phrasing)| (tool, line, *phrasing))
+        })
+        .filter(|(tool, line, phrasing)| card_line_checkable(*tool, *line, *phrasing))
+        .count()
+}
+
+/// Whether every line of every card stands checkable.
+pub fn cards_all_checkable(card_lines: &[[u8; 3]; 4]) -> bool {
+    card_lines_checkable(card_lines) == 12
+}
+
+/// The Split Beam itself: the real buffer the chamber works.
+/// Its size is the Plumb Line's fact — six words, 24 bytes —
+/// and the words are the record's own.
+pub const BEAM: [u32; 6] = [2, 5, 1, 4, 2, 3];
+
+/// Whether a split seams the beam soundly: strictly inside,
+/// so both halves are non-empty.
+pub fn beam_sound_split(split: u8) -> bool {
+    (1..=5).contains(&split)
+}
+
+/// The beam's two halves at a split; a split at an end
+/// leaves the short side empty, which is why the face
+/// refuses to seam there.
+pub fn beam_halves(split: u8) -> (&'static [u32], &'static [u32]) {
+    let at = (split as usize).min(BEAM.len());
+    BEAM.split_at(at)
+}
+
 #[cfg(test)]
 mod floor5_tests {
     use super::*;
 
+    /// Validation: exactly one phrasing per line is checkable,
+    /// and it is the key of record.
+    #[test]
+    fn card_key_is_exactly_one_per_line() {
+        for (tool, (_, _, key)) in crate::content::CARD_TOOLS.iter().enumerate() {
+            for (line, key_phrasing) in key.iter().enumerate() {
+                let checkable: Vec<u8> = (0..3)
+                    .filter(|phrasing| card_line_checkable(tool, line, *phrasing))
+                    .collect();
+                assert_eq!(checkable, vec![*key_phrasing], "tool {tool} line {line}");
+            }
+        }
+    }
+
+    /// Validation: the key itself, set on every line, scores
+    /// twelve and proves the rack.
+    #[test]
+    fn card_key_scores_twelve() {
+        let mut card_lines = [[0u8; 3]; 4];
+        for (tool, (_, _, key)) in crate::content::CARD_TOOLS.iter().enumerate() {
+            card_lines[tool] = *key;
+        }
+        assert_eq!(card_lines_checkable(&card_lines), 12);
+        assert!(cards_all_checkable(&card_lines));
+    }
+
+    /// Adversarial: the rack as found — every line at its
+    /// first phrasing — does not prove; vapour stands on it.
+    #[test]
+    fn card_default_rack_is_not_checkable() {
+        let card_lines = [[0u8; 3]; 4];
+        assert!(!cards_all_checkable(&card_lines));
+        assert!(card_lines_checkable(&card_lines) < 12);
+        assert!(!card_line_checkable(9, 0, 0), "no ninth tool");
+        assert!(!card_line_checkable(0, 9, 0), "no ninth line");
+    }
+
+    /// Adversarial: one vapour line anywhere unmakes the
+    /// whole rack — the sceptic reads cards, not averages.
+    #[test]
+    fn card_one_vapour_line_unmakes_it() {
+        let mut card_lines = [[0u8; 3]; 4];
+        for (tool, (_, _, key)) in crate::content::CARD_TOOLS.iter().enumerate() {
+            card_lines[tool] = *key;
+        }
+        card_lines[2][0] = (card_lines[2][0] + 1) % 3;
+        assert_eq!(card_lines_checkable(&card_lines), 11);
+        assert!(!cards_all_checkable(&card_lines));
+    }
+
+    /// Validation: the beam is the beam of record, and the
+    /// Plumb Line's fact about it is real.
+    #[test]
+    fn beam_facts_are_real() {
+        assert_eq!(BEAM, [2, 5, 1, 4, 2, 3]);
+        assert_eq!(std::mem::size_of_val(&BEAM), 24);
+        let (left, right) = beam_halves(3);
+        assert_eq!(left, &[2, 5, 1]);
+        assert_eq!(right, &[4, 2, 3]);
+    }
+
+    /// Adversarial: the beam's ends are not seams — a seam
+    /// there leaves a half with nothing in it.
+    #[test]
+    fn beam_ends_are_not_seams() {
+        assert!(!beam_sound_split(0));
+        assert!(!beam_sound_split(6));
+        assert!((1..=5).all(beam_sound_split));
+        assert!(beam_halves(0).0.is_empty());
+        assert!(beam_halves(6).1.is_empty());
+    }
     /// Validation: exactly one of the six stones is cracked,
     /// and it is the fourth.
     #[test]

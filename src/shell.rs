@@ -6591,6 +6591,12 @@ fn build_floor5_chamber(
     if index == 1 {
         build_f5c2(commands, game, pal, fonts, stage);
     }
+    if index == 2 {
+        build_f5c3(commands, game, pal, fonts, stage);
+    }
+    if index == 3 {
+        build_f5c4(commands, game, pal, fonts, stage);
+    }
 }
 
 /// Chamber 1's panel: the six steps with their card and
@@ -6725,6 +6731,196 @@ fn build_f5c2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, st
         } else {
             format!("Calls made: {called_count} of 8.")
         },
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// Chamber 3's panel: the four tools' cards, every line
+/// wearing its current phrasing, and the count of lines
+/// re-drafted from the rack as found.
+fn build_f5c3(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor5.chambers[2].work;
+    for (tool, (_, lines, _)) in content::CARD_TOOLS.iter().enumerate() {
+        for (line, phrasings) in lines.iter().enumerate() {
+            let rect = geom::f5_cardline_row(tool, line);
+            spawn_button(
+                commands,
+                stage,
+                rect,
+                &format!("{} · LINE {}", content::CARD_TOOL_SHORT[tool], line + 1),
+                pal,
+                false,
+                fonts,
+            );
+            spawn_text(
+                commands,
+                stage,
+                rect.x + 4.0,
+                rect.y + 33.0,
+                Some(400.0),
+                phrasings[work.card_lines[tool][line] as usize],
+                10.0,
+                false,
+                pal.ink_dim,
+                Justify::Left,
+                fonts,
+            );
+        }
+    }
+    let redrafted = work
+        .card_lines
+        .iter()
+        .flat_map(|lines| lines.iter())
+        .filter(|phrasing| **phrasing != 0)
+        .count();
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &format!("Lines re-drafted from the rack as found: {redrafted} of 12."),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// Chamber 4's panel: the seam controls, the beam itself
+/// with its chalked seam, and the referee's walk as it
+/// stands.
+fn build_f5c4(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor5.chambers[3].work;
+    spawn_button(
+        commands,
+        stage,
+        geom::f5_split_down(),
+        "◀ SEAM",
+        pal,
+        false,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f5_split_up(),
+        "SEAM ▶",
+        pal,
+        false,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f5_seam_btn(),
+        "SAW THE SEAM",
+        pal,
+        work.seamed,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f5_reach_btn(),
+        "REACH PAST THE END",
+        pal,
+        work.access_refused,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f5_work_btn(),
+        "WORK BOTH HALVES",
+        pal,
+        work.worked == [true, true],
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f5_drop_left_btn(),
+        "DROP LEFT HALF",
+        pal,
+        work.dropped[0],
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f5_drop_right_btn(),
+        "DROP RIGHT HALF",
+        pal,
+        work.dropped[1],
+        fonts,
+    );
+    let (left, right) = crate::puzzles::beam_halves(work.split);
+    let show = |half: &[u32]| {
+        half.iter()
+            .map(|word| word.to_string())
+            .collect::<Vec<_>>()
+            .join(" · ")
+    };
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        262.0,
+        Some(400.0),
+        &format!(
+            "The beam: [{}] ┃ [{}] — the seam stands after {} word{}; six \
+             words, twenty-four bytes by the Plumb Line.",
+            show(left),
+            show(right),
+            work.split,
+            if work.split == 1 { "" } else { "s" }
+        ),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        300.0,
+        Some(400.0),
+        &format!(
+            "Seamed: {}. Over-reach refused: {}. Worked: {} · {}. Dropped: \
+             {} · {}.",
+            if work.seamed { "yes" } else { "not yet" },
+            if work.access_refused {
+                "yes"
+            } else {
+                "not yet"
+            },
+            if work.worked[0] { "left" } else { "—" },
+            if work.worked[1] { "right" } else { "—" },
+            if work.dropped[0] { "left" } else { "—" },
+            if work.dropped[1] { "right" } else { "—" }
+        ),
+        11.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        "The referee's walk, in order: the over-reach refused, both halves \
+         worked at once, the halves dropped left first.",
         12.0,
         false,
         pal.ink,
