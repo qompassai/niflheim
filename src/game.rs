@@ -200,6 +200,10 @@ pub enum Screen {
     Floor5Chamber(usize),
     /// Floor 5's FOE: the Thing Behind the Veil.
     Floor5Foe,
+    /// Floor 6's hub: the Lockheart.
+    Floor6Hub,
+    /// A Floor 6 chamber, by index (0-4).
+    Floor6Chamber(usize),
 }
 
 /// What a reading overlay is showing.
@@ -316,6 +320,10 @@ pub enum El {
     DoorFloor5,
     /// A Floor 5 chamber door.
     Floor5Door(u8),
+    /// The door to Floor 6, on Floor 5's hub.
+    DoorFloor6,
+    /// A Floor 6 chamber door.
+    Floor6Door(u8),
     /// Floor 2 hub: a chamber door, by index.
     Floor2Door(u8),
     /// Floor 2 hub: collapse or expand a roster group, by index.
@@ -328,6 +336,8 @@ pub enum El {
     F4Watch,
     /// Floor 5: watch the demonstration.
     F5Watch,
+    /// Floor 6: watch the demonstration.
+    F6Watch,
     /// Floor 5 Chamber 1: read one step's card.
     F5Card(u8),
     /// Floor 5 Chamber 1: walk the next step.
@@ -659,6 +669,8 @@ enum ArmedFor {
     Floor4Chamber(usize),
     /// A Floor 5 chamber's repair.
     Floor5Chamber(usize),
+    /// A Floor 6 chamber's repair.
+    Floor6Chamber(usize),
     /// Floor 3 FOE's strike.
     Foe3,
     /// Floor 4 FOE's strike.
@@ -823,6 +835,8 @@ impl Game {
                 | Screen::Floor4Chamber(_)
                 | Screen::Floor5Hub
                 | Screen::Floor5Chamber(_)
+                | Screen::Floor6Hub
+                | Screen::Floor6Chamber(_)
                 | Screen::Chamber(_)
                 | Screen::Floor2Chamber(_)
                 | Screen::Floor3Chamber(_)
@@ -876,6 +890,7 @@ impl Game {
             Screen::Floor3Chamber(index) => self.armed == Some(ArmedFor::Floor3Chamber(index)),
             Screen::Floor4Chamber(index) => self.armed == Some(ArmedFor::Floor4Chamber(index)),
             Screen::Floor5Chamber(index) => self.armed == Some(ArmedFor::Floor5Chamber(index)),
+            Screen::Floor6Chamber(index) => self.armed == Some(ArmedFor::Floor6Chamber(index)),
             Screen::Foe => self.expedition.foe.strike == StrikePhase::Armed,
             Screen::Floor2Foe => self.expedition.floor2.foe.strike == StrikePhase::Armed,
             Screen::Floor3Foe => self.expedition.floor3.foe.strike == StrikePhase::Armed,
@@ -1078,14 +1093,19 @@ impl Game {
         match self.screen {
             Screen::Title => Vec::new(),
             Screen::Hub => vec![Verb::Read, Verb::Map],
-            Screen::Floor2Hub | Screen::Floor3Hub | Screen::Floor4Hub | Screen::Floor5Hub => {
+            Screen::Floor2Hub
+            | Screen::Floor3Hub
+            | Screen::Floor4Hub
+            | Screen::Floor5Hub
+            | Screen::Floor6Hub => {
                 vec![Verb::Read, Verb::Map]
             }
             Screen::Chamber(_)
             | Screen::Floor2Chamber(_)
             | Screen::Floor3Chamber(_)
             | Screen::Floor4Chamber(_)
-            | Screen::Floor5Chamber(_) => vec![
+            | Screen::Floor5Chamber(_)
+            | Screen::Floor6Chamber(_) => vec![
                 Verb::Examine,
                 Verb::Read,
                 Verb::Prove,
@@ -1183,6 +1203,14 @@ pub mod geom {
     /// proved on Floor 1's hub, clear of the panel and the
     /// FOE's door below.
     pub fn door_floor5() -> Rect {
+        Rect::new(640.0, 150.0, 124.0, 124.0)
+    }
+
+    /// Floor 6's door, on Floor 5's hub: the upper field
+    /// below the chamber row's end — the spot Floor 5's door
+    /// proved on Floor 4's hub, clear of the panel and the
+    /// FOE's door below.
+    pub fn door_floor6() -> Rect {
         Rect::new(640.0, 150.0, 124.0, 124.0)
     }
 
@@ -1748,12 +1776,14 @@ impl Game {
             | Screen::Floor2Hub
             | Screen::Floor3Hub
             | Screen::Floor4Hub
-            | Screen::Floor5Hub => cy == 0 || cell == (5, 4),
+            | Screen::Floor5Hub
+            | Screen::Floor6Hub => cy == 0 || cell == (5, 4),
             Screen::Chamber(_)
             | Screen::Floor2Chamber(_)
             | Screen::Floor3Chamber(_)
             | Screen::Floor4Chamber(_)
             | Screen::Floor5Chamber(_)
+            | Screen::Floor6Chamber(_)
             | Screen::Foe
             | Screen::Floor2Foe
             | Screen::Floor3Foe
@@ -1988,6 +2018,7 @@ impl Game {
                     Screen::Floor3Chamber(index) => F3_EXAMINE_TEXTS[index],
                     Screen::Floor4Chamber(index) => content::F4_EXAMINE_TEXTS[index],
                     Screen::Floor5Chamber(index) => content::F5_EXAMINE_TEXTS[index],
+                    Screen::Floor6Chamber(index) => content::F6_EXAMINE_TEXTS[index],
                     Screen::Foe => {
                         "The hoard-engine: a ledger the size of a door, turning its \
                          pages by itself, smiling with every leaf."
@@ -2035,6 +2066,11 @@ impl Game {
                         "The Veilworks: five workshops behind gauze, a sharp \
                          tool on every bench, and the Veilwalker watching \
                          hands, not faces."
+                    }
+                    Screen::Floor6Hub => {
+                        "The Lockheart: strongboxes in a quiet warren, \
+                         reading hearts behind glass, and every chest \
+                         posting the rules of its own opening."
                     }
                     Screen::Title => return,
                 };
@@ -2157,6 +2193,19 @@ impl Game {
                     }
                     self.changed();
                 }
+                if let Screen::Floor6Chamber(index) = self.screen {
+                    match self.expedition.floor6_file_proof(index) {
+                        Ok(text) => {
+                            self.expedition.log_push(format!(
+                                "Proof filed in {}.",
+                                content::LOCK_CHAMBERS[index].name
+                            ));
+                            self.say(StatusKind::Good, text);
+                        }
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
                 if let Screen::Floor5Chamber(index) = self.screen {
                     match self.expedition.floor5_file_proof(index) {
                         Ok(text) => {
@@ -2185,7 +2234,14 @@ impl Game {
                 }
             }
             Verb::Hint => {
-                if let Screen::Floor5Chamber(index) = self.screen {
+                if let Screen::Floor6Chamber(index) = self.screen {
+                    if self.expedition.floor6_hints_used(index) == 0 {
+                        self.expedition.floor6_view_hint(index);
+                    }
+                    self.hint_showing = self.expedition.floor6_hints_used(index).max(1);
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                } else if let Screen::Floor5Chamber(index) = self.screen {
                     if self.expedition.floor5_hints_used(index) == 0 {
                         self.expedition.floor5_view_hint(index);
                     }
@@ -2529,6 +2585,21 @@ impl Game {
                 }
             }
 
+            El::DoorFloor6 => {
+                if self.expedition.floor6_reachable() {
+                    self.enter_screen(Screen::Floor6Hub);
+                    self.say(StatusKind::Info, content::FLOOR6_INTRO);
+                } else {
+                    self.say(
+                        StatusKind::Refusal,
+                        "The heart door is barred until the Veilworks \
+                         stands charted through its third chamber — the \
+                         Pointer Walks, the Two Tenants, and the Contract \
+                         Cards repaired.",
+                    );
+                }
+            }
+
             El::Floor4Door(index) => {
                 let index = index as usize;
                 self.enter_screen(Screen::Floor4Chamber(index));
@@ -2540,6 +2611,13 @@ impl Game {
                 let index = index as usize;
                 self.enter_screen(Screen::Floor5Chamber(index));
                 self.say(StatusKind::Info, content::FLOOR5_CHAMBER_INTROS[index]);
+                self.bump();
+            }
+
+            El::Floor6Door(index) => {
+                let index = index as usize;
+                self.enter_screen(Screen::Floor6Chamber(index));
+                self.say(StatusKind::Info, content::FLOOR6_CHAMBER_INTROS[index]);
                 self.bump();
             }
 
@@ -3612,6 +3690,26 @@ impl Game {
                 }
             }
 
+            El::F6Watch => {
+                if let Screen::Floor6Chamber(index) = self.screen {
+                    if let Some(progress) = self.expedition.floor6.chambers.get_mut(index) {
+                        progress.work.watched = true;
+                    }
+                    self.say(
+                        StatusKind::Info,
+                        match index {
+                            0 => content::CELL_CHARTER,
+                            1 => content::BRAZIER_CHARTER,
+                            2 => content::SPIN_CHARTER,
+                            3 => content::CENSUS_CHARTER,
+                            4 => content::CHOOSING_CHARTER,
+                            _ => "Lockheart nods at the strongboxes.",
+                        },
+                    );
+                    self.changed();
+                }
+            }
+
             El::F4Watch => {
                 if let Screen::Floor4Chamber(index) = self.screen {
                     if let Some(progress) = self.expedition.floor4.chambers.get_mut(index) {
@@ -4523,6 +4621,15 @@ impl Game {
                     self.changed();
                 }
 
+                Screen::Floor6Chamber(index) => {
+                    self.expedition.floor6_reset_chamber(index);
+                    self.say(
+                        StatusKind::Info,
+                        "The chamber is reset: flags home, slate wiped, \
+                         the work begun again.",
+                    );
+                    self.changed();
+                }
                 Screen::Floor5Chamber(index) => {
                     self.expedition.floor5_reset_chamber(index);
                     self.say(
@@ -4738,6 +4845,26 @@ impl Game {
                 }
             },
 
+            Screen::Floor6Chamber(index) => match self.expedition.floor6.chambers[index].state {
+                ChamberState::Diagnosed => {
+                    self.armed = Some(ArmedFor::Floor6Chamber(index));
+                    self.say(
+                        StatusKind::Info,
+                        "The seal is pressed. Confirm to strike the repair home, or \
+                         stand down.",
+                    );
+                }
+                ChamberState::Repaired => {
+                    self.say(StatusKind::Info, "This chamber already stands repaired.");
+                }
+                ChamberState::Unworked => {
+                    self.say(
+                        StatusKind::Refusal,
+                        "The seal sleeps until the proof is complete.",
+                    );
+                }
+            },
+
             Screen::Floor3Chamber(index) => match self.expedition.floor3.chambers[index].state {
                 ChamberState::Diagnosed => {
                     self.armed = Some(ArmedFor::Floor3Chamber(index));
@@ -4877,6 +5004,19 @@ impl Game {
                     Ok(text) => {
                         self.expedition
                             .log_push(format!("{} repaired.", content::VEIL_CHAMBERS[index].name));
+                        self.say(StatusKind::Good, text);
+                    }
+                    Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                }
+                self.changed();
+            }
+
+            Some(ArmedFor::Floor6Chamber(index)) => {
+                self.armed = None;
+                match self.expedition.floor6_repair_chamber(index) {
+                    Ok(text) => {
+                        self.expedition
+                            .log_push(format!("{} repaired.", content::LOCK_CHAMBERS[index].name));
                         self.say(StatusKind::Good, text);
                     }
                     Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
@@ -5253,6 +5393,11 @@ impl Game {
                     index + 1,
                     content::VEIL_CHAMBERS[index].name
                 ),
+                Screen::Floor6Chamber(index) => format!(
+                    "Chamber {} — {}",
+                    index + 1,
+                    content::LOCK_CHAMBERS[index].name
+                ),
                 Screen::Foe => "The Hoard's Inscription".to_string(),
                 Screen::Floor2Foe => "The Menagerie's Inscription".to_string(),
                 Screen::Floor3Foe => "The Release's Inscription".to_string(),
@@ -5268,6 +5413,7 @@ impl Game {
                 Screen::Floor3Hub => format!("Floor 3 — {}", content::FLOOR3_NAME),
                 Screen::Floor4Hub => format!("Floor 4 — {}", content::FLOOR4_NAME),
                 Screen::Floor5Hub => format!("Floor 5 — {}", content::FLOOR5_NAME),
+                Screen::Floor6Hub => format!("Floor 6 — {}", content::FLOOR6_NAME),
                 _ => format!("Floor 1 — {}", content::FLOOR_NAME),
             },
             ReadingKind::MasterPlan => "The Master Plan".to_string(),
@@ -5285,6 +5431,7 @@ impl Game {
                 Screen::Floor3Chamber(index) => content::FLOOR3_CHAMBER_INTROS[index].to_string(),
                 Screen::Floor4Chamber(index) => content::FLOOR4_CHAMBER_INTROS[index].to_string(),
                 Screen::Floor5Chamber(index) => content::FLOOR5_CHAMBER_INTROS[index].to_string(),
+                Screen::Floor6Chamber(index) => content::FLOOR6_CHAMBER_INTROS[index].to_string(),
                 Screen::Foe => content::FOE_INSCRIPTION.to_string(),
                 Screen::Floor2Foe => content::FOE2_INSCRIPTION.to_string(),
                 Screen::Floor3Foe => content::FOE3_INSCRIPTION.to_string(),
@@ -5310,6 +5457,9 @@ impl Game {
                 Screen::Floor5Chamber(index) => {
                     content::VEIL_CHAMBERS[index].demonstration.to_string()
                 }
+                Screen::Floor6Chamber(index) => {
+                    content::LOCK_CHAMBERS[index].demonstration.to_string()
+                }
                 Screen::Foe => content::FOE_DEMONSTRATION.to_string(),
                 Screen::Floor2Foe => content::FOE2_DEMONSTRATION.to_string(),
                 Screen::Floor3Foe => content::FOE3_INTRO.to_string(),
@@ -5324,6 +5474,7 @@ impl Game {
                     Screen::Floor3Chamber(index) => content::floor3_chamber_hints(index)[rung - 1],
                     Screen::Floor4Chamber(index) => content::floor4_chamber_hints(index)[rung - 1],
                     Screen::Floor5Chamber(index) => content::floor5_chamber_hints(index)[rung - 1],
+                    Screen::Floor6Chamber(index) => content::floor6_chamber_hints(index)[rung - 1],
                     Screen::Floor2Foe => content::floor2_foe_hints()[rung - 1],
                     Screen::Floor3Foe => content::floor3_foe_hints()[rung - 1],
                     Screen::Floor4Foe => content::floor4_foe_hints()[rung - 1],
@@ -5364,6 +5515,7 @@ impl Game {
                 Screen::Floor3Hub => content::FLOOR3_INTRO.to_string(),
                 Screen::Floor4Hub => content::FLOOR4_INTRO.to_string(),
                 Screen::Floor5Hub => content::FLOOR5_INTRO.to_string(),
+                Screen::Floor6Hub => content::FLOOR6_INTRO.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::MasterPlan => content::MASTER_PLAN.to_string(),
@@ -5532,6 +5684,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor3Chamber(_)
         | Screen::Floor4Chamber(_)
         | Screen::Floor5Chamber(_)
+        | Screen::Floor6Chamber(_)
         | Screen::Foe
         | Screen::Floor2Foe
         | Screen::Floor3Foe
@@ -5539,7 +5692,8 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor5Foe
         | Screen::Floor3Hub
         | Screen::Floor4Hub
-        | Screen::Floor5Hub => {
+        | Screen::Floor5Hub
+        | Screen::Floor6Hub => {
             els.push((El::TabFloor, rects::TAB_FLOOR));
             els.push((El::TabMap, rects::TAB_MAP));
             els.push((El::TabLog, rects::TAB_LOG));
@@ -5579,6 +5733,13 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
                 els.push((El::Floor5Door(index as u8), geom::door_chamber(index)));
             }
             els.push((El::DoorFoe5, geom::door_foe5()));
+            els.push((El::DoorFloor6, geom::door_floor6()));
+        }
+        Screen::Floor6Hub => {
+            els.push((El::CampStone, geom::camp_stone()));
+            for index in 0..5 {
+                els.push((El::Floor6Door(index as u8), geom::door_chamber(index)));
+            }
         }
 
         Screen::Floor2Hub => {
@@ -5617,6 +5778,14 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             els.push((El::Stone, geom::stone()));
             els.push((El::ResetChamber, rects::RESET_BTN));
             layout_floor5_chamber_panel(&mut els, game, index);
+            layout_seal(&mut els, game);
+        }
+
+        Screen::Floor6Chamber(index) => {
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.push((El::ResetChamber, rects::RESET_BTN));
+            layout_floor6_chamber_panel(&mut els, game, index);
             layout_seal(&mut els, game);
         }
 
@@ -5800,6 +5969,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         Screen::Floor3Chamber(index) => game.armed == Some(ArmedFor::Floor3Chamber(index)),
         Screen::Floor4Chamber(index) => game.armed == Some(ArmedFor::Floor4Chamber(index)),
         Screen::Floor5Chamber(index) => game.armed == Some(ArmedFor::Floor5Chamber(index)),
+        Screen::Floor6Chamber(index) => game.armed == Some(ArmedFor::Floor6Chamber(index)),
         Screen::Foe => game.expedition.foe.strike == StrikePhase::Armed,
         Screen::Floor2Foe => game.expedition.floor2.foe.strike == StrikePhase::Armed,
         Screen::Floor3Foe => game.expedition.floor3.foe.strike == StrikePhase::Armed,
@@ -5812,6 +5982,14 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         els.push((El::SealConfirm, rects::SEAL_CONFIRM));
         els.push((El::SealCancel, rects::SEAL_CANCEL));
     }
+}
+
+/// The Floor 6 chambers' panel elements: the watch; each
+/// chamber's own controls land with its step.
+fn layout_floor6_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: usize) {
+    let _ = game;
+    let _ = chamber;
+    els.push((El::F6Watch, geom::f2_watch()));
 }
 
 /// The Floor 5 chambers' panel elements: the watch; each
@@ -7079,6 +7257,63 @@ mod tests {
         assert_eq!(game.screen, Screen::Floor5Hub);
     }
 
+    /// Floor 6's door answers the pointer when the Veilworks
+    /// stands charted through its third chamber, and refuses
+    /// it while any of the first three chambers waits —
+    /// the fourth chamber is not the third, and the door
+    /// does not wait on the Thing.
+    #[test]
+    fn floor6_door_answers_the_pointer_when_floor5_stands_charted_through_chamber_three() {
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        game.screen = Screen::Hub;
+        // Light the Stratum I stairs (Floor 4 Step 1's fixture).
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.foe.gate_passed = true;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        game.expedition.floor3.foe.gate_passed = true;
+        for chamber in game.expedition.floor2.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        let door4 = geom::door_floor4();
+        game.pointer_down(door4.cx(), door4.cy());
+        game.pointer_up(door4.cx(), door4.cy());
+        assert_eq!(game.screen, Screen::Floor4Hub);
+        // Floor 4 complete opens the Veilworks.
+        for chamber in game.expedition.floor4.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        game.expedition.floor4.foe.state = FoeState::Fallen;
+        let door5 = geom::door_floor5();
+        game.pointer_down(door5.cx(), door5.cy());
+        game.pointer_up(door5.cx(), door5.cy());
+        assert_eq!(game.screen, Screen::Floor5Hub);
+        // The Lockheart's door: barred with nothing charted.
+        let rect = geom::door_floor6();
+        game.pointer_down(rect.cx(), rect.cy());
+        game.pointer_up(rect.cx(), rect.cy());
+        assert_eq!(
+            game.screen,
+            Screen::Floor5Hub,
+            "barred while the Veilworks stands uncharted"
+        );
+        game.expedition.floor5.chambers[0].state = ChamberState::Repaired;
+        game.expedition.floor5.chambers[1].state = ChamberState::Repaired;
+        game.expedition.floor5.chambers[3].state = ChamberState::Repaired;
+        game.pointer_down(rect.cx(), rect.cy());
+        game.pointer_up(rect.cx(), rect.cy());
+        assert_eq!(
+            game.screen,
+            Screen::Floor5Hub,
+            "the fourth chamber is not the third"
+        );
+        game.expedition.floor5.chambers[2].state = ChamberState::Repaired;
+        assert!(game.expedition.floor6_reachable());
+        game.pointer_down(rect.cx(), rect.cy());
+        game.pointer_up(rect.cx(), rect.cy());
+        assert_eq!(game.screen, Screen::Floor6Hub);
+    }
     /// Floor 5 Step 2, driven on the GUI surface: the Pointer
     /// Walks is read, walked, and refused at the cracked
     /// stone, and the Two Tenants are called, stamped, and

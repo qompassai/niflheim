@@ -1013,6 +1013,7 @@ fn rebuild_now(
         Screen::Floor3Hub => build_floor3_hub(commands, game, &pal, fonts, stage),
         Screen::Floor4Hub => build_floor4_hub(commands, game, &pal, fonts, stage),
         Screen::Floor5Hub => build_floor5_hub(commands, game, &pal, fonts, stage),
+        Screen::Floor6Hub => build_floor6_hub(commands, game, &pal, fonts, stage),
         Screen::Floor2Chamber(index) => {
             build_floor2_chamber(commands, game, &pal, fonts, stage, index)
         }
@@ -1024,6 +1025,9 @@ fn rebuild_now(
         }
         Screen::Floor5Chamber(index) => {
             build_floor5_chamber(commands, game, &pal, fonts, stage, index)
+        }
+        Screen::Floor6Chamber(index) => {
+            build_floor6_chamber(commands, game, &pal, fonts, stage, index)
         }
         Screen::Floor3Foe => build_floor3_foe(commands, game, &pal, fonts, stage),
         Screen::Floor4Foe => build_floor4_foe(commands, game, &pal, fonts, stage),
@@ -1183,6 +1187,7 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         Screen::Floor3Hub => "Niflheim — Floor 3 · The Gatehouse".to_string(),
         Screen::Floor4Hub => "Niflheim — Floor 4 · The Foundation Galleries".to_string(),
         Screen::Floor5Hub => "Niflheim — Floor 5 · The Veilworks".to_string(),
+        Screen::Floor6Hub => "Niflheim — Floor 6 · The Lockheart".to_string(),
         Screen::Floor2Chamber(index) => format!(
             "Floor 2 · Chamber {} — {}",
             index + 1,
@@ -1202,6 +1207,11 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
             "Floor 5 · Chamber {} — {}",
             index + 1,
             content::VEIL_CHAMBERS[index].name
+        ),
+        Screen::Floor6Chamber(index) => format!(
+            "Floor 6 · Chamber {} — {}",
+            index + 1,
+            content::LOCK_CHAMBERS[index].name
         ),
 
         Screen::Floor3Foe => "Floor 3 · The Gatehouse Release".to_string(),
@@ -7280,6 +7290,285 @@ fn build_floor5_foe(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
 
 /// Floor 5's hub: the Veilworks — five chamber doors, the camp
 /// stone, and the panel with the chambers and the FOE's standing.
+fn build_floor6_chamber(
+    commands: &mut Commands,
+    game: &Game,
+    pal: &Pal,
+    fonts: &Fonts,
+    stage: Entity,
+    index: usize,
+) {
+    let meta = &content::LOCK_CHAMBERS[index];
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        &format!("Chamber {} — {} · {}", index + 1, meta.name, meta.room),
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        Color::srgb_u8(120, 130, 140),
+        match index {
+            0 => "THE CELL HEART",
+            1 => "THE BRAZIER",
+            2 => "THE SPIN HEART",
+            3 => "THE DAY SLATE",
+            _ => "THE THREE CELLS",
+        },
+        "the demonstration",
+    );
+    let stone = geom::stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(Color::srgb_u8(140, 140, 148)),
+        Some((2.0, pal.ink_dim)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 12.0,
+        stone.w,
+        "THE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 26.0,
+        stone.w,
+        "RULE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    build_panel_header(commands, pal, fonts, stage, meta.name, meta.room);
+    let progress = &game.expedition.floor6.chambers[index];
+    build_slot(
+        commands,
+        pal,
+        fonts,
+        stage,
+        progress.state,
+        meta.slot_wants,
+        progress.facet,
+    );
+}
+
+/// Floor 6's hub: the Lockheart — five chamber doors, the camp
+/// stone, and the panel with the chambers and the FOE's standing.
+fn build_floor6_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Lockheart — five chambers of strongboxes and hearts",
+    );
+
+    for (index, meta) in content::LOCK_CHAMBERS.iter().enumerate() {
+        let rect = geom::door_chamber(index);
+        let state = game.expedition.floor6.chambers[index].state;
+        spawn_box(
+            commands,
+            stage,
+            rect,
+            Some(pal.card),
+            Some((2.0, pal.edge)),
+            0.0,
+        );
+        spawn_text_centered(
+            commands,
+            stage,
+            rect.cx(),
+            rect.y + 6.0,
+            rect.w,
+            &format!("CHAMBER {}", index + 1),
+            10.5,
+            true,
+            pal.ink,
+            fonts,
+        );
+        spawn_text_centered(
+            commands,
+            stage,
+            rect.cx(),
+            rect.y + 24.0,
+            rect.w - 8.0,
+            meta.name,
+            10.5,
+            false,
+            pal.ink,
+            fonts,
+        );
+        let (tag, color) = match state {
+            ChamberState::Repaired => ("REPAIRED", pal.good),
+            ChamberState::Diagnosed => ("PROOF FILED", pal.accent),
+            ChamberState::Unworked => ("", pal.ink_dim),
+        };
+        if !tag.is_empty() {
+            spawn_text_centered(
+                commands,
+                stage,
+                rect.cx(),
+                rect.y + 64.0,
+                rect.w,
+                tag,
+                10.5,
+                true,
+                color,
+                fonts,
+            );
+        }
+    }
+
+    let stone = geom::camp_stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(Color::srgb_u8(140, 140, 148)),
+        Some((2.0, pal.ink_dim)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 12.0,
+        stone.w,
+        "THE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 26.0,
+        stone.w,
+        "FLOOR",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+
+    spawn_box(
+        commands,
+        stage,
+        rects::PANEL,
+        Some(pal.panel),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        84.0,
+        None,
+        "The Lockheart",
+        19.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        112.0,
+        None,
+        "Keeper: Lockheart · Domain 6 — Interior Mutability",
+        12.5,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        150.0,
+        None,
+        "THE CHAMBERS",
+        12.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let mut y = 176.0;
+    for (index, meta) in content::LOCK_CHAMBERS.iter().enumerate() {
+        let state = game.expedition.floor6.chambers[index].state;
+        let suffix = match state {
+            ChamberState::Repaired => " · REPAIRED",
+            ChamberState::Diagnosed => " · PROOF FILED",
+            ChamberState::Unworked => "",
+        };
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            y,
+            None,
+            &format!("○ Chamber {} — {}{}", index + 1, meta.name, suffix),
+            12.5,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        y += 24.0;
+    }
+    let foe_word = match game.expedition.floor6.foe.state {
+        FoeState::Fallen => format!(
+            "FALLEN — {}",
+            game.expedition
+                .floor6
+                .foe
+                .fallen_date
+                .clone()
+                .unwrap_or_default()
+        ),
+        FoeState::Exposed => "EXPOSED".to_string(),
+        FoeState::Standing => "standing".to_string(),
+    };
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        y + 12.0,
+        None,
+        &format!("■ The Heart Locked Twice — FOE · {foe_word}"),
+        12.5,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
 fn build_floor5_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
     build_header(commands, game, pal, fonts, stage);
     build_room_base(
@@ -8588,6 +8877,43 @@ fn build_map(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, sta
                     floor.class,
                     &floor5_status,
                     game.expedition.floor5.foe.state == FoeState::Fallen,
+                );
+            } else if index == 5 {
+                let repaired6 = game.expedition.floor6_chambers_repaired();
+                let floor6_status = match game.expedition.floor6.foe.state {
+                    FoeState::Fallen => format!(
+                        "FOE FALLEN — {}",
+                        game.expedition
+                            .floor6
+                            .foe
+                            .fallen_date
+                            .clone()
+                            .unwrap_or_default()
+                    ),
+                    _ if !game.expedition.floor6_reachable() => "BARRED".to_string(),
+                    _ if repaired6 > 0
+                        || game
+                            .expedition
+                            .floor6
+                            .chambers
+                            .iter()
+                            .any(|c| c.state == ChamberState::Diagnosed) =>
+                    {
+                        format!("CHARTING ({repaired6}/5)")
+                    }
+                    _ => "UNCHARTED".to_string(),
+                };
+                build_square(
+                    commands,
+                    pal,
+                    fonts,
+                    stage,
+                    rect,
+                    6,
+                    floor.domain,
+                    floor.class,
+                    &floor6_status,
+                    game.expedition.floor6.foe.state == FoeState::Fallen,
                 );
             } else {
                 build_square(

@@ -3485,3 +3485,199 @@ pub fn floor5_chamber_hints(chamber: usize) -> [&'static str; 4] {
         _ => floor5_general_hints(),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Floor 6 — The Lockheart. Domain 6: Interior mutability.
+// Keeper: Lockheart. FOE: The Heart Locked Twice.
+// ---------------------------------------------------------------------------
+
+/// The floor's name.
+pub const FLOOR6_NAME: &str = "The Lockheart";
+/// The domain this floor teaches.
+pub const FLOOR6_DOMAIN: &str = "Interior Mutability";
+/// The floor's keeper.
+pub const FLOOR6_KEEPER: &str = "Lockheart";
+/// The floor's introduction, spoken on entry.
+pub const FLOOR6_INTRO: &str = "The Lockheart: a quiet warren of strongboxes \
+    and reading hearts, where things change from inside without their \
+    shells ever moving. Every chest posts the rules of its own opening — \
+    Lockheart asks only that you read the posting before you work the heart.";
+
+/// The five Lockheart chambers.
+pub const LOCK_CHAMBERS: [ChamberMeta; 5] = [
+    ChamberMeta {
+        name: "The borrow-flag heart",
+        room: "The Cell Heart",
+        inscription_title: "The Bell Is a Mercy",
+        inscription: "Many reading flags may fly at once, or one writing \
+            flag alone — never both. A second writing flag does not \
+            corrupt the heart; it strikes the bell, and the heart keeps \
+            its last true state.",
+        demonstration: "Lockheart works the heart through its scripted \
+            day: flags out, flags home, and at the barred hour the writing \
+            flag raised against a reading flag still flying — the bell \
+            strikes, the heart survives, and the day walks on.",
+        slot_wants: "the day walked, and the bell heard",
+        prove_label: "Walk the day",
+    },
+    ChamberMeta {
+        name: "Lazy lighting",
+        room: "The Borrow-Flag Brazier",
+        inscription_title: "Lit Once, by the First Hand",
+        inscription: "The brazier is lit by the first caller and simply \
+            used by every caller after. Two porters may call in perfect \
+            courtesy; the flame is lit exactly once — the count is the \
+            proof, and the count is computed, not remembered.",
+        demonstration: "The two porters call in turn — A, then B, a \
+            reading, B again, both reading — and the steward's tally of \
+            lightings stands at one through all of it, though both \
+            porters called.",
+        slot_wants: "five calls, and the flame lit exactly once",
+        prove_label: "Call the porters",
+    },
+    ChamberMeta {
+        name: "The spin heart",
+        room: "The Spin Heart",
+        inscription_title: "Provisional, Until the Loom",
+        inscription: "The watchman spins for the flag and gives up \
+            honestly at the bound you set — a spin is a promise with a \
+            limit, not a hope without one. The orderings you annotate \
+            here are provisional: the Loom Halls will grade them.",
+        demonstration: "Lockheart sets the watchman spinning against a \
+            flag that never flies; the watchman counts his turns to the \
+            bound and stops, unashamed, and the keeper chalks the count \
+            on the slate.",
+        slot_wants: "a bound, an honest give-up, four annotations",
+        prove_label: "Set the watchman",
+    },
+    ChamberMeta {
+        name: "The reachable day",
+        room: "The Day Census",
+        inscription_title: "Count What Can Happen",
+        inscription: "A day of the heart is eight events on a slate. Do \
+            not count what did happen in one telling — count what can \
+            happen in any: the states the day can reach, class by class, \
+            enumerated turn by turn.",
+        demonstration: "Lockheart lays the day's eight events on the \
+            slate and walks the turn-board through its orderings, \
+            chalking each new state as it is reached — free, shared, \
+            exclusive — until the board holds the whole reachable day.",
+        slot_wants: "the day's true census, in three counts",
+        prove_label: "Present the census",
+    },
+    ChamberMeta {
+        name: "Choosing the cell",
+        room: "Choosing the Cell",
+        inscription_title: "The Sentence Is the Deliverable",
+        inscription: "Three data, three cells, and no housing honest \
+            without its sentence: match each datum to the cell whose \
+            rules fit its life, and write on each door the one sentence \
+            that governs the pairing. The sentence is the deliverable.",
+        demonstration: "Lockheart carries the three data in, one at a \
+            time, and reads each cell's posted rules aloud before \
+            choosing — then writes the invariant on the door in a fair \
+            hand, where any keeper may check it.",
+        slot_wants: "three housings, and the true sentence on each door",
+        prove_label: "House the three",
+    },
+];
+
+/// Each chamber's spoken introduction.
+pub const FLOOR6_CHAMBER_INTROS: [&str; 5] = [
+    "The Cell Heart. A heart behind glass, worked by a flag machine: \
+     walk its scripted day in order, and when the writing flag is barred \
+     by a reading flag still out, hear the bell — the refusal is the \
+     lesson, not a failure of the day.",
+    "The Borrow-Flag Brazier. Two porters share one brazier, lit lazily \
+     by the first call: sequence the five calls, and watch the tally of \
+     lightings — the once-guard is the count, and the count does not lie.",
+    "The Spin Heart. Set the watchman's bound, run the heart against a \
+     flag that never flies, and annotate the four orderings — \
+     provisionally. Floor 7 grades what you write here; write what you \
+     can defend there.",
+    "The Day Census. Eight events, three porters, four turns: submit \
+     the census of the states the day can reach — free, shared, \
+     exclusive — and let the judge tally it against the enumeration.",
+    "Choosing the Cell. A config read often and written rarely; a \
+     counter two porters increment; a log one hand appends. House each \
+     in its true cell, and write the governing sentence on its door.",
+];
+
+/// The Examine texts for Floor 6's five chambers.
+pub const F6_EXAMINE_TEXTS: [&str; 5] = [
+    "A heart behind glass in a quiet chest, its flag-staff beside it: \
+     socket for one token, a bell on a cord, and a card posted on the \
+     glass — the Buffer's own contract card, hung here as the bench's \
+     law. A slate beneath lists the day's six operations.",
+    "A brazier in a niche between two porters' doors, cold. Above it a \
+     tally slate with a single row: LIGHTINGS. The niche is built so \
+     either porter may call; the flame, once lit, serves both.",
+    "A heart in an open frame with a watchman's stool beside it and a \
+     slate of bounds from one to nine. Four claim-cards hang below, \
+     their backs stamped PROVISIONAL in the keeper's hand.",
+    "A slate day-board: eight event tiles in four turn-rows, three \
+     porters' colours at the margin, and three empty count-boxes headed \
+     FREE, SHARED, EXCLUSIVE. A judge's stamp hangs at the board's edge.",
+    "Three cells stand open — a plain cell, a many-readers lock heart, \
+     a borrow-flag heart — and three data on a carrier's tray, each \
+     with its life placarded. Blank sentence-cards and a fair pen wait \
+     on the bench.",
+];
+
+/// Chamber 1's demonstration, spoken at the watch.
+pub const CELL_CHARTER: &str = "Lockheart walks the day aloud: two \
+    reading flags out, one home — then the writing flag raised, and the \
+    bell strikes once, clearly, and the heart keeps its last true \
+    state. 'Not corruption,' the keeper says. 'A refusal you can hear.' \
+    The last flags come home and the writing flag flies alone, as \
+    posted.";
+
+/// Chamber 2's demonstration, spoken at the watch.
+pub const BRAZIER_CHARTER: &str = "Porter A calls, and the brazier \
+    lights — the tally chalks ONE. Porter B calls: no second lighting, \
+    only the flame, already there. A reads by it, B calls again, both \
+    read. The tally never moves. 'The first hand lit it,' Lockheart \
+    says. 'Every later hand simply arrives at a lit room.'";
+
+/// Chamber 3's demonstration, spoken at the watch.
+pub const SPIN_CHARTER: &str = "Lockheart sets the bound at four and \
+    starts the watchman against a flag that never flies. The watchman \
+    turns — one, two, three, four — and stops, sets down his cord, and \
+    reports the count plainly. 'He did not fail,' the keeper says. 'He \
+    kept the bound. A spin without one is just waiting with worse \
+    manners.'";
+
+/// Chamber 4's demonstration, spoken at the watch.
+pub const CENSUS_CHARTER: &str = "Lockheart works the turn-board \
+    slowly: the first turn's single event, the second turn's two in \
+    both their orders, chalking each state the day can stand in — the \
+    free heart, the shared heart at one, at two, at three flags, the \
+    exclusive heart alone. 'Count states,' the keeper says, 'not \
+    stories.'";
+
+/// Chamber 5's demonstration, spoken at the watch.
+pub const CHOOSING_CHARTER: &str = "Lockheart reads the config's life \
+    aloud — read by many, written seldom — and carries it to the \
+    many-readers heart, writing its sentence on the door before \
+    turning to the counter. 'The cell is a claim,' the keeper says. \
+    'The sentence is where the claim can be checked.'";
+
+/// The hint ladders for Floor 6's chambers. At scaffolding only the
+/// general ladder stands; each chamber's own ladder lands with it.
+pub fn floor6_chamber_hints(_chamber: usize) -> [&'static str; 4] {
+    [
+        "The Lockheart rewards the read posting over the worked heart: \
+         before any work, read the rules the chest in front of you \
+         posts — the press that refuses names the rule you skipped.",
+        "Work the chamber's own order. The demonstration at the watch \
+         is the mechanism shown honestly, by the keeper's own hands; \
+         imitate it exactly and the chest has no surprises left.",
+        "Every refusal on this floor names the missing piece of the \
+         posting out loud. Collect the refusals; they are the rules, \
+         told from the other side.",
+        "The seam of this floor, in miniature: two flags that must \
+         never fly together are one state too many — look for the \
+         place where a machine holds them as two facts instead of one \
+         token.",
+    ]
+}
