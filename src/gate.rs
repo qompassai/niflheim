@@ -1,8 +1,9 @@
-//! The FOE gate runner: assembles the player's Interner's Hoard
-//! into a scratch cargo project, runs the curriculum's Domain 1
-//! gate (`cargo test` with the hidden suite, half validation and
-//! half adversarial, then `cargo clippy --all-targets --
-//! -D warnings`), and reads the verdict.
+//! The FOE gate runner: assembles the player's boss crate —
+//! Floor 1's Interner's Hoard, Floor 2's Admission Desk — into a
+//! scratch cargo project, runs the floor's gate (`cargo test`
+//! with the hidden suite, half validation and half adversarial,
+//! then `cargo clippy --all-targets -- -D warnings`), and reads
+//! the verdict.
 //!
 //! OS-boundary discipline (Tiger Style): subprocesses are spawned
 //! with separate argv values, never through a shell; stdout and
@@ -19,7 +20,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::content::{GATE_CARGO_TOML, GATE_TESTS};
+use crate::content::{GATE_CARGO_TOML, GATE_TESTS, GATE2_CARGO_TOML, GATE2_TESTS};
 
 /// Most bytes of player code the gate will assemble.
 pub const MAX_PLAYER_CODE_BYTES: usize = 64 * 1024;
@@ -225,15 +226,60 @@ impl GateReport {
     }
 }
 
+/// One gate's furniture: the scratch manifest, the hidden
+/// suite, and the artifact's name as the fiction speaks it. The
+/// runner is shared; only the furniture differs by floor.
+struct GateSpec {
+    /// The scratch project's manifest.
+    cargo_toml: &'static str,
+    /// The hidden test suite's source.
+    tests: &'static str,
+    /// The artifact under judgement ("Hoard", "Desk").
+    artifact: &'static str,
+}
+
+/// Floor 1's gate: the Interner's Hoard.
+const HOARD_SPEC: GateSpec = GateSpec {
+    cargo_toml: GATE_CARGO_TOML,
+    tests: GATE_TESTS,
+    artifact: "Hoard",
+};
+
+/// Floor 2's gate: the Admission Desk.
+const DESK_SPEC: GateSpec = GateSpec {
+    cargo_toml: GATE2_CARGO_TOML,
+    tests: GATE2_TESTS,
+    artifact: "Desk",
+};
+
 /// Assemble `player_code` into a scratch project under
-/// `scratch_root` and run the gate. The project directory is
-/// removed when the run ends, whatever the verdict.
+/// `scratch_root` and run Floor 1's gate. The project directory
+/// is removed when the run ends, whatever the verdict.
 pub fn run_gate(scratch_root: &Path, player_code: &str, limits: &GateLimits) -> GateReport {
+    run_gate_spec(scratch_root, player_code, limits, &HOARD_SPEC)
+}
+
+/// Assemble `player_code` into a scratch project under
+/// `scratch_root` and run Floor 2's gate: the Admission Desk
+/// against its own hidden suite, under the same bounds.
+pub fn run_gate2(scratch_root: &Path, player_code: &str, limits: &GateLimits) -> GateReport {
+    run_gate_spec(scratch_root, player_code, limits, &DESK_SPEC)
+}
+
+/// The shared gate: bound the draft, claim a scratch project,
+/// run the floor's suite and lanterns, clean up.
+fn run_gate_spec(
+    scratch_root: &Path,
+    player_code: &str,
+    limits: &GateLimits,
+    spec: &GateSpec,
+) -> GateReport {
     if player_code.len() > MAX_PLAYER_CODE_BYTES {
         return GateReport::refused(format!(
             "The gate refuses the draft: {} bytes is past the {MAX_PLAYER_CODE_BYTES}-byte \
-             bound. Shorten the Hoard and submit again.",
-            player_code.len()
+             bound. Shorten the {} and submit again.",
+            player_code.len(),
+            spec.artifact
         ));
     }
     let project = match claim_scratch(scratch_root) {
@@ -242,7 +288,7 @@ pub fn run_gate(scratch_root: &Path, player_code: &str, limits: &GateLimits) -> 
             return GateReport::refused(format!("The vault could not assemble the proof: {error}"));
         }
     };
-    let report = run_gate_in(&project, player_code, limits);
+    let report = run_gate_in(&project, player_code, limits, spec);
     let _ = std::fs::remove_dir_all(&project);
     report
 }
@@ -265,14 +311,19 @@ fn claim_scratch(scratch_root: &Path) -> std::io::Result<PathBuf> {
 }
 
 /// The gate itself, inside a claimed project directory.
-fn run_gate_in(project: &Path, player_code: &str, limits: &GateLimits) -> GateReport {
+fn run_gate_in(
+    project: &Path,
+    player_code: &str,
+    limits: &GateLimits,
+    spec: &GateSpec,
+) -> GateReport {
     let assembled = (|| -> std::io::Result<()> {
         std::fs::create_dir_all(project.join("src"))?;
         std::fs::create_dir_all(project.join("tests"))?;
-        std::fs::write(project.join("Cargo.toml"), GATE_CARGO_TOML)?;
+        std::fs::write(project.join("Cargo.toml"), spec.cargo_toml)?;
         let lib = format!("#![forbid(unsafe_code)]\n{player_code}");
         std::fs::write(project.join("src/lib.rs"), lib)?;
-        std::fs::write(project.join("tests/gate_tests.rs"), GATE_TESTS)?;
+        std::fs::write(project.join("tests/gate_tests.rs"), spec.tests)?;
         Ok(())
     })();
     if let Err(error) = assembled {
@@ -295,9 +346,11 @@ fn run_gate_in(project: &Path, player_code: &str, limits: &GateLimits) -> GateRe
             tests_failed: failed_count,
             clippy_passed: false,
             timed_out: true,
-            summary: "The gate's deadline fell: your Hoard ran past the bound and was \
-                      stopped. Somewhere in it, something never finishes."
-                .to_string(),
+            summary: format!(
+                "The gate's deadline fell: your {} ran past the bound and was \
+                 stopped. Somewhere in it, something never finishes.",
+                spec.artifact
+            ),
             detail: tail_text(&test_run.stdout, &test_run.stderr),
         };
     }
@@ -337,12 +390,15 @@ fn run_gate_in(project: &Path, player_code: &str, limits: &GateLimits) -> GateRe
     let summary = if tests_passed && clippy_passed {
         format!(
             "The gate stands open: cargo test {passed_count} passed, 0 failed; the \
-             clippy lanterns are lit. The Hoard is real."
+             clippy lanterns are lit. The {} is real.",
+            spec.artifact
         )
     } else if !tests_passed && passed_count == 0 && failed_count == 0 {
-        "The gate refuses: the Hoard did not build, so no test could run. The gate \
-         record holds the compiler's own words."
-            .to_string()
+        format!(
+            "The gate refuses: the {} did not build, so no test could run. The gate \
+             record holds the compiler's own words.",
+            spec.artifact
+        )
     } else if !tests_passed {
         format!(
             "The gate refuses: cargo test {passed_count} passed, {failed_count} failed. \
@@ -573,6 +629,71 @@ impl<'a> LineIndex<'a> {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// The reference Desk: what a correct Floor 2 submission
+    /// looks like. Kept beside the reference Hoard so the second
+    /// gate is proven against a known pass.
+    const REFERENCE_DESK: &str = r"
+pub trait FireWard {}
+pub trait MistSense {}
+pub trait Swift {}
+
+pub struct AshHound {
+    pub name: &'static str,
+}
+
+pub struct MistHound {
+    pub name: &'static str,
+}
+
+impl FireWard for AshHound {}
+
+impl MistSense for MistHound {}
+
+pub fn staff_fire_watch<B: FireWard>(beast: B) -> B {
+    beast
+}
+
+pub fn staff_mist_watch<B: MistSense>(beast: B) -> B {
+    beast
+}
+
+pub fn admitted(sigils: &[&str], bound: &[&str]) -> bool {
+    !bound.is_empty() && bound.iter().all(|sigil| sigils.contains(sigil))
+}
+";
+
+    /// Validation (integration): the reference Desk passes the
+    /// whole second gate — tests and clippy lanterns.
+    #[test]
+    fn gate2_passes_the_reference_desk() {
+        let root = scratch("desk-reference");
+        let report = run_gate2(&root, REFERENCE_DESK, &GateLimits::default());
+        assert!(
+            report.passed(),
+            "report: {}\ndetail:\n{}",
+            report.summary,
+            report.detail
+        );
+        assert_eq!(report.tests_failed, 0);
+        assert!(report.tests_run >= 9);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Adversarial (integration): the unfinished Desk scaffold
+    /// fails the second gate — its staffing and predicate cannot
+    /// pass on `todo!()` bodies.
+    #[test]
+    fn gate2_refuses_the_scaffold() {
+        let root = scratch("desk-scaffold");
+        let report = run_gate2(
+            &root,
+            crate::content::GATE2_SCAFFOLD,
+            &GateLimits::default(),
+        );
+        assert!(!report.passed());
+        assert!(!report.tests_passed);
+        let _ = std::fs::remove_dir_all(&root);
+    }
     /// Adversarial (integration): hostile code that loops forever
     /// inside `intern` is killed at the deadline and reported —
     /// the gate returns a verdict instead of hanging.

@@ -667,6 +667,169 @@ fn line_index_of_single_newline() {
 "##;
 
 // ---------------------------------------------------------------------------
+// The Floor 2 FOE gate: the Admission Desk, re-posted by the
+// player's hand. The game assembles the player's editor text into
+// this project, adds the hidden test suite, and runs cargo test +
+// clippy — the same bounded gate as Floor 1's, a second lantern.
+// ---------------------------------------------------------------------------
+
+/// The Floor 2 scratch project's manifest.
+pub const GATE2_CARGO_TOML: &str = "\
+[package]
+name = \"the-admission-desk\"
+version = \"0.1.0\"
+edition = \"2024\"
+
+[workspace]
+
+[lib]
+name = \"the_admission_desk\"
+path = \"src/lib.rs\"
+";
+
+/// The scaffold the Floor 2 editor opens with: the desk's shape,
+/// unfinished. Its staffing and its predicate are `todo!()`, so
+/// the gate refuses it — as it should, until the player re-posts
+/// the bound.
+pub const GATE2_SCAFFOLD: &str = r##"//! The Admission Desk — the Menagerie's charter, re-posted in
+//! your own hand.
+//!
+//! The desk admitted by resemblance: a grey coat stood for a fire
+//! sigil, and the slip was stamped all the same. The guild's book
+//! of failures names the seam — failure class #6, the
+//! Cartographer's Blind Eye: a fine instrument used outside the
+//! domain it was made for.
+//!
+//! The repair is a bound, re-posted. Write the desk so a beast is
+//! admitted by its sigils and nothing else: the two watches
+//! staffed by bound, so the wrong kind cannot be posted at all,
+//! and the desk's own predicate for the roster board — which
+//! refuses, above all, an admission that names no domain.
+
+/// The fire sigil: the bearer can stand against flame.
+pub trait FireWard {}
+
+/// The mist sigil: the bearer can read the fog.
+pub trait MistSense {}
+
+/// The swiftness sigil: the bearer runs the valley roads.
+pub trait Swift {}
+
+/// An ash-hound of the fire-watch: grey as ash, sigilled for flame.
+pub struct AshHound {
+    /// The hound's name, as the roster writes it.
+    pub name: &'static str,
+}
+
+/// A mist-hound of the mist-watch: grey as fog, sigilled for mist.
+pub struct MistHound {
+    /// The hound's name, as the roster writes it.
+    pub name: &'static str,
+}
+
+impl FireWard for AshHound {}
+
+impl MistSense for MistHound {}
+
+/// The fire-watch, re-posted: only a beast bearing the FireWard
+/// sigil can be staffed to it — the bound is the admission.
+pub fn staff_fire_watch<B: FireWard>(beast: B) -> B {
+    todo!()
+}
+
+/// The mist-watch, re-posted: only a beast bearing the MistSense
+/// sigil can be staffed to it.
+pub fn staff_mist_watch<B: MistSense>(beast: B) -> B {
+    todo!()
+}
+
+/// The desk's predicate, for the roster board: does this beast's
+/// sigil list satisfy this post's bound? Every sigil the bound
+/// names must stand in the beast's list. A bound that names
+/// nothing is no post at all — the desk refuses domain-less
+/// admissions, so an empty bound admits no one.
+pub fn admitted(sigils: &[&str], bound: &[&str]) -> bool {
+    todo!()
+}
+"##;
+
+/// The hidden suite for the Admission Desk: half validation,
+/// half adversarial, in the gate's standing proportion.
+pub const GATE2_TESTS: &str = r##"//! The vault's gate for the Admission Desk.
+
+use the_admission_desk::{AshHound, MistHound, admitted, staff_fire_watch, staff_mist_watch};
+
+// ------------------------------------------------------------------
+// Validation
+// ------------------------------------------------------------------
+
+#[test]
+fn fire_watch_staffs_the_ash_hound() {
+    let posted = staff_fire_watch(AshHound { name: "Soot" });
+    assert_eq!(posted.name, "Soot");
+}
+
+#[test]
+fn mist_watch_staffs_the_mist_hound() {
+    let posted = staff_mist_watch(MistHound { name: "Mistveil" });
+    assert_eq!(posted.name, "Mistveil");
+}
+
+#[test]
+fn the_predicate_reads_the_roster() {
+    // Ember stands the Hearth Post; Mistveil the Mist Post;
+    // Drizzle the Valley Post.
+    assert!(admitted(&["FireWard", "Swift"], &["FireWard"]));
+    assert!(admitted(&["MistSense", "DeepSight"], &["MistSense"]));
+    assert!(admitted(&["MistSense", "Swift"], &["Swift"]));
+}
+
+#[test]
+fn extra_sigils_and_bound_order_do_not_bar() {
+    assert!(admitted(&["Swift", "FireWard"], &["FireWard"]));
+    assert!(admitted(
+        &["MistSense", "Swift", "KeenNose"],
+        &["Swift", "MistSense"]
+    ));
+}
+
+// ------------------------------------------------------------------
+// Adversarial
+// ------------------------------------------------------------------
+
+#[test]
+fn the_mist_hound_is_refused_the_fire_watch() {
+    // The seam itself: the hound's sigils are true, and they are
+    // not the fire-watch's.
+    assert!(!admitted(&["MistSense", "DeepSight"], &["FireWard"]));
+}
+
+#[test]
+fn a_grey_coat_is_not_a_sigil() {
+    assert!(!admitted(&["GreyCoat"], &["FireWard"]));
+    assert!(!admitted(&[], &["FireWard"]));
+    assert!(!admitted(&["AshHound"], &["FireWard"]));
+}
+
+#[test]
+fn domain_less_admissions_are_refused() {
+    assert!(!admitted(&["FireWard"], &[]));
+    assert!(!admitted(&[], &[]));
+}
+
+#[test]
+fn every_named_sigil_is_required() {
+    assert!(!admitted(&["FireWard"], &["FireWard", "Swift"]));
+    assert!(!admitted(&["Swift"], &["FireWard", "Swift"]));
+}
+
+#[test]
+fn a_duplicated_bound_sigil_still_admits() {
+    assert!(admitted(&["FireWard"], &["FireWard", "FireWard"]));
+}
+"##;
+
+// ---------------------------------------------------------------------------
 // The Ferronia chart: all seventeen floors, by stratum. Only Floor 1
 // is built in this build; the rest stand on the chart as the design
 // prescribes — known, and unclaimed.
@@ -914,9 +1077,92 @@ pub const MENAGERIE_CHAMBERS: [ChamberMeta; 5] = [
 /// The FOE's name.
 pub const FOE2_NAME: &str = "The Menagerie";
 /// The FOE's inscription: the rule it breaks, carved.
-pub const FOE2_INSCRIPTION: &str = "The desk admits by resemblance. A grey coat is not a fire sigil, yet the slip is stamped all the same. Audit every admission against its charter: exhibit each working beast's sigils against the bound of the post it serves. What can be found by audit need never be guessed.";
+pub const FOE2_INSCRIPTION: &str = "The desk admits by resemblance. A grey coat is not a fire sigil, yet the slip is stamped all the same. Audit every admission against its charter: exhibit each working beast's sigils against the bound of the post it serves. What can be found by audit need never be guessed. The guild's book of failures names the seam: failure class #6, the Cartographer's Blind Eye — a fine instrument used outside the domain it was made for.";
 /// The FOE demonstrated: the mechanism at its worst.
 pub const FOE2_DEMONSTRATION: &str = "The mist-hound stands its fire-watch in a grey coat the colour of the ash-hounds. Set before a lit brazier — the valley's one known landmark — it lowers its nose, breathes deep, and reports fog. It is not lying. It was never sigilled for the post.";
+
+/// One admission on the FOE's own audit table: a beast, the post
+/// its slip assigns it to, and the grounds the slip gives. The
+/// FOE's cast — the ash-hounds and the mist-hound among them —
+/// stands in this table and nowhere else: the roster (`BEASTS`)
+/// is never resized for the audit.
+pub struct FoeAdmission {
+    /// The beast's name, as the slip writes it.
+    pub name: &'static str,
+    /// The kind of beast.
+    pub kind: &'static str,
+    /// The sigils this beast actually carries.
+    pub sigils: &'static [&'static str],
+    /// The post the slip assigns it to: an index into
+    /// [`ADMISSION_SERVICES`].
+    pub service: usize,
+    /// What the desk's slip claims: the post, and its grounds.
+    pub slip: &'static str,
+}
+
+/// The desk's admission table: seven slips, one for every beast
+/// standing a post. Six agree with the sigils they name. One was
+/// stamped on resemblance alone.
+pub const FOE_ADMISSIONS: [FoeAdmission; 7] = [
+    FoeAdmission {
+        name: "Ember",
+        kind: "a salamander of the banked coals",
+        sigils: &["FireWard", "Swift"],
+        service: 0,
+        slip: "fire-watch at the Hearth Post — sigilled and standing",
+    },
+    FoeAdmission {
+        name: "Cinder",
+        kind: "a fox of the smoldering ashes",
+        sigils: &["FireWard", "KeenNose"],
+        service: 0,
+        slip: "fire-watch at the Hearth Post — sigilled and standing",
+    },
+    FoeAdmission {
+        name: "Soot",
+        kind: "a raven of the chimney's height",
+        sigils: &["FireWard", "SureFoot"],
+        service: 0,
+        slip: "fire-watch at the Hearth Post — sigilled and standing",
+    },
+    FoeAdmission {
+        name: "The Mist-Hound",
+        kind: "a hound of the shifting fog",
+        sigils: &["MistSense", "DeepSight"],
+        service: 0,
+        slip: "fire-watch at the Hearth Post — grey as the ash-hounds, \
+               and quiet at the post",
+    },
+    FoeAdmission {
+        name: "Mistveil",
+        kind: "a wolf of the shifting fog",
+        sigils: &["MistSense", "DeepSight"],
+        service: 1,
+        slip: "mist-watch at the Mist Post — sigilled and standing",
+    },
+    FoeAdmission {
+        name: "Vapor",
+        kind: "a hawk of the cloud's edge",
+        sigils: &["MistSense", "KeenNose"],
+        service: 1,
+        slip: "mist-watch at the Mist Post — sigilled and standing",
+    },
+    FoeAdmission {
+        name: "Drizzle",
+        kind: "a hare of the dew-laden meadow",
+        sigils: &["MistSense", "Swift"],
+        service: 2,
+        slip: "the Valley Post — sigilled and standing",
+    },
+];
+
+/// The calibration record: the suspect run against the valley's
+/// one known landmark. Written when the brazier test is run and
+/// kept with the audit as the proof's second half.
+pub const FOE2_CALIBRATION: &str = "The calibration record: set before the lit \
+    brazier, burning true, the mist-hound reported fog, thick and honest. \
+    Its senses did not fail — they were never made for this post. The Lens \
+    stands calibrated.";
 
 // ---------------------------------------------------------------------------
 // Floor 2, Chamber 1 — Traits and impls: the Anvil Call.
@@ -1445,4 +1691,28 @@ pub fn floor2_hints(chamber: usize) -> [&'static str; 4] {
             "The Sigilwright has not carved this ladder yet.",
         ],
     }
+}
+
+/// The FOE's hint ladder: four rungs, the same law as every
+/// ladder on the floor — viewing is free, and the fourth names
+/// the seam outright. The FOE carries no facet, so nothing is
+/// forfeit but the guessing.
+pub fn floor2_foe_hints() -> [&'static str; 4] {
+    [
+        "Take the audit at the desk, then exhibit each admission's sigils \
+         against its post's bound. Seven slips stand on the table; the desk \
+         stamped every one.",
+        "A slip and a sigil list are two different writings. Where they \
+         agree, the admission stands. Read for the one place they do not: a \
+         post whose bound names a sigil the beast does not carry.",
+        "Consider the fire-watch. Three of its four slips name beasts \
+         sigilled FireWard. The fourth is grey, and quiet, and was admitted \
+         for it. Grey is a colour. FireWard is a sigil.",
+        "The seam is named: failure class #6, the Cartographer's Blind Eye. \
+         The mist-hound stands the fire-watch on resemblance — its sigils \
+         are MistSense and DeepSight, and its slip claims the Hearth Post. \
+         Exhibit every admission, name that row, and run the hound against \
+         the lit brazier: it will report fog, honestly, because the mist is \
+         the domain it was made for.",
+    ]
 }

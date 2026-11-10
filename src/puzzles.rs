@@ -9,10 +9,10 @@
 
 use crate::content::MASTER_PLAN;
 use crate::content::{
-    BAR_REASONS, BLIND_RUN_PERFORMANCE, CHARTER, COLLAR_ROUTES, COLLISION_READINGS, DELIVERIES,
-    PACK_ITEMS, PLACARDS, PORTERS, READERS, RECORD_KEPT, RECORD_KEPT_SECOND, RECORD_RESTORED,
-    REGISTRY_BEASTS, RegistryBeast, STABLE_SERVICES, STABLE_SIGILS, TOLL_KEEPER_A, TOLL_KEEPER_B,
-    TRICK_CHARTER, TRICK_PERFORMERS,
+    ADMISSION_SERVICES, BAR_REASONS, BLIND_RUN_PERFORMANCE, CHARTER, COLLAR_ROUTES,
+    COLLISION_READINGS, DELIVERIES, FOE_ADMISSIONS, PACK_ITEMS, PLACARDS, PORTERS, READERS,
+    RECORD_KEPT, RECORD_KEPT_SECOND, RECORD_RESTORED, REGISTRY_BEASTS, RegistryBeast,
+    STABLE_SERVICES, STABLE_SIGILS, TOLL_KEEPER_A, TOLL_KEEPER_B, TRICK_CHARTER, TRICK_PERFORMERS,
 };
 use crate::core::{Census, census_of, parse_plan};
 
@@ -455,6 +455,38 @@ pub fn collision_reading_ok(choice: usize) -> bool {
         .get(choice)
         .is_some_and(|reading| reading.ok)
 }
+
+// ---------------------------------------------------------------------------
+// Floor 2, the FOE — the admission audit.
+// ---------------------------------------------------------------------------
+
+/// Whether the desk's slip for audit row `row` disagrees with the
+/// beast's own sigils: the post the slip claims asks a sigil the
+/// beast does not carry. Judged from the table alone — slips and
+/// sigil lists, never names or coats. An out-of-range row has no
+/// slip to judge and never disagrees.
+pub fn foe2_row_disagrees(row: usize) -> bool {
+    let Some(admission) = FOE_ADMISSIONS.get(row) else {
+        return false;
+    };
+    let Some(service) = ADMISSION_SERVICES.get(admission.service) else {
+        return false;
+    };
+    !service
+        .bound
+        .iter()
+        .all(|sigil| admission.sigils.contains(sigil))
+}
+
+/// The audit table's one disagreeing row, if the table stands as
+/// authored — the seam the audit exists to find.
+pub fn foe2_disagreement_row() -> Option<usize> {
+    FOE_ADMISSIONS
+        .iter()
+        .enumerate()
+        .find(|(row, _)| foe2_row_disagrees(*row))
+        .map(|(row, _)| row)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -695,6 +727,29 @@ mod tests {
         assert!(!collision_reading_ok(0));
         assert!(!collision_reading_ok(1));
         assert!(!collision_reading_ok(usize::MAX));
+    }
+    /// Validation: exactly one admission on the desk's table
+    /// disagrees with its beast's sigils — the mist-hound's
+    /// fire-watch slip — and the judge finds it from the table.
+    #[test]
+    fn foe_audit_finds_the_one_disagreement() {
+        assert_eq!(foe2_disagreement_row(), Some(3));
+        assert!(foe2_row_disagrees(3));
+        let disagreeing: Vec<usize> = (0..crate::content::FOE_ADMISSIONS.len())
+            .filter(|row| foe2_row_disagrees(*row))
+            .collect();
+        assert_eq!(disagreeing, vec![3]);
+    }
+
+    /// Adversarial: sound admissions never disagree — each roster
+    /// beast's sigils satisfy its post's bound — and forged rows
+    /// never hold.
+    #[test]
+    fn foe_audit_refuses_sound_rows_and_forgeries() {
+        for row in [0, 1, 2, 4, 5, 6] {
+            assert!(!foe2_row_disagrees(row), "row {row} stands sound");
+        }
+        assert!(!foe2_row_disagrees(usize::MAX));
     }
     /// Adversarial: the smooth errands are not the finding, the
     /// choosing kennel cannot be its own remedy, and out-of-range

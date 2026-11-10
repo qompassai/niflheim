@@ -529,3 +529,169 @@ are built, in the landed Steps' idiom throughout.
 - The Herald's narration returns through the status line, as
   Floor 1's secondary beats do; no dedicated reading overlay
   was built for it — the letters stand in full on the hub.
+
+## Step 4 — The FOE: The Menagerie at its desk (coordinator lane 4)
+
+The FOE is built, in the landed steps' idiom throughout: the
+audit on the FOE's own admission table, the brazier calibration,
+the second real cargo gate, and the strike that re-posts the
+fire-watch bound. Failure class #6, The Cartographer's Blind
+Eye, is named explicitly in the fiction — in the FOE's
+inscription, in the Desk scaffold's own header, and in the
+fourth rung of the FOE's hint ladder. Authored by the
+coordinator directly (anchored blocks + splicer, the lane-3
+method, every anchor asserted exactly once before any write);
+the local coder stack was not used for these files, and the
+provenance is recorded here rather than smoothed over.
+
+- content.rs: the FOE's own admission table (FOE_ADMISSIONS) —
+  seven slips, each a beast, its true sigils, the post its slip
+  claims, and the slip's grounds. Six agree with their sigils;
+  the seventh is the mist-hound's fire-watch slip, stamped
+  "grey as the ash-hounds". The roster (BEASTS) is untouched —
+  the FOE's cast lives in this table only. FOE2_INSCRIPTION
+  gains the class naming; FOE2_CALIBRATION keeps the brazier
+  record; floor2_foe_hints() is the FOE's four-rung ladder.
+  The second gate's furniture: GATE2_CARGO_TOML (the crate
+  the_admission_desk), GATE2_SCAFFOLD (the Desk unfinished —
+  staffing and predicate `todo!()`, the traits and the two
+  hounds given), and GATE2_TESTS (nine tests: fire-watch and
+  mist-watch staffing, the predicate reading the roster,
+  extra sigils and bound order tolerated; adversarially the
+  mist-hound refused the fire-watch, a grey coat and a name
+  refused as sigils, domain-less admissions refused, every
+  named sigil required, a duplicated bound sigil still
+  admitting).
+- puzzles.rs: two pure judges over the table — foe2_row_disagrees
+  (a slip disagrees when its post's bound names a sigil the
+  beast does not carry; judged from slips and sigil lists,
+  never names or coats; total over forged rows) and
+  foe2_disagreement_row. Two tests: exactly one disagreement
+  stands on the table and the judge finds it; sound rows and
+  forged rows never hold.
+- state.rs: Floor2FoeProgress gains audit_taken,
+  audit_exhibited, disagreement, editor_code (the Desk draft;
+  empty reads as the scaffold), and gate_record — all
+  serde-defaulted, so pre-Step-4 saves load whole. The acts:
+  take the audit; exhibit a row (a service's bound stands read
+  when all its rows are exhibited, kept on the 1A `audited`
+  record); name the disagreement (a sound row is refused with
+  its own satisfying sigils as the evidence); calibrate (the
+  suspect must be named first — calibration answers a
+  suspicion, it does not go looking for one). The proof —
+  every admission exhibited, the disagreement named, the Lens
+  calibrated — exposes the FOE the moment it completes; the
+  strike arms only on exposure + gate, and confirming it
+  re-posts the bound, reassigns the hound honourably, and
+  awards the Lens Stone (codex) and the Plugin Menagerie
+  (pack), once. The load invariants now guard the FOE as they
+  do Floor 1's: the exhibit record's size, the Desk draft's
+  bound, a disagreement that names a row on the table, and —
+  for Exposed/Fallen — a recomputed audit proof, with Fallen
+  also requiring the gate, both awards, and the date. Hint
+  viewing rides the existing floor2.foe_hints_used record.
+  The stairs clauses now read Floor 2's gate: clause 3's text
+  reports both Stratum I lanterns lit once the Desk has passed
+  (the clause itself still waits on Floor 3, honestly). Four
+  tests: the full arc with a save/load of the fallen FOE
+  (validation); the out-of-order refusal battery (adversarial);
+  a forged Fallen save refused as corrupt (adversarial); the
+  Desk draft's scaffold start and round trip (validation).
+- gate.rs: the runner is generalized by furniture, not forked:
+  one bounded runner, two GateSpecs (manifest, hidden suite,
+  the artifact's name as the fiction speaks it). run_gate is
+  Floor 1's Hoard exactly as before — its verdict wording is
+  byte-identical, the name now interpolated from the spec —
+  and run_gate2 judges the Desk. Two integration tests: the
+  reference Desk passes the whole second gate (tests and
+  clippy lanterns); the unfinished scaffold is refused.
+- game.rs: Screen::Floor2Foe with its door on the Floor 2 hub
+  (El::DoorFoe2, bottom-centre stone — the Herald's strip owns
+  the bottom-right, so the Floor 1 FOE-door stone was not
+  reused). The audit interactions: the Enumerate verb takes
+  the audit; rows are cards — click to name the seam, Exhibit
+  button per row to exhibit its sigils; the Calibrate element
+  runs the brazier test; exposure narrates from whichever act
+  completes the proof. The editor is floor-aware throughout:
+  one editor machinery, two drafts — editor_text()/
+  editor_text_mut() route to the Desk draft on the FOE screen
+  and the Hoard draft elsewhere, and RunGate files the run
+  with its floor, so on_gate_result commits the verdict to
+  the right record and the right FOE. ArmedFor::Foe2 carries
+  the strike through the shared seal; the hint verb and
+  HintDeeper serve the FOE's own ladder; the reading views
+  serve FOE2_INSCRIPTION / FOE2_DEMONSTRATION under the
+  Menagerie's name. Two tests: the hub door answers the
+  pointer; the editor at the desk edits the Desk draft and
+  never the Hoard.
+- shell.rs: build_foe2 (the desk room; the panel: proof slot,
+  the Desk's gate line, the bounds-read line, the seven audit
+  cards with slip-then-sigils lines, the seam's wax border
+  once named, the calibrate button and the calibration record
+  or its direction). The Floor 2 hub draws the FOE door with
+  its standing (EXPOSED/FALLEN tags). The io system runs
+  run_gate2 for Floor 2 filings; the editor overlay and the
+  gate record view read the current floor's draft and record.
+- lib.rs: the crate doc now records the FOE landed; Step 5's
+  integration pass is the build's remaining step.
+
+### Gates (coordinator-run, primo, pinned toolchain throughout)
+
+- cargo fmt: applied; cargo fmt --check clean afterwards.
+- cargo clippy --all-targets -- -D warnings: clean (rc 0).
+- cargo test: **89 passed / 0 failed** (79 at Step 3's close
+  intact; +2 puzzles, +4 state, +2 gate, +2 game from this
+  step). Log:
+  ~/.local/share/pax/niflheim-step4-build-20261110/cargo-test.log
+- theodolite (MCP, protocol 2026-07-28) over the seven touched
+  .rs files: 0 diagnostics each, session quiescent (warm-up
+  diagnostics call issued first per the bridge's lazy start;
+  its result was not read as evidence). Log:
+  ~/.local/share/pax/niflheim-step4-build-20261110/theodolite-step4.log
+- Determinism: a scripted state-level playthrough of the whole
+  floor through the state API (all five chambers solved and
+  repaired, all three Herald letters acted on, the FOE's full
+  arc through the strike on the fixed date 2026-11-10), run
+  twice in separate processes, produced byte-identical saves
+  (sha256 61750f02529a00486c18e2057632079e572db7146c161326747c86fc8db0faef
+  both runs). The probe file was temporary and is not in the
+  tree. The driven GUI playthrough of the floor remains
+  Step 5's evidence, as on Floor 1's programme.
+- Android: cargo build --target aarch64-linux-android --lib:
+  Finished in 7.4 s under the pinned toolchain (incremental
+  over Step 3's dependency build); libniflheim.so
+  1,344,238,696 B (debug profile).
+- Launch smoke: Xvfb :97, BEVY_ASSET_ROOT at the repo root:
+  cold_start_ms=1215, no panics, still running at the 20 s
+  bound.
+
+### Production axes (D-1151) and aspects, for this step
+
+- Characters: no new character work; the FOE's cast is the
+  audit table's seven, prose only, as designed.
+- Levels: the FOE chamber completes the floor — all five
+  chambers, the Herald, and the FOE now stand playable end to
+  end; the floor's stairs clauses read both gates honestly.
+- Objects: the Lens Stone and the Plugin Menagerie are
+  awarded on the strike; the Lens Stone's text stands exactly
+  "Bounds are admissions.", as the errata fixed it.
+- Music: none — the design's platform note is "No audio".
+- UI-UX: the FOE delivered in Floor 1's idiom on the shared
+  machinery (audit cards mirror census cards; the editor and
+  the seal are the same instruments, floor-aware); touch
+  parity by construction.
+- Aspects: mechanics delivered in full (audit judged from the
+  table alone; calibration gated on the naming; the repair is
+  real Rust judged by the real bounded gate, never a quiz).
+  Animation/economy: none in the design.
+
+### Left open, honestly
+
+- Step 5 (integration + driven GUI playthrough evidence for
+  the whole floor) remains — the floor's last rung.
+- The FOE's hint ladder shows Floor 1's shared rung-4 footer
+  ("this challenge's facet is forfeit") although a FOE carries
+  no facet — inherited verbatim from Floor 1's FOE, whose
+  ladder shows the same line; left as parity rather than
+  quietly forked, and named here for the record.
+

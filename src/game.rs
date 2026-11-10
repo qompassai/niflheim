@@ -176,6 +176,8 @@ pub enum Screen {
     Chamber(usize),
     /// The FOE's chamber.
     Foe,
+    /// Floor 2's FOE chamber: the admission desk.
+    Floor2Foe,
     /// Floor 2's hub: grounds, doors, roster.
     Floor2Hub,
     /// A Floor 2 chamber, by index (0–4).
@@ -278,6 +280,8 @@ pub enum El {
     DoorChamber(u8),
     /// Hub: the FOE's door.
     DoorFoe,
+    /// Floor 2 hub: the FOE's door.
+    DoorFoe2,
     /// Hub: the stairs door.
     DoorStairs,
     /// Hub: the Floor 2 door.
@@ -314,6 +318,13 @@ pub enum El {
     F2PanelTab(u8),
     /// Floor 2 hub: act on one of the Herald's letters, by index.
     F2HeraldAct(u8),
+    /// Floor 2 FOE: exhibit one admission's sigils, by audit row.
+    F2FoeExhibit(u8),
+    /// Floor 2 FOE: name one admission as the disagreement, by
+    /// audit row.
+    F2FoeName(u8),
+    /// Floor 2 FOE: calibrate the Lens against the lit brazier.
+    F2FoeCalibrate,
     /// Hub: the camp stone.
     CampStone,
     /// The room's subject (desk / engine / chart).
@@ -441,10 +452,13 @@ pub enum IoRequest {
     },
     /// Read the save file and hand back the result.
     ReadSave,
-    /// Run the FOE gate on this code.
+    /// Run a FOE gate on this code.
     RunGate {
         /// The player's submitted draft.
         code: String,
+        /// Which floor's gate judges it: Floor 2's Desk when
+        /// true, Floor 1's Hoard when false.
+        floor2: bool,
     },
 }
 
@@ -457,6 +471,8 @@ enum ArmedFor {
     Floor2Chamber(usize),
     /// The FOE's strike.
     Foe,
+    /// Floor 2 FOE's strike.
+    Foe2,
 }
 
 /// The game. Owns the expedition and every transient interaction
@@ -481,6 +497,9 @@ pub struct Game {
     pub today: String,
     /// A gate run is in flight.
     pub gate_running: bool,
+    /// The gate run judges Floor 2's Desk (set when the run is
+    /// filed; read when its verdict returns).
+    pub gate_floor2: bool,
     /// The last gate report's detail (the record view's body).
     pub gate_detail: String,
     /// The hint rung currently shown in the hint reading.
@@ -538,6 +557,7 @@ impl Game {
             io: None,
             today: String::new(),
             gate_running: false,
+            gate_floor2: false,
             gate_detail: String::new(),
             hint_showing: 0,
             editor_cursor: 0,
@@ -599,6 +619,7 @@ impl Game {
                 | Screen::Chamber(_)
                 | Screen::Floor2Chamber(_)
                 | Screen::Foe
+                | Screen::Floor2Foe
         )
     }
 
@@ -642,6 +663,7 @@ impl Game {
             Screen::Chamber(index) => self.armed == Some(ArmedFor::Chamber(index)),
             Screen::Floor2Chamber(index) => self.armed == Some(ArmedFor::Floor2Chamber(index)),
             Screen::Foe => self.expedition.foe.strike == StrikePhase::Armed,
+            Screen::Floor2Foe => self.expedition.floor2.foe.strike == StrikePhase::Armed,
             _ => false,
         }
     }
@@ -721,6 +743,21 @@ impl Game {
     pub fn on_gate_result(&mut self, report: GateReport) {
         self.gate_running = false;
         self.gate_detail = report.detail.clone();
+        if self.gate_floor2 {
+            self.expedition.floor2.foe.gate_record = Some(report.summary.clone());
+            if report.passed() {
+                self.expedition.floor2_foe_mark_gate_passed();
+                self.expedition
+                    .log_push("The gate stood open: the Admission Desk passed.");
+                self.say(StatusKind::Good, report.summary.clone());
+            } else {
+                self.expedition
+                    .log_push("The gate refused the Desk; the draft is kept.");
+                self.say(StatusKind::Refusal, report.summary.clone());
+            }
+            self.changed();
+            return;
+        }
         self.expedition.gate_record = Some(report.summary.clone());
         if report.passed() {
             self.expedition.foe_mark_gate_passed();
@@ -786,6 +823,13 @@ impl Game {
                 Verb::Hint,
                 Verb::Map,
             ],
+            Screen::Floor2Foe => vec![
+                Verb::Examine,
+                Verb::Read,
+                Verb::Enumerate,
+                Verb::Hint,
+                Verb::Map,
+            ],
         }
     }
 }
@@ -821,6 +865,12 @@ pub mod geom {
     }
     /// The Floor 2 door, hub bottom row between stairs and FOE.
     pub fn door_floor2() -> Rect {
+        Rect::new(252.0, 518.0, 168.0, 124.0)
+    }
+
+    /// The Menagerie's door on Floor 2's hub, bottom row centre —
+    /// the same stone as the way down on Floor 1's hub.
+    pub fn door_foe2() -> Rect {
         Rect::new(252.0, 518.0, 168.0, 124.0)
     }
 
@@ -1016,6 +1066,22 @@ pub mod geom {
     pub fn editor_open() -> Rect {
         Rect::new(1030.0, 196.0, 210.0, 34.0)
     }
+
+    /// Floor 2 FOE: an audit row on the desk's table.
+    pub fn f2foe_row(pos: usize) -> Rect {
+        Rect::new(808.0, 240.0 + pos as f32 * 34.0, 440.0, 32.0)
+    }
+
+    /// Floor 2 FOE: an audit row's exhibit button.
+    pub fn f2foe_exhibit_btn(pos: usize) -> Rect {
+        let row = f2foe_row(pos);
+        Rect::new(1152.0, row.y + 3.0, 88.0, 26.0)
+    }
+
+    /// Floor 2 FOE: the calibrate button, under the audit table.
+    pub fn f2foe_calibrate() -> Rect {
+        Rect::new(808.0, 484.0, 176.0, 32.0)
+    }
 }
 
 impl Game {
@@ -1031,7 +1097,7 @@ impl Game {
         }
         match self.screen {
             Screen::Hub | Screen::Floor2Hub => cy == 0 || cell == (5, 4),
-            Screen::Chamber(_) | Screen::Floor2Chamber(_) | Screen::Foe => {
+            Screen::Chamber(_) | Screen::Floor2Chamber(_) | Screen::Foe | Screen::Floor2Foe => {
                 (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7)
             }
             Screen::Title => true,
@@ -1176,7 +1242,10 @@ impl Game {
             Key::Cancel => {
                 if self.overlay != Overlay::None {
                     self.close_overlay();
-                } else if self.armed.is_some() || self.expedition.foe.strike == StrikePhase::Armed {
+                } else if self.armed.is_some()
+                    || self.expedition.foe.strike == StrikePhase::Armed
+                    || self.expedition.floor2.foe.strike == StrikePhase::Armed
+                {
                     self.disarm();
                     self.say(StatusKind::Info, "The seal is stood down.");
                 } else if self.screen != Screen::Title {
@@ -1237,6 +1306,9 @@ impl Game {
         if self.expedition.foe.strike == StrikePhase::Armed {
             self.expedition.foe_disarm_strike();
         }
+        if self.expedition.floor2.foe.strike == StrikePhase::Armed {
+            self.expedition.floor2_foe_disarm_strike();
+        }
     }
 
     // ------------------------------------------------------------------
@@ -1258,6 +1330,11 @@ impl Game {
                         "The hoard-engine: a ledger the size of a door, turning its \
                          pages by itself, smiling with every leaf."
                     }
+                    Screen::Floor2Foe => {
+                        "The admission desk: seven slips under a brass weight, a \
+                         brazier burning at the door for the calibration, and the \
+                         Menagerie watching its own table be read."
+                    }
                     Screen::Hub => {
                         "The vaults: five chamber doors, the Hoard's door, and the \
                          stairs — shut, for now."
@@ -1275,6 +1352,24 @@ impl Game {
                 self.bump();
             }
             Verb::Enumerate => {
+                if self.screen == Screen::Floor2Foe {
+                    let first = !self.expedition.floor2.foe.audit_taken;
+                    self.expedition.floor2_foe_take_audit();
+                    if first {
+                        self.expedition
+                            .log_push("The desk's admissions were taken into audit.");
+                    }
+                    self.say(
+                        StatusKind::Info,
+                        format!(
+                            "The audit is taken: {} admissions on the desk's table. \
+                             Exhibit each beast's sigils against its post's bound; \
+                             name the one admission whose slip and sigils disagree.",
+                            content::FOE_ADMISSIONS.len()
+                        ),
+                    );
+                    self.changed();
+                }
                 if self.screen == Screen::Foe {
                     let first = !self.expedition.foe.enumerated;
                     self.expedition.foe_enumerate();
@@ -1333,6 +1428,13 @@ impl Game {
                         self.expedition.floor2_view_hint(index);
                     }
                     self.hint_showing = self.expedition.floor2_hints_used(index).max(1);
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                } else if self.screen == Screen::Floor2Foe {
+                    if self.expedition.floor2_foe_hints_used() == 0 {
+                        self.expedition.floor2_foe_view_hint();
+                    }
+                    self.hint_showing = self.expedition.floor2_foe_hints_used().max(1);
                     self.overlay = Overlay::Reading(ReadingKind::Hint);
                     self.changed();
                 } else if let Some(challenge) = self.current_challenge() {
@@ -1402,6 +1504,75 @@ impl Game {
         self.changed();
     }
 
+    /// Exhibit a Floor 2 audit row, narrating exposure when it lands.
+    fn exhibit_foe2_row(&mut self, row: usize) {
+        let was = self.expedition.floor2.foe.state;
+        match self.expedition.floor2_foe_exhibit(row) {
+            Ok(text) => {
+                if self.expedition.floor2.foe.state == FoeState::Exposed && was != FoeState::Exposed
+                {
+                    self.expedition.log_push("The Menagerie stands exposed.");
+                    self.say(
+                        StatusKind::Good,
+                        "The audit is complete and the Lens calibrated: THE \
+                         MENAGERIE STANDS EXPOSED. What remains is the Desk \
+                         itself — re-post the bound, and pass the gate.",
+                    );
+                } else {
+                    self.say(StatusKind::Good, text);
+                }
+            }
+            Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+        }
+        self.changed();
+    }
+
+    /// Name a Floor 2 disagreement, narrating exposure when it lands.
+    fn name_foe2_disagreement(&mut self, row: usize) {
+        let was = self.expedition.floor2.foe.state;
+        match self.expedition.floor2_foe_name_disagreement(row) {
+            Ok(text) => {
+                if self.expedition.floor2.foe.state == FoeState::Exposed && was != FoeState::Exposed
+                {
+                    self.expedition.log_push("The Menagerie stands exposed.");
+                    self.say(
+                        StatusKind::Good,
+                        "The seam is named and the proof complete: THE MENAGERIE \
+                         STANDS EXPOSED. What remains is the Desk itself — \
+                         re-post the bound, and pass the gate.",
+                    );
+                } else {
+                    self.say(StatusKind::Good, text);
+                }
+            }
+            Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+        }
+        self.changed();
+    }
+
+    /// Calibrate the Lens against the brazier, narrating
+    /// exposure when the record completes the proof.
+    fn calibrate_foe2(&mut self) {
+        let was = self.expedition.floor2.foe.state;
+        match self.expedition.floor2_foe_calibrate() {
+            Ok(text) => {
+                if self.expedition.floor2.foe.state == FoeState::Exposed && was != FoeState::Exposed
+                {
+                    self.expedition.log_push("The Menagerie stands exposed.");
+                    self.say(
+                        StatusKind::Good,
+                        "The calibration lands and the audit is whole: THE \
+                         MENAGERIE STANDS EXPOSED. What remains is the Desk \
+                         itself — re-post the bound, and pass the gate.",
+                    );
+                } else {
+                    self.say(StatusKind::Good, text);
+                }
+            }
+            Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+        }
+        self.changed();
+    }
     // ------------------------------------------------------------------
     // Activation: every element's one behaviour.
     // ------------------------------------------------------------------
@@ -1465,6 +1636,14 @@ impl Game {
                 self.say(
                     StatusKind::Info,
                     "The Borrowed Hoard. Audit it, expose it, replace it, strike it.",
+                );
+            }
+            El::DoorFoe2 => {
+                self.enter_screen(Screen::Floor2Foe);
+                self.say(
+                    StatusKind::Info,
+                    "The Menagerie at its desk. Audit the admissions, name the \
+                     seam, calibrate the Lens, re-post the bound.",
                 );
             }
             El::DoorStairs => {
@@ -1667,6 +1846,10 @@ impl Game {
                     self.say(StatusKind::Refusal, refusal.message());
                 }
             },
+
+            El::F2FoeExhibit(row) => self.exhibit_foe2_row(row as usize),
+            El::F2FoeName(row) => self.name_foe2_disagreement(row as usize),
+            El::F2FoeCalibrate => self.calibrate_foe2(),
             El::CampStone => {
                 self.overlay = Overlay::Reading(ReadingKind::FloorIntro);
                 self.bump();
@@ -1843,15 +2026,31 @@ impl Game {
                     );
                     self.changed();
                 }
+                Screen::Floor2Foe => {
+                    self.expedition.floor2_foe_reset_proof();
+                    self.say(
+                        StatusKind::Info,
+                        "The audit proof is reset: exhibits, the naming, and the \
+                         calibration are given back. The gate's verdict and your \
+                         Desk draft stand.",
+                    );
+                    self.changed();
+                }
                 _ => {}
             },
             El::EditorOpen => {
                 self.overlay = Overlay::Editor;
-                self.editor_cursor = self.editor_cursor.min(self.expedition.editor_code.len());
+                self.editor_cursor = self.editor_cursor.min(self.editor_text().len());
                 self.say(
                     StatusKind::Info,
-                    "The Interner's Hoard, in your own hand. Run the gate when it is \
-                     written; the draft is kept whatever the verdict.",
+                    if self.screen == Screen::Floor2Foe {
+                        "The Admission Desk, in your own hand. Run the gate when \
+                         the bound is re-posted; the draft is kept whatever the \
+                         verdict."
+                    } else {
+                        "The Interner's Hoard, in your own hand. Run the gate when \
+                         it is written; the draft is kept whatever the verdict."
+                    },
                 );
             }
             El::EditorArea => {
@@ -1861,14 +2060,16 @@ impl Game {
             El::RunGate => {
                 if self.gate_running {
                     self.say(StatusKind::Info, "The gate is already running.");
-                } else if self.expedition.editor_code.trim().is_empty() {
+                } else if self.editor_text().trim().is_empty() {
                     self.say(
                         StatusKind::Refusal,
                         "The editor is empty — there is nothing to judge.",
                     );
                 } else {
+                    self.gate_floor2 = self.screen == Screen::Floor2Foe;
                     self.io = Some(IoRequest::RunGate {
-                        code: self.expedition.editor_code.clone(),
+                        code: self.editor_text().to_string(),
+                        floor2: self.gate_floor2,
                     });
                     self.gate_running = true;
                     self.say(
@@ -1879,7 +2080,11 @@ impl Game {
                 }
             }
             El::ResetProof => {
-                self.expedition.editor_code = content::GATE_SCAFFOLD.to_string();
+                if self.screen == Screen::Floor2Foe {
+                    *self.expedition.floor2_foe_draft_mut() = content::GATE2_SCAFFOLD.to_string();
+                } else {
+                    self.expedition.editor_code = content::GATE_SCAFFOLD.to_string();
+                }
                 self.editor_cursor = 0;
                 self.editor_anchor = None;
                 self.editor_scroll = 0;
@@ -1897,6 +2102,10 @@ impl Game {
                 if let Screen::Floor2Chamber(index) = self.screen {
                     self.expedition.floor2_view_hint(index);
                     self.hint_showing = self.expedition.floor2_hints_used(index);
+                    self.changed();
+                } else if self.screen == Screen::Floor2Foe {
+                    self.expedition.floor2_foe_view_hint();
+                    self.hint_showing = self.expedition.floor2_foe_hints_used();
                     self.changed();
                 } else if let Some(challenge) = self.current_challenge() {
                     self.expedition.view_hint(challenge);
@@ -2008,6 +2217,18 @@ impl Game {
                 }
                 Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
             },
+
+            Screen::Floor2Foe => match self.expedition.floor2_foe_arm_strike() {
+                Ok(()) => {
+                    self.armed = Some(ArmedFor::Foe2);
+                    self.say(
+                        StatusKind::Info,
+                        "The seal is pressed. Confirm to re-post the bound and \
+                         reassign the hound — or stand down.",
+                    );
+                }
+                Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+            },
             _ => {}
         }
     }
@@ -2062,6 +2283,28 @@ impl Game {
                 }
                 self.changed();
             }
+
+            Some(ArmedFor::Foe2) => {
+                self.armed = None;
+                let date = if self.today.is_empty() {
+                    "an unrecorded day".to_string()
+                } else {
+                    self.today.clone()
+                };
+                match self.expedition.floor2_foe_confirm_strike(&date) {
+                    Ok(text) => {
+                        self.expedition
+                            .log_push(format!("The Menagerie fell on {date}."));
+                        self.expedition.log_push(
+                            "The Lens Stone entered the codex; the Plugin \
+                             Menagerie, the pack.",
+                        );
+                        self.say(StatusKind::Good, text);
+                    }
+                    Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                }
+                self.changed();
+            }
             None => {}
         }
     }
@@ -2070,6 +2313,37 @@ impl Game {
     // The editor.
     // ------------------------------------------------------------------
 
+    /// The draft the editor edits on this screen: the Admission
+    /// Desk at the Menagerie's desk, the Interner's Hoard
+    /// everywhere else. The two drafts are separate records; the
+    /// editor machinery below speaks only through these.
+    pub fn editor_text(&self) -> &str {
+        if self.screen == Screen::Floor2Foe {
+            self.expedition.floor2_foe_draft()
+        } else {
+            &self.expedition.editor_code
+        }
+    }
+
+    /// The draft the editor edits, writable.
+    fn editor_text_mut(&mut self) -> &mut String {
+        if self.screen == Screen::Floor2Foe {
+            self.expedition.floor2_foe_draft_mut()
+        } else {
+            &mut self.expedition.editor_code
+        }
+    }
+
+    /// The current screen's gate record: the Desk's verdict at
+    /// the Menagerie's desk, the Hoard's elsewhere — for the
+    /// editor's verdict line and the gate record view.
+    pub fn gate_record(&self) -> Option<&str> {
+        if self.screen == Screen::Floor2Foe {
+            self.expedition.floor2.foe.gate_record.as_deref()
+        } else {
+            self.expedition.gate_record.as_deref()
+        }
+    }
     /// Position the cursor from an editor-area click.
     fn editor_click(&mut self, x: f32, y: f32) {
         let area = rects::EDITOR_AREA;
@@ -2077,7 +2351,7 @@ impl Game {
         let col = ((x - area.x - EDITOR_PAD_X) / EDITOR_CHAR_W)
             .floor()
             .max(0.0) as usize;
-        self.editor_cursor = byte_at_line_col(&self.expedition.editor_code, line, col);
+        self.editor_cursor = byte_at_line_col(self.editor_text(), line, col);
         self.editor_anchor = None;
         self.focus = Some(El::EditorArea);
         self.bump();
@@ -2086,8 +2360,8 @@ impl Game {
     /// Insert text at the cursor (replacing any selection).
     pub fn editor_insert(&mut self, text: &str) {
         self.editor_delete_selection();
-        let at = clamp_boundary(&self.expedition.editor_code, self.editor_cursor);
-        self.expedition.editor_code.insert_str(at, text);
+        let at = clamp_boundary(self.editor_text(), self.editor_cursor);
+        self.editor_text_mut().insert_str(at, text);
         self.editor_cursor = at + text.len();
         self.editor_anchor = None;
         self.editor_sync_scroll();
@@ -2101,14 +2375,14 @@ impl Game {
         };
         let (start, end) = ordered(anchor, self.editor_cursor);
         let (start, end) = (
-            clamp_boundary(&self.expedition.editor_code, start),
-            clamp_boundary(&self.expedition.editor_code, end),
+            clamp_boundary(self.editor_text(), start),
+            clamp_boundary(self.editor_text(), end),
         );
         if start == end {
             self.editor_anchor = None;
             return false;
         }
-        self.expedition.editor_code.drain(start..end);
+        self.editor_text_mut().drain(start..end);
         self.editor_cursor = start;
         self.editor_anchor = None;
         true
@@ -2121,12 +2395,12 @@ impl Game {
             self.bump();
             return;
         }
-        let cursor = clamp_boundary(&self.expedition.editor_code, self.editor_cursor);
+        let cursor = clamp_boundary(self.editor_text(), self.editor_cursor);
         if cursor == 0 {
             return;
         }
-        let prev = prev_boundary(&self.expedition.editor_code, cursor);
-        self.expedition.editor_code.drain(prev..cursor);
+        let prev = prev_boundary(self.editor_text(), cursor);
+        self.editor_text_mut().drain(prev..cursor);
         self.editor_cursor = prev;
         self.editor_sync_scroll();
         self.bump();
@@ -2139,12 +2413,12 @@ impl Game {
             self.bump();
             return;
         }
-        let cursor = clamp_boundary(&self.expedition.editor_code, self.editor_cursor);
-        if cursor >= self.expedition.editor_code.len() {
+        let cursor = clamp_boundary(self.editor_text(), self.editor_cursor);
+        if cursor >= self.editor_text().len() {
             return;
         }
-        let next = next_boundary(&self.expedition.editor_code, cursor);
-        self.expedition.editor_code.drain(cursor..next);
+        let next = next_boundary(self.editor_text(), cursor);
+        self.editor_text_mut().drain(cursor..next);
         self.editor_sync_scroll();
         self.bump();
     }
@@ -2152,20 +2426,20 @@ impl Game {
     /// Select the whole draft.
     pub fn editor_select_all(&mut self) {
         self.editor_anchor = Some(0);
-        self.editor_cursor = self.expedition.editor_code.len();
+        self.editor_cursor = self.editor_text().len();
         self.bump();
     }
 
     /// Move the editor cursor. `extend` grows a selection.
     pub fn editor_move(&mut self, key: Key, extend: bool) {
-        let text = &self.expedition.editor_code;
-        let cursor = clamp_boundary(text, self.editor_cursor);
+        let cursor = clamp_boundary(self.editor_text(), self.editor_cursor);
         if extend && self.editor_anchor.is_none() {
             self.editor_anchor = Some(cursor);
         }
         if !extend {
             self.editor_anchor = None;
         }
+        let text = self.editor_text();
         let (line, col) = line_col_of_byte(text, cursor);
         let new = match key {
             Key::Left => prev_boundary(text, cursor),
@@ -2181,7 +2455,7 @@ impl Game {
 
     /// Home/End for the editor: line start / line end.
     pub fn editor_line_edge(&mut self, end: bool) {
-        let text = &self.expedition.editor_code;
+        let text = self.editor_text();
         let cursor = clamp_boundary(text, self.editor_cursor);
         let (line, _) = line_col_of_byte(text, cursor);
         self.editor_cursor = if end {
@@ -2204,7 +2478,7 @@ impl Game {
 
     /// Keep the cursor's line inside the visible window.
     fn editor_sync_scroll(&mut self) {
-        let (line, _) = line_col_of_byte(&self.expedition.editor_code, self.editor_cursor);
+        let (line, _) = line_col_of_byte(self.editor_text(), self.editor_cursor);
         if line < self.editor_scroll {
             self.editor_scroll = line;
         } else if line >= self.editor_scroll + EDITOR_VISIBLE_LINES {
@@ -2214,12 +2488,12 @@ impl Game {
 
     /// The cursor's (line, column in chars), 0-based.
     pub fn editor_line_col(&self) -> (usize, usize) {
-        line_col_of_byte(&self.expedition.editor_code, self.editor_cursor)
+        line_col_of_byte(self.editor_text(), self.editor_cursor)
     }
 
     /// The draft's line count.
     pub fn editor_line_count(&self) -> usize {
-        line_starts(&self.expedition.editor_code).len()
+        line_starts(self.editor_text()).len()
     }
 
     // ------------------------------------------------------------------
@@ -2235,6 +2509,7 @@ impl Game {
                     .inscription_title
                     .to_string(),
                 Screen::Foe => "The Hoard's Inscription".to_string(),
+                Screen::Floor2Foe => "The Menagerie's Inscription".to_string(),
                 _ => "The Inscription".to_string(),
             },
             ReadingKind::Demonstration => "The Demonstration".to_string(),
@@ -2257,6 +2532,7 @@ impl Game {
                     content::MENAGERIE_CHAMBERS[index].inscription.to_string()
                 }
                 Screen::Foe => content::FOE_INSCRIPTION.to_string(),
+                Screen::Floor2Foe => content::FOE2_INSCRIPTION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Demonstration => match self.screen {
@@ -2265,12 +2541,14 @@ impl Game {
                     content::MENAGERIE_CHAMBERS[index].demonstration.to_string()
                 }
                 Screen::Foe => content::FOE_DEMONSTRATION.to_string(),
+                Screen::Floor2Foe => content::FOE2_DEMONSTRATION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Hint => {
                 let rung = self.hint_showing.max(1) as usize;
                 let text = match self.screen {
                     Screen::Floor2Chamber(index) => content::floor2_hints(index)[rung - 1],
+                    Screen::Floor2Foe => content::floor2_foe_hints()[rung - 1],
                     _ => {
                         let challenge = self.current_challenge().unwrap_or(0);
                         content::hints(challenge)[rung - 1]
@@ -2469,7 +2747,8 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor2Hub
         | Screen::Chamber(_)
         | Screen::Floor2Chamber(_)
-        | Screen::Foe => {
+        | Screen::Foe
+        | Screen::Floor2Foe => {
             els.push((El::TabFloor, rects::TAB_FLOOR));
             els.push((El::TabMap, rects::TAB_MAP));
             els.push((El::TabLog, rects::TAB_LOG));
@@ -2491,6 +2770,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             for index in 0..5 {
                 els.push((El::Floor2Door(index as u8), geom::door_chamber(index)));
             }
+            els.push((El::DoorFoe2, geom::door_foe2()));
             for group in 0..content::ROSTER_GROUPS.len() {
                 els.push((El::RosterToggle(group as u8), geom::roster_group(group)));
             }
@@ -2532,6 +2812,30 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
                         els.push((El::VerifyRow(*row as u8), geom::verify_btn(pos)));
                     }
                 }
+            }
+            layout_seal(&mut els, game);
+        }
+        Screen::Floor2Foe => {
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.push((El::ResetChamber, rects::RESET_BTN));
+            els.push((El::EditorOpen, geom::editor_open()));
+            if game.expedition.floor2.foe.audit_taken {
+                for row in 0..content::FOE_ADMISSIONS.len() {
+                    els.push((El::F2FoeName(row as u8), geom::f2foe_row(row)));
+                    let exhibited = game
+                        .expedition
+                        .floor2
+                        .foe
+                        .audit_exhibited
+                        .get(row)
+                        .copied()
+                        .unwrap_or(false);
+                    if !exhibited {
+                        els.push((El::F2FoeExhibit(row as u8), geom::f2foe_exhibit_btn(row)));
+                    }
+                }
+                els.push((El::F2FoeCalibrate, geom::f2foe_calibrate()));
             }
             layout_seal(&mut els, game);
         }
@@ -2585,6 +2889,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         Screen::Chamber(index) => game.armed == Some(ArmedFor::Chamber(index)),
         Screen::Floor2Chamber(index) => game.armed == Some(ArmedFor::Floor2Chamber(index)),
         Screen::Foe => game.expedition.foe.strike == StrikePhase::Armed,
+        Screen::Floor2Foe => game.expedition.floor2.foe.strike == StrikePhase::Armed,
         _ => false,
     };
     els.push((El::Seal, rects::SEAL));
@@ -2795,6 +3100,33 @@ mod tests {
         assert_eq!(game.focus, Some(El::EditorArea));
     }
 
+    /// Floor 2's hub door answers the pointer: the Menagerie's
+    /// chamber opens from the grounds.
+    #[test]
+    fn floor2_foe_door_answers_the_pointer() {
+        let mut game = Game::new();
+        game.begin();
+        game.screen = Screen::Floor2Hub;
+        let rect = geom::door_foe2();
+        game.pointer_down(rect.cx(), rect.cy());
+        game.pointer_up(rect.cx(), rect.cy());
+        assert_eq!(game.screen, Screen::Floor2Foe);
+    }
+
+    /// The editor at the Menagerie's desk edits the Desk draft,
+    /// never the Hoard: the two drafts are separate records.
+    #[test]
+    fn editor_at_the_desk_edits_the_desk_draft() {
+        let mut game = Game::new();
+        game.begin();
+        game.io = None; // the shell drains the begin-autosave at once
+        game.screen = Screen::Floor2Foe;
+        game.overlay = Overlay::Editor;
+        let hoard_before = game.expedition.editor_code.clone();
+        game.editor_insert("x");
+        assert_eq!(game.expedition.editor_code, hoard_before);
+        assert!(game.expedition.floor2_foe_draft().starts_with('x'));
+    }
     /// The general pointer path still works outside overlays:
     /// a hub door opens its chamber.
     #[test]

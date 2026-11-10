@@ -18,15 +18,17 @@
 use serde::{Deserialize, Serialize};
 
 use crate::content::{
-    ADMISSION_SERVICES, BEASTS, FOE_CHALLENGE, GATE_SCAFFOLD, HERALD_LETTERS, INTERNERS_HOARD,
-    LEASES_INITIAL, PACK_ITEMS, PLACARDS, PLANK_STONE, ROSTER_GROUPS,
+    ADMISSION_SERVICES, BEASTS, FOE_ADMISSIONS, FOE_CHALLENGE, GATE_SCAFFOLD, GATE2_SCAFFOLD,
+    HERALD_LETTERS, INTERNERS_HOARD, LEASES_INITIAL, LENS_STONE, PACK_ITEMS, PLACARDS, PLANK_STONE,
+    PLUGIN_MENAGERIE, ROSTER_GROUPS,
 };
 use crate::core::{SAVE_FORMAT_VERSION, SAVE_MAGIC, SaveError, Settings, TextScale};
 use crate::puzzles::{
     RecordKind, bound_exact, bound_missing, bound_unjustified, collar_route_ok,
     collision_reading_ok, day_plan_overlap, errand_choice_ok, foe_census, foe_uncopiable_rows,
-    identification_ok, judge_placards, kennel_choice_ok, lease_chain_problem, packing_problems,
-    reconciled_toll, record_fits_slot, registry_bars_ok, run_delivery, trick_charter_ok,
+    foe2_disagreement_row, foe2_row_disagrees, identification_ok, judge_placards, kennel_choice_ok,
+    lease_chain_problem, packing_problems, reconciled_toll, record_fits_slot, registry_bars_ok,
+    run_delivery, trick_charter_ok,
 };
 
 /// Most bytes of editor draft a save will carry.
@@ -246,6 +248,28 @@ pub struct Floor2FoeProgress {
     pub strike: StrikePhase,
     /// The date inscribed when the FOE fell (`YYYY-MM-DD`).
     pub fallen_date: Option<String>,
+    /// The audit has been taken: the desk's table stands open.
+    /// Serde-defaulted: saves written before the FOE landed load
+    /// with the table closed.
+    #[serde(default)]
+    pub audit_taken: bool,
+    /// Per audit row, on the FOE's own admission table: the
+    /// beast's sigils stand exhibited against its post's bound.
+    /// Serde-defaulted; a short record reads as rows unexhibited.
+    #[serde(default)]
+    pub audit_exhibited: Vec<bool>,
+    /// The admission the player names as the one whose slip and
+    /// sigils disagree. Serde-defaulted.
+    #[serde(default)]
+    pub disagreement: Option<usize>,
+    /// The player's Admission Desk draft (empty = untouched; the
+    /// scaffold stands in its place). Serde-defaulted.
+    #[serde(default)]
+    pub editor_code: String,
+    /// The last gate verdict on the Desk, one line, kept for the
+    /// gate record. Serde-defaulted.
+    #[serde(default)]
+    pub gate_record: Option<String>,
 }
 
 /// Floor 2's whole progress record: five chambers, the FOE, the
@@ -289,6 +313,11 @@ impl Floor2Progress {
                 gate_passed: false,
                 strike: StrikePhase::Idle,
                 fallen_date: None,
+                audit_taken: false,
+                audit_exhibited: vec![false; FOE_ADMISSIONS.len()],
+                disagreement: None,
+                editor_code: String::new(),
+                gate_record: None,
             },
             foe_hints_used: 0,
             admissions: vec![false; BEASTS.len()],
@@ -1296,6 +1325,249 @@ impl Expedition {
         )
     }
 
+    // ------------------------------------------------------------------
+    // Floor 2's FOE — the Menagerie at its desk.
+    // ------------------------------------------------------------------
+
+    /// View a hint rung for Floor 2's FOE: Floor 1's ladder law,
+    /// kept on Floor 2's own record.
+    pub fn floor2_foe_view_hint(&mut self) -> u8 {
+        self.floor2.foe_hints_used = (self.floor2.foe_hints_used + 1).min(4);
+        self.floor2.foe_hints_used
+    }
+
+    /// The deepest hint rung recorded for Floor 2's FOE.
+    pub fn floor2_foe_hints_used(&self) -> u8 {
+        self.floor2.foe_hints_used
+    }
+
+    /// The player's Admission Desk draft: the stored text, or the
+    /// scaffold while the draft stands untouched.
+    pub fn floor2_foe_draft(&self) -> &str {
+        if self.floor2.foe.editor_code.is_empty() {
+            GATE2_SCAFFOLD
+        } else {
+            &self.floor2.foe.editor_code
+        }
+    }
+
+    /// The player's Admission Desk draft, writable: an untouched
+    /// draft first takes the scaffold's shape.
+    pub fn floor2_foe_draft_mut(&mut self) -> &mut String {
+        if self.floor2.foe.editor_code.is_empty() {
+            self.floor2.foe.editor_code = GATE2_SCAFFOLD.to_string();
+        }
+        &mut self.floor2.foe.editor_code
+    }
+
+    /// Take the audit: the desk's table stands open — seven slips
+    /// to read against their beasts' own sigils.
+    pub fn floor2_foe_take_audit(&mut self) {
+        self.floor2.foe.audit_taken = true;
+    }
+
+    /// Exhibit one audit row: the beast's sigils, read against
+    /// the bound of the post its slip claims. When every row of a
+    /// service stands exhibited, the audit has read that service's
+    /// bound, and the record says so.
+    pub fn floor2_foe_exhibit(&mut self, row: usize) -> Result<String, Refusal> {
+        if !self.floor2.foe.audit_taken {
+            return Err(Refusal(
+                "there is no audit yet — take the desk's admissions first".to_string(),
+            ));
+        }
+        let Some(admission) = FOE_ADMISSIONS.get(row) else {
+            return Err(Refusal("no such admission".to_string()));
+        };
+        if self.floor2.foe.audit_exhibited.len() < FOE_ADMISSIONS.len() {
+            self.floor2
+                .foe
+                .audit_exhibited
+                .resize(FOE_ADMISSIONS.len(), false);
+        }
+        self.floor2.foe.audit_exhibited[row] = true;
+        let service = admission.service;
+        let service_done = FOE_ADMISSIONS
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.service == service)
+            .all(|(index, _)| self.floor2.foe.audit_exhibited[index]);
+        if service_done {
+            if self.floor2.foe.audited.len() < ADMISSION_SERVICES.len() {
+                self.floor2
+                    .foe
+                    .audited
+                    .resize(ADMISSION_SERVICES.len(), false);
+            }
+            self.floor2.foe.audited[service] = true;
+        }
+        self.floor2_foe_maybe_expose();
+        Ok(format!(
+            "Exhibited: {} — sigils {} against the bound of {}.",
+            admission.name,
+            admission.sigils.join(", "),
+            ADMISSION_SERVICES[service].name,
+        ))
+    }
+
+    /// Name the admission whose slip and sigils disagree. A sound
+    /// admission is refused with its own evidence: the sigils that
+    /// satisfy its post's bound.
+    pub fn floor2_foe_name_disagreement(&mut self, row: usize) -> Result<String, Refusal> {
+        if !self.floor2.foe.audit_taken {
+            return Err(Refusal(
+                "there is no audit yet — take the desk's admissions first".to_string(),
+            ));
+        }
+        let Some(admission) = FOE_ADMISSIONS.get(row) else {
+            return Err(Refusal("no such admission".to_string()));
+        };
+        if !foe2_row_disagrees(row) {
+            let post = ADMISSION_SERVICES[admission.service].name;
+            let bound = ADMISSION_SERVICES[admission.service].bound.join(", ");
+            return Err(Refusal(format!(
+                "{}'s slip agrees with its sigils: {} stand against the bound \
+                 of {post} ({bound}). The seam is elsewhere on the table",
+                admission.name,
+                admission.sigils.join(", "),
+            )));
+        }
+        self.floor2.foe.disagreement = Some(row);
+        self.floor2_foe_maybe_expose();
+        Ok(format!(
+            "Named: {} — the slip reads '{}', while its sigils read {}. \
+             The slip and the sigils disagree.",
+            admission.name,
+            admission.slip,
+            admission.sigils.join(", "),
+        ))
+    }
+
+    /// Calibrate the Lens: run the named suspect against the
+    /// valley's one known landmark — the lit brazier — and keep
+    /// its report with the audit. The suspect must be named
+    /// first: calibration answers a suspicion; it does not go
+    /// looking for one.
+    pub fn floor2_foe_calibrate(&mut self) -> Result<String, Refusal> {
+        let Some(row) = self.floor2.foe.disagreement else {
+            return Err(Refusal(
+                "calibrate whom? Name the admission whose slip and sigils \
+                 disagree first — the audit points at the suspect"
+                    .to_string(),
+            ));
+        };
+        let Some(admission) = FOE_ADMISSIONS.get(row) else {
+            return Err(Refusal(
+                "the named admission is not on the table".to_string(),
+            ));
+        };
+        self.floor2.foe.calibrated = true;
+        self.floor2_foe_maybe_expose();
+        Ok(format!(
+            "Set before the lit brazier, {} lowers its nose, breathes deep, \
+             and reports fog. The calibration record stands with the audit.",
+            admission.name,
+        ))
+    }
+
+    /// Whether the FOE's proof is complete: every admission on
+    /// the desk's table exhibited, the one disagreement named,
+    /// and the Lens calibrated against the brazier.
+    pub fn floor2_foe_proof_complete(&self) -> bool {
+        let foe = &self.floor2.foe;
+        foe.disagreement == foe2_disagreement_row()
+            && foe.calibrated
+            && (0..FOE_ADMISSIONS.len())
+                .all(|row| foe.audit_exhibited.get(row).copied().unwrap_or(false))
+    }
+
+    /// The moment the audit proof completes, the FOE stands exposed.
+    fn floor2_foe_maybe_expose(&mut self) {
+        if self.floor2.foe.state == FoeState::Standing && self.floor2_foe_proof_complete() {
+            self.floor2.foe.state = FoeState::Exposed;
+        }
+    }
+
+    /// Record a passed cargo gate on the Desk. The gate itself is
+    /// run by the shell; this only commits its verdict.
+    pub fn floor2_foe_mark_gate_passed(&mut self) {
+        self.floor2.foe.gate_passed = true;
+    }
+
+    /// Reset the FOE's proof surface: the audit exhibits, the
+    /// naming, and the calibration are given back; the player's
+    /// gate verdict and Desk draft are untouched. Always available.
+    pub fn floor2_foe_reset_proof(&mut self) {
+        let foe = &mut self.floor2.foe;
+        foe.audit_exhibited.fill(false);
+        foe.audited.fill(false);
+        foe.disagreement = None;
+        foe.calibrated = false;
+        foe.strike = StrikePhase::Idle;
+        if foe.state == FoeState::Exposed {
+            foe.state = FoeState::Standing;
+        }
+    }
+
+    /// Arm the repair strike. Impossible without complete proof:
+    /// the Menagerie exposed by its audit, and the gate passed.
+    pub fn floor2_foe_arm_strike(&mut self) -> Result<(), Refusal> {
+        match self.floor2.foe.state {
+            FoeState::Fallen => Err(Refusal("the Menagerie has already fallen".to_string())),
+            FoeState::Standing => Err(Refusal(
+                "the seal sleeps — the audit proof is incomplete".to_string(),
+            )),
+            FoeState::Exposed => {
+                if !self.floor2.foe.gate_passed {
+                    return Err(Refusal(
+                        "the Desk first — re-post the fire-watch bound as the \
+                         Admission Desk and pass the vault's gate; then the \
+                         strike may be armed"
+                            .to_string(),
+                    ));
+                }
+                self.floor2.foe.strike = StrikePhase::Armed;
+                Ok(())
+            }
+        }
+    }
+
+    /// Stand the strike down.
+    pub fn floor2_foe_disarm_strike(&mut self) {
+        self.floor2.foe.strike = StrikePhase::Idle;
+    }
+
+    /// Confirm the strike: the fire-watch bound is re-posted at
+    /// the desk in letters of iron, and the mist-hound is
+    /// honourably reassigned to the mist-watch it is sigilled
+    /// for. Awards the Lens Stone and the Plugin Menagerie, once.
+    pub fn floor2_foe_confirm_strike(&mut self, date: &str) -> Result<String, Refusal> {
+        if self.floor2.foe.state == FoeState::Fallen {
+            return Err(Refusal("the Menagerie has already fallen".to_string()));
+        }
+        if self.floor2.foe.strike != StrikePhase::Armed {
+            return Err(Refusal(
+                "the strike is not armed — press the seal first".to_string(),
+            ));
+        }
+        self.floor2.foe.strike = StrikePhase::Idle;
+        self.floor2.foe.state = FoeState::Fallen;
+        self.floor2.foe.fallen_date = Some(date.to_string());
+        if !self.codex.iter().any(|stone| stone == LENS_STONE) {
+            self.codex.push(LENS_STONE.to_string());
+        }
+        if !self.pack.iter().any(|loot| loot == PLUGIN_MENAGERIE) {
+            self.pack.push(PLUGIN_MENAGERIE.to_string());
+        }
+        Ok(
+            "The strike lands — not a beast punished, but a bound re-posted: \
+             the fire-watch's charter is nailed to the desk in letters of \
+             iron, and the desk refuses domain-less admissions from this \
+             day. The mist-hound goes honourably to the mist-watch it was \
+             always sigilled for, and reports the fog it was made to read."
+                .to_string(),
+        )
+    }
     /// The Stratum I stairs clauses, each with its standing. The
     /// stairs out of Stratum I need more than this floor can give;
     /// the unmet clauses say so plainly.
@@ -1315,9 +1587,13 @@ impl Expedition {
             ),
             (
                 false,
-                if self.foe.gate_passed {
-                    "every Stratum I boss crate clippy-clean — Floor 1's lantern is lit; \
-                     Floors 2 and 3 have no crates yet"
+                if self.foe.gate_passed && self.floor2.foe.gate_passed {
+                    "every Stratum I boss crate clippy-clean — Floors 1 and 2 have \
+                     lit their lanterns; Floor 3 has no crate yet"
+                        .to_string()
+                } else if self.foe.gate_passed {
+                    "every Stratum I boss crate clippy-clean — Floor 1's lantern is \
+                     lit; Floor 2's waits on its gate, and Floor 3 has no crate yet"
                         .to_string()
                 } else {
                     "every Stratum I boss crate clippy-clean — Floor 1's lantern waits \
@@ -1457,6 +1733,43 @@ impl Expedition {
             && self.floor2.herald_filed.len() != HERALD_LETTERS.len()
         {
             return Err(corrupt("the herald record is the wrong size"));
+        }
+
+        if !self.floor2.foe.audit_exhibited.is_empty()
+            && self.floor2.foe.audit_exhibited.len() != FOE_ADMISSIONS.len()
+        {
+            return Err(corrupt("the audit exhibit record is the wrong size"));
+        }
+        if self.floor2.foe.editor_code.len() > MAX_EDITOR_BYTES {
+            return Err(corrupt("the Desk draft exceeds its bound"));
+        }
+        if let Some(row) = self.floor2.foe.disagreement
+            && row >= FOE_ADMISSIONS.len()
+        {
+            return Err(corrupt(
+                "the audit names an admission that is not on the table",
+            ));
+        }
+        match self.floor2.foe.state {
+            FoeState::Exposed | FoeState::Fallen => {
+                if !self.floor2_foe_proof_complete() {
+                    return Err(corrupt("Floor 2's FOE stands exposed without its audit"));
+                }
+            }
+            FoeState::Standing => {}
+        }
+        if self.floor2.foe.state == FoeState::Fallen {
+            if !self.floor2.foe.gate_passed {
+                return Err(corrupt("Floor 2's FOE fell without the gate"));
+            }
+            if !self.codex.iter().any(|stone| stone == LENS_STONE)
+                || !self.pack.iter().any(|loot| loot == PLUGIN_MENAGERIE)
+            {
+                return Err(corrupt("Floor 2's FOE fell without its awards"));
+            }
+            if self.floor2.foe.fallen_date.is_none() {
+                return Err(corrupt("Floor 2's FOE fell without a date on the chart"));
+            }
         }
         for chamber in &self.floor2.chambers {
             if chamber.facet && (chamber.state != ChamberState::Repaired || chamber.hints_used > 3)
@@ -2324,6 +2637,104 @@ mod tests {
                 other => panic!("expected corrupt error, got: {:?}", other),
             }
         }
+    }
+    /// Solve Floor 2's FOE through the state API: the audit
+    /// taken, every admission exhibited, the one disagreement
+    /// named, and the Lens calibrated against the brazier.
+    fn solve_floor2_foe(expedition: &mut Expedition) {
+        expedition.floor2_foe_take_audit();
+        for row in 0..crate::content::FOE_ADMISSIONS.len() {
+            expedition.floor2_foe_exhibit(row).expect("exhibit");
+        }
+        let seam = crate::puzzles::foe2_disagreement_row().expect("seam row");
+        expedition
+            .floor2_foe_name_disagreement(seam)
+            .expect("name the seam");
+        expedition.floor2_foe_calibrate().expect("calibrate");
+    }
+
+    /// Validation: Floor 2's FOE arc — audit, naming, calibration,
+    /// gate, strike, awards — in design order, and the fallen
+    /// FOE's save loads whole under the recomputed invariants.
+    #[test]
+    fn floor2_foe_full_arc() {
+        let mut expedition = Expedition::new();
+        solve_floor2_foe(&mut expedition);
+        assert_eq!(expedition.floor2.foe.state, FoeState::Exposed);
+        assert!(expedition.floor2.foe.audited.iter().all(|read| *read));
+        assert!(expedition.floor2_foe_arm_strike().is_err(), "gate first");
+        expedition.floor2_foe_mark_gate_passed();
+        expedition.floor2_foe_arm_strike().expect("arm");
+        expedition
+            .floor2_foe_confirm_strike("2026-11-10")
+            .expect("strike lands");
+        assert_eq!(expedition.floor2.foe.state, FoeState::Fallen);
+        assert!(expedition.codex.iter().any(|s| s == LENS_STONE));
+        assert!(expedition.pack.iter().any(|s| s == PLUGIN_MENAGERIE));
+        assert_eq!(
+            expedition.floor2.foe.fallen_date.as_deref(),
+            Some("2026-11-10")
+        );
+        let text = expedition.save_json().expect("save");
+        let loaded = Expedition::load_json(&text).expect("load");
+        assert_eq!(loaded, expedition);
+    }
+
+    /// Adversarial: the audit refuses out of order — exhibits and
+    /// namings before the audit is taken, a sound row named as the
+    /// seam, calibration before any naming — and the refused acts
+    /// leave the record untouched.
+    #[test]
+    fn floor2_foe_refuses_out_of_order() {
+        let mut expedition = Expedition::new();
+        assert!(expedition.floor2_foe_exhibit(0).is_err());
+        assert!(expedition.floor2_foe_name_disagreement(3).is_err());
+        expedition.floor2_foe_take_audit();
+        let refusal = expedition
+            .floor2_foe_name_disagreement(0)
+            .expect_err("a sound row refuses");
+        assert!(refusal.message().contains("agrees with its sigils"));
+        assert!(expedition.floor2.foe.disagreement.is_none());
+        assert!(expedition.floor2_foe_calibrate().is_err());
+        assert!(!expedition.floor2.foe.calibrated);
+        assert_eq!(expedition.floor2.foe.state, FoeState::Standing);
+    }
+
+    /// Adversarial: a forged save that stands Floor 2's FOE fallen
+    /// on an empty audit is refused as corrupt — the load
+    /// invariants recompute the FOE's proof, as they do Floor 1's.
+    #[test]
+    fn load_refuses_forged_floor2_foe() {
+        let expedition = Expedition::new();
+        let text = expedition.save_json().expect("save");
+        let mut value: serde_json::Value = serde_json::from_str(&text).expect("parse json");
+        value["floor2"]["foe"]["state"] = "Fallen".into();
+        match Expedition::load_json(&value.to_string()) {
+            Err(SaveError::Corrupt { .. }) => {}
+            other => panic!("expected corrupt error, got: {other:?}"),
+        }
+    }
+
+    /// Validation: the Desk draft starts as the scaffold, the
+    /// player's edits are their own, and the draft survives the
+    /// save round trip.
+    #[test]
+    fn floor2_foe_draft_round_trips() {
+        let mut expedition = Expedition::new();
+        assert_eq!(
+            expedition.floor2_foe_draft(),
+            crate::content::GATE2_SCAFFOLD
+        );
+        expedition
+            .floor2_foe_draft_mut()
+            .push_str("\n// the bound, re-posted\n");
+        let text = expedition.save_json().expect("save");
+        let loaded = Expedition::load_json(&text).expect("load");
+        assert!(
+            loaded
+                .floor2_foe_draft()
+                .ends_with("the bound, re-posted\n")
+        );
     }
     /// Adversarial: a forged save that stands Floor 2 chambers repaired or
     /// diagnosed on empty work is refused as corrupt — the load invariants

@@ -487,7 +487,7 @@ fn io_system(mut game: ResMut<GameRes>, gate_channel: ResMut<GateChannel>) {
                 }
                 game.on_load_result(result);
             }
-            IoRequest::RunGate { code } => {
+            IoRequest::RunGate { code, floor2 } => {
                 let (sender, receiver): (Sender<GateReport>, Receiver<GateReport>) =
                     std::sync::mpsc::channel();
                 *gate_channel
@@ -497,8 +497,11 @@ fn io_system(mut game: ResMut<GameRes>, gate_channel: ResMut<GateChannel>) {
                 let root = platform::gate_scratch_root();
                 platform::log_line("gate_run_started".to_string());
                 std::thread::spawn(move || {
-                    let report =
-                        crate::gate::run_gate(&root, &code, &crate::gate::GateLimits::default());
+                    let report = if floor2 {
+                        crate::gate::run_gate2(&root, &code, &crate::gate::GateLimits::default())
+                    } else {
+                        crate::gate::run_gate(&root, &code, &crate::gate::GateLimits::default())
+                    };
                     let _ = sender.send(report);
                 });
             }
@@ -956,6 +959,7 @@ fn rebuild_now(
         }
         Screen::Chamber(index) => build_chamber(commands, game, &pal, fonts, stage, index),
         Screen::Foe => build_foe(commands, game, &pal, fonts, stage),
+        Screen::Floor2Foe => build_foe2(commands, game, &pal, fonts, stage),
     }
     match game.overlay {
         Overlay::None => {}
@@ -1103,6 +1107,7 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
             format!("Floor 1 · Chamber {} — {}", index + 1, CHAMBERS[index].name)
         }
         Screen::Foe => "Floor 1 · The Borrowed Hoard".to_string(),
+        Screen::Floor2Foe => "Floor 2 · The Menagerie".to_string(),
         Screen::Floor2Hub => "Niflheim — Floor 2 · The Menagerie Grounds".to_string(),
         Screen::Floor2Chamber(index) => format!(
             "Floor 2 · Chamber {} — {}",
@@ -2020,6 +2025,60 @@ fn build_floor2_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
         fonts,
     );
 
+    // The Menagerie's door, room-side bottom centre: the FOE's
+    // chamber, its standing written on the stone.
+    let foe_door = geom::door_foe2();
+    spawn_box(
+        commands,
+        stage,
+        foe_door,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        foe_door.cx(),
+        foe_door.y + 14.0,
+        foe_door.w,
+        "THE FOE",
+        10.5,
+        true,
+        pal.ink_dim,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        foe_door.cx(),
+        foe_door.y + 34.0,
+        foe_door.w - 8.0,
+        "The Menagerie",
+        12.5,
+        true,
+        pal.ink,
+        fonts,
+    );
+    let (foe_tag, foe_color) = match game.expedition.floor2.foe.state {
+        FoeState::Fallen => ("FALLEN", pal.good),
+        FoeState::Exposed => ("EXPOSED", pal.accent),
+        FoeState::Standing => ("", pal.ink_dim),
+    };
+    if !foe_tag.is_empty() {
+        spawn_text_centered(
+            commands,
+            stage,
+            foe_door.cx(),
+            foe_door.y + 58.0,
+            foe_door.w,
+            foe_tag,
+            10.5,
+            true,
+            foe_color,
+            fonts,
+        );
+    }
     spawn_text(
         commands,
         stage,
@@ -3948,6 +4007,348 @@ fn build_foe(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, sta
 // Overlays.
 // ---------------------------------------------------------------------------
 
+/// Floor 2's FOE chamber: the admission desk — the audit table,
+/// the brazier calibration, and the Desk's gate.
+fn build_foe2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Menagerie — the admission desk",
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        Color::srgb_u8(96, 110, 84),
+        "THE DESK",
+        "the demonstration",
+    );
+    let stone = geom::stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(Color::srgb_u8(140, 140, 148)),
+        Some((2.0, pal.ink_dim)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 12.0,
+        stone.w,
+        "THE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 26.0,
+        stone.w,
+        "RULE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    build_panel_header(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Menagerie",
+        "FOE of Floor 2 — audit, calibrate, re-post, strike",
+    );
+    // The proof slot.
+    use rects::*;
+    spawn_box(
+        commands,
+        stage,
+        SLOT,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    let foe = &game.expedition.floor2.foe;
+    match foe.state {
+        FoeState::Fallen => {
+            spawn_text_centered(
+                commands,
+                stage,
+                SLOT.cx(),
+                SLOT.y + 18.0,
+                SLOT.w,
+                "Fallen — the bound re-posted, the hound at its true watch.",
+                13.5,
+                true,
+                pal.good,
+                fonts,
+            );
+        }
+        _ if game.expedition.floor2_foe_proof_complete() => {
+            spawn_text_centered(
+                commands,
+                stage,
+                SLOT.cx(),
+                SLOT.y + 10.0,
+                SLOT.w,
+                "The audit stands complete: the seam named, the Lens calibrated.",
+                13.5,
+                true,
+                pal.good,
+                fonts,
+            );
+            spawn_text_centered(
+                commands,
+                stage,
+                SLOT.cx(),
+                SLOT.y + 32.0,
+                SLOT.w,
+                "The Menagerie stands EXPOSED.",
+                12.0,
+                false,
+                pal.good,
+                fonts,
+            );
+        }
+        _ => {
+            spawn_text(
+                commands,
+                stage,
+                820.0,
+                SLOT.y + 6.0,
+                Some(416.0),
+                "The proof wants: every admission exhibited against its post's \
+                 bound, the one disagreement named, and the Lens calibrated \
+                 at the brazier.",
+                12.0,
+                false,
+                pal.ink_dim,
+                Justify::Left,
+                fonts,
+            );
+        }
+    }
+    spawn_button(
+        commands,
+        stage,
+        geom::editor_open(),
+        if foe.gate_passed {
+            "The Desk — gate passed"
+        } else {
+            "Write the Desk"
+        },
+        pal,
+        foe.gate_passed,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        202.0,
+        None,
+        if foe.gate_passed {
+            "The gate: PASSED — the strike may be armed."
+        } else if game.gate_running && game.gate_floor2 {
+            "The gate: running…"
+        } else {
+            "The gate: not yet passed."
+        },
+        11.5,
+        false,
+        if foe.gate_passed {
+            pal.good
+        } else {
+            pal.ink_dim
+        },
+        Justify::Left,
+        fonts,
+    );
+    if !foe.audit_taken {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            240.0,
+            Some(432.0),
+            "The desk's ledger is closed. Take the audit (N) and the table \
+             becomes cards: exhibit each beast's sigils against the bound of \
+             the post its slip claims, name the one admission whose slip and \
+             sigils disagree, and run the suspect against the lit brazier.\n\n\
+             The strike needs both proofs — the completed audit, and a Desk \
+             of your own that passes the vault's gate.",
+            13.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+    } else {
+        let progress: Vec<String> = content::ADMISSION_SERVICES
+            .iter()
+            .enumerate()
+            .map(|(index, service)| {
+                let short = service.name.split(' ').nth(1).unwrap_or(service.name);
+                format!(
+                    "{} {}",
+                    short,
+                    if foe.audited.get(index).copied().unwrap_or(false) {
+                        "read"
+                    } else {
+                        "unread"
+                    }
+                )
+            })
+            .collect();
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            216.0,
+            None,
+            &format!("Bounds read by the audit: {}.", progress.join(" · ")),
+            11.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        for (pos, admission) in content::FOE_ADMISSIONS.iter().enumerate() {
+            let rect = geom::f2foe_row(pos);
+            let named = foe.disagreement == Some(pos);
+            let exhibited = foe.audit_exhibited.get(pos).copied().unwrap_or(false);
+            let border = if named {
+                (2.5, pal.wax)
+            } else {
+                (1.5, pal.edge)
+            };
+            spawn_box(commands, stage, rect, Some(pal.card), Some(border), 0.0);
+            let post = content::ADMISSION_SERVICES[admission.service].name;
+            let title = if named {
+                format!("{} — {} · THE SEAM", admission.name, post)
+            } else {
+                format!("{} — {}", admission.name, post)
+            };
+            spawn_text(
+                commands,
+                stage,
+                rect.x + 10.0,
+                rect.y + 3.0,
+                None,
+                &title,
+                12.5,
+                true,
+                pal.ink,
+                Justify::Left,
+                fonts,
+            );
+            let line2 = if exhibited {
+                format!("sigils: {}", admission.sigils.join(", "))
+            } else {
+                let mut slip: String = admission.slip.chars().take(56).collect();
+                if admission.slip.chars().count() > 56 {
+                    slip.push('…');
+                }
+                format!("slip: {slip}")
+            };
+            spawn_text(
+                commands,
+                stage,
+                rect.x + 10.0,
+                rect.y + 19.0,
+                None,
+                &line2,
+                10.5,
+                false,
+                pal.ink_dim,
+                Justify::Left,
+                fonts,
+            );
+            if exhibited {
+                spawn_text_right(
+                    commands,
+                    stage,
+                    rect.x + rect.w - 10.0,
+                    rect.y + 6.0,
+                    110.0,
+                    "exhibited",
+                    11.5,
+                    true,
+                    pal.good,
+                    fonts,
+                );
+            } else {
+                spawn_button(
+                    commands,
+                    stage,
+                    geom::f2foe_exhibit_btn(pos),
+                    "Exhibit",
+                    pal,
+                    false,
+                    fonts,
+                );
+            }
+        }
+        spawn_button(
+            commands,
+            stage,
+            geom::f2foe_calibrate(),
+            if foe.calibrated {
+                "Calibrated"
+            } else {
+                "Calibrate"
+            },
+            pal,
+            foe.calibrated,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            524.0,
+            Some(432.0),
+            if foe.calibrated {
+                content::FOE2_CALIBRATION
+            } else if foe.disagreement.is_some() {
+                "The brazier burns at the door, its flame known and true: run \
+                 the named suspect against it, and keep the report."
+            } else {
+                "Exhibit the table, name the admission whose slip and sigils \
+                 disagree — then the brazier can judge the suspect."
+            },
+            11.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    let (active, caption) = match foe.state {
+        FoeState::Fallen => (false, "Fallen — the chart is drawn with its date."),
+        FoeState::Exposed => {
+            if foe.gate_passed {
+                (true, "The seal wakes — press it to strike.")
+            } else {
+                (false, "Exposed — but the Desk first: pass the gate.")
+            }
+        }
+        FoeState::Standing => (false, "The seal sleeps until the proof is complete."),
+    };
+    build_seal(commands, game, pal, fonts, stage, active, caption);
+    build_bottom(commands, game, pal, fonts, stage);
+}
 /// The reading overlay (inscriptions, demonstrations, hints,
 /// the stairs gate, the floor intro, the master plan).
 fn build_reading(
@@ -4785,7 +5186,11 @@ fn build_editor(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         64.0,
         62.0,
         None,
-        "The Interner's Hoard — in your own hand",
+        if game.screen == Screen::Floor2Foe {
+            "The Admission Desk — in your own hand"
+        } else {
+            "The Interner's Hoard — in your own hand"
+        },
         20.0,
         true,
         pal.ink,
@@ -4794,8 +5199,12 @@ fn build_editor(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
     );
     let verdict = if game.gate_running {
         "The gate is running: cargo test first, then the clippy lanterns…".to_string()
-    } else if let Some(record) = &game.expedition.gate_record {
-        record.clone()
+    } else if let Some(record) = game.gate_record() {
+        record.to_string()
+    } else if game.screen == Screen::Floor2Foe {
+        "No verdict yet. The scaffold stands unfinished — re-post the bound, \
+         then run the gate."
+            .to_string()
     } else {
         "No verdict yet. The scaffold stands unfinished — write the Hoard, then run the gate."
             .to_string()
@@ -4834,7 +5243,7 @@ fn build_editor(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         Some((2.0, pal.edge)),
         0.0,
     );
-    let text = &game.expedition.editor_code;
+    let text = game.editor_text();
     let lines: Vec<&str> = text.lines().collect();
     let scroll = game.editor_scroll;
     // Selection range, as (start, end) byte offsets, if any.
@@ -5012,11 +5421,13 @@ fn build_gate_record(
         false,
         fonts,
     );
-    let summary = game
-        .expedition
-        .gate_record
-        .clone()
-        .unwrap_or_else(|| "No gate has judged a Hoard yet.".to_string());
+    let summary = game.gate_record().map(str::to_string).unwrap_or_else(|| {
+        if game.screen == Screen::Floor2Foe {
+            "No gate has judged a Desk yet.".to_string()
+        } else {
+            "No gate has judged a Hoard yet.".to_string()
+        }
+    });
     spawn_text(
         commands,
         stage,

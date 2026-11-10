@@ -5,11 +5,14 @@
 //! Floor 1 is complete — The Lending Vaults (Domain 1,
 //! Ownership) — and Floor 2, the Menagerie Grounds, stands on it:
 //! the chart square, the hub door, the hub with its roster, save
-//! format v2, and all five chambers playable (Traits and impls;
+//! format v2, all five chambers playable (Traits and impls;
 //! Generics and bounds; Associated types; Trait objects and the
-//! Wide Door; Coherence), with the Herald's letters at the hub
-//! desk. Floor 2's FOE and gate land in the remaining steps of
-//! the Floor 2 build.
+//! Wide Door; Coherence), the Herald's letters at the hub desk,
+//! and the FOE — the Menagerie at its admission desk: the audit
+//! on its own table, the brazier calibration, and the Admission
+//! Desk judged by the second cargo gate. Floor 2's integration
+//! pass and driven playthrough evidence land in the Floor 2
+//! build's final step.
 //!
 //! The crate is layered so the game logic never depends on the
 //! engine: `core` (bounded text machinery), `content` (authored
