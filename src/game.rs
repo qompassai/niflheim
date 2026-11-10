@@ -184,6 +184,8 @@ pub enum Screen {
     Floor2Chamber(usize),
     /// Floor 3's hub: the release office.
     Floor3Hub,
+    /// Floor 4's hub: the Foundation Galleries.
+    Floor4Hub,
     /// A Floor 3 chamber, by index (0–4).
     Floor3Chamber(usize),
     /// Floor 3's FOE: the Gatehouse Release.
@@ -296,6 +298,10 @@ pub enum El {
     DoorFloor3,
     /// Floor 3 hub: a chamber door, by index.
     Floor3Door(u8),
+    /// The door to Floor 4, on Floor 1's hub.
+    DoorFloor4,
+    /// A Floor 4 chamber door.
+    Floor4Door(u8),
     /// Floor 2 hub: a chamber door, by index.
     Floor2Door(u8),
     /// Floor 2 hub: collapse or expand a roster group, by index.
@@ -680,6 +686,7 @@ impl Game {
             Screen::Hub
                 | Screen::Floor2Hub
                 | Screen::Floor3Hub
+                | Screen::Floor4Hub
                 | Screen::Chamber(_)
                 | Screen::Floor2Chamber(_)
                 | Screen::Floor3Chamber(_)
@@ -929,7 +936,9 @@ impl Game {
         match self.screen {
             Screen::Title => Vec::new(),
             Screen::Hub => vec![Verb::Read, Verb::Map],
-            Screen::Floor2Hub | Screen::Floor3Hub => vec![Verb::Read, Verb::Map],
+            Screen::Floor2Hub | Screen::Floor3Hub | Screen::Floor4Hub => {
+                vec![Verb::Read, Verb::Map]
+            }
             Screen::Chamber(_) | Screen::Floor2Chamber(_) | Screen::Floor3Chamber(_) => vec![
                 Verb::Examine,
                 Verb::Read,
@@ -1001,6 +1010,14 @@ pub mod geom {
     /// Floor 3's door on Floor 2's hub: the upper-right field,
     /// stairs-stone size, clear of the roster and the strip.
     pub fn door_floor3() -> Rect {
+        Rect::new(640.0, 150.0, 124.0, 124.0)
+    }
+
+    /// Floor 4's door on Floor 1's hub: the upper-right field,
+    /// stairs-stone size, below the chamber row's end and clear
+    /// of the panel — the spot Floor 3's door proved on Floor
+    /// 2's hub.
+    pub fn door_floor4() -> Rect {
         Rect::new(640.0, 150.0, 124.0, 124.0)
     }
 
@@ -1310,7 +1327,9 @@ impl Game {
             return true;
         }
         match self.screen {
-            Screen::Hub | Screen::Floor2Hub | Screen::Floor3Hub => cy == 0 || cell == (5, 4),
+            Screen::Hub | Screen::Floor2Hub | Screen::Floor3Hub | Screen::Floor4Hub => {
+                cy == 0 || cell == (5, 4)
+            }
             Screen::Chamber(_)
             | Screen::Floor2Chamber(_)
             | Screen::Floor3Chamber(_)
@@ -1569,6 +1588,11 @@ impl Game {
                     Screen::Floor3Hub => {
                         "The Gatehouse: five desks, a checklist on the wall, \
                          and a green lantern over a release nobody inspected."
+                    }
+                    Screen::Floor4Hub => {
+                        "The Foundation Galleries: five galleries of stones, \
+                         each stencilled with its true dimensions, and a \
+                         plumb line hanging in every room."
                     }
                     Screen::Title => return,
                 };
@@ -1904,6 +1928,34 @@ impl Game {
                 self.overlay = Overlay::Reading(ReadingKind::Stairs);
                 self.bump();
             }
+            El::DoorFloor4 => {
+                let unmet = if self.expedition.floor4_reachable() {
+                    None
+                } else {
+                    self.expedition
+                        .stairs_clauses()
+                        .iter()
+                        .find(|(lit, _)| !lit)
+                        .map(|(_, clause)| clause.clone())
+                };
+                match unmet {
+                    None => {
+                        self.enter_screen(Screen::Floor4Hub);
+                        self.say(StatusKind::Info, content::FLOOR4_INTRO);
+                    }
+                    Some(clause) => {
+                        self.say(
+                            StatusKind::Refusal,
+                            format!(
+                                "The stairs answer by their inscription: \
+                                 {clause} — not yet."
+                            ),
+                        );
+                    }
+                }
+                self.bump();
+            }
+
             El::DoorFloor3 => {
                 if self.expedition.floor3_reachable() {
                     self.enter_screen(Screen::Floor3Hub);
@@ -1937,6 +1989,15 @@ impl Game {
                     );
                 }
             }
+            El::Floor4Door(_) => {
+                self.say(
+                    StatusKind::Info,
+                    "The Plumbmason holds up a hand: this gallery is not \
+                     open yet — the benches are still being laid.",
+                );
+                self.bump();
+            }
+
             El::Floor3Door(index) => {
                 let index = index as usize;
                 self.enter_screen(Screen::Floor3Chamber(index));
@@ -3230,6 +3291,7 @@ impl Game {
             ReadingKind::FloorIntro => match self.screen {
                 Screen::Floor2Hub => format!("Floor 2 — {}", content::FLOOR2_NAME),
                 Screen::Floor3Hub => format!("Floor 3 — {}", content::FLOOR3_NAME),
+                Screen::Floor4Hub => format!("Floor 4 — {}", content::FLOOR4_NAME),
                 _ => format!("Floor 1 — {}", content::FLOOR_NAME),
             },
             ReadingKind::MasterPlan => "The Master Plan".to_string(),
@@ -3308,6 +3370,7 @@ impl Game {
             ReadingKind::FloorIntro => match self.screen {
                 Screen::Floor2Hub => content::FLOOR2_INTRO.to_string(),
                 Screen::Floor3Hub => content::FLOOR3_INTRO.to_string(),
+                Screen::Floor4Hub => content::FLOOR4_INTRO.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::MasterPlan => content::MASTER_PLAN.to_string(),
@@ -3477,7 +3540,8 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Foe
         | Screen::Floor2Foe
         | Screen::Floor3Foe
-        | Screen::Floor3Hub => {
+        | Screen::Floor3Hub
+        | Screen::Floor4Hub => {
             els.push((El::TabFloor, rects::TAB_FLOOR));
             els.push((El::TabMap, rects::TAB_MAP));
             els.push((El::TabLog, rects::TAB_LOG));
@@ -3493,6 +3557,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             els.push((El::DoorFoe, geom::door_foe()));
             els.push((El::DoorStairs, geom::door_stairs()));
             els.push((El::DoorFloor2, geom::door_floor2()));
+            els.push((El::DoorFloor4, geom::door_floor4()));
             els.push((El::CampStone, geom::camp_stone()));
         }
         Screen::Floor3Hub => {
@@ -3502,6 +3567,13 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             }
             els.push((El::DoorFoe3, geom::door_foe3()));
         }
+        Screen::Floor4Hub => {
+            els.push((El::CampStone, geom::camp_stone()));
+            for index in 0..5 {
+                els.push((El::Floor4Door(index as u8), geom::door_chamber(index)));
+            }
+        }
+
         Screen::Floor2Hub => {
             els.push((El::CampStone, geom::camp_stone()));
             for index in 0..5 {
@@ -4751,6 +4823,33 @@ mod tests {
         let save = game.expedition.save_json().expect("save");
         let loaded = Expedition::load_json(&save).expect("load");
         assert_eq!(loaded, game.expedition);
+    }
+
+    /// Floor 4's door answers the pointer when the Stratum I
+    /// stairs stand lit, and refuses it while any clause waits.
+    #[test]
+    fn floor4_door_answers_the_pointer_when_the_stairs_stand_lit() {
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        game.screen = Screen::Hub;
+        let rect = geom::door_floor4();
+        game.pointer_down(rect.cx(), rect.cy());
+        game.pointer_up(rect.cx(), rect.cy());
+        assert_eq!(game.screen, Screen::Hub, "barred while the stairs wait");
+        // Light the stairs: FOEs 1 and 2 fallen; the lanterns
+        // by Floor 1's gate, Floor 2's chambers, Floor 3's gate.
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.foe.gate_passed = true;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        game.expedition.floor3.foe.gate_passed = true;
+        for chamber in game.expedition.floor2.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        assert!(game.expedition.floor4_reachable());
+        game.pointer_down(rect.cx(), rect.cy());
+        game.pointer_up(rect.cx(), rect.cy());
+        assert_eq!(game.screen, Screen::Floor4Hub);
     }
 
     /// The general pointer path still works outside overlays:

@@ -16,7 +16,7 @@ use std::sync::Arc;
 /// Save-file magic, written as the first field of every save.
 pub const SAVE_MAGIC: &str = "NIFLHEIM-SAVE";
 /// The save format version this build reads and writes.
-pub const SAVE_FORMAT_VERSION: u32 = 3;
+pub const SAVE_FORMAT_VERSION: u32 = 4;
 /// Most lines a lending plan may carry.
 pub const MAX_LEDGER_LINES: usize = 96;
 /// Most distinct strings the interner will hold.

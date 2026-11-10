@@ -1011,6 +1011,7 @@ fn rebuild_now(
         Screen::Hub => build_hub(commands, game, &pal, fonts, stage),
         Screen::Floor2Hub => build_floor2_hub(commands, game, &pal, fonts, stage),
         Screen::Floor3Hub => build_floor3_hub(commands, game, &pal, fonts, stage),
+        Screen::Floor4Hub => build_floor4_hub(commands, game, &pal, fonts, stage),
         Screen::Floor2Chamber(index) => {
             build_floor2_chamber(commands, game, &pal, fonts, stage, index)
         }
@@ -1171,6 +1172,7 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         Screen::Floor2Foe => "Floor 2 · The Menagerie".to_string(),
         Screen::Floor2Hub => "Niflheim — Floor 2 · The Menagerie Grounds".to_string(),
         Screen::Floor3Hub => "Niflheim — Floor 3 · The Gatehouse".to_string(),
+        Screen::Floor4Hub => "Niflheim — Floor 4 · The Foundation Galleries".to_string(),
         Screen::Floor2Chamber(index) => format!(
             "Floor 2 · Chamber {} — {}",
             index + 1,
@@ -5437,6 +5439,207 @@ fn build_floor3_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
     );
 }
 
+/// Floor 4's hub: the Foundation Galleries — five chamber
+/// doors, the camp stone, and the panel. The FOE's door is
+/// cut with the FOE step.
+fn build_floor4_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Foundation Galleries — five chambers under the plumb line",
+    );
+
+    for (index, meta) in content::FOUNDATION_CHAMBERS.iter().enumerate() {
+        let rect = geom::door_chamber(index);
+        let state = game.expedition.floor4.chambers[index].state;
+        spawn_box(
+            commands,
+            stage,
+            rect,
+            Some(pal.card),
+            Some((2.0, pal.edge)),
+            0.0,
+        );
+        spawn_text_centered(
+            commands,
+            stage,
+            rect.cx(),
+            rect.y + 6.0,
+            rect.w,
+            &format!("CHAMBER {}", index + 1),
+            10.5,
+            true,
+            pal.ink,
+            fonts,
+        );
+        spawn_text_centered(
+            commands,
+            stage,
+            rect.cx(),
+            rect.y + 24.0,
+            rect.w - 8.0,
+            meta.name,
+            10.5,
+            false,
+            pal.ink,
+            fonts,
+        );
+        let (tag, color) = match state {
+            ChamberState::Repaired => ("REPAIRED", pal.good),
+            ChamberState::Diagnosed => ("PROOF FILED", pal.accent),
+            ChamberState::Unworked => ("", pal.ink_dim),
+        };
+        if !tag.is_empty() {
+            spawn_text_centered(
+                commands,
+                stage,
+                rect.cx(),
+                rect.y + 64.0,
+                rect.w,
+                tag,
+                10.5,
+                true,
+                color,
+                fonts,
+            );
+        }
+    }
+
+    let stone = geom::camp_stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(Color::srgb_u8(140, 140, 148)),
+        Some((2.0, pal.ink_dim)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 12.0,
+        stone.w,
+        "THE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 26.0,
+        stone.w,
+        "FLOOR",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+
+    spawn_box(
+        commands,
+        stage,
+        rects::PANEL,
+        Some(pal.panel),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        84.0,
+        None,
+        "The Foundation Galleries",
+        19.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        112.0,
+        None,
+        "Keeper: the Plumbmason · Domain 4 — Memory layout",
+        12.5,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        150.0,
+        None,
+        "THE CHAMBERS",
+        12.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let mut y = 176.0;
+    for (index, meta) in content::FOUNDATION_CHAMBERS.iter().enumerate() {
+        let state = game.expedition.floor4.chambers[index].state;
+        let suffix = match state {
+            ChamberState::Repaired => " · REPAIRED",
+            ChamberState::Diagnosed => " · PROOF FILED",
+            ChamberState::Unworked => "",
+        };
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            y,
+            None,
+            &format!("○ Chamber {} — {}{}", index + 1, meta.name, suffix),
+            12.5,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        y += 24.0;
+    }
+    let foe_word = match game.expedition.floor4.foe.state {
+        FoeState::Fallen => format!(
+            "FALLEN — {}",
+            game.expedition
+                .floor4
+                .foe
+                .fallen_date
+                .clone()
+                .unwrap_or_default()
+        ),
+        FoeState::Exposed => "EXPOSED".to_string(),
+        FoeState::Standing => "standing".to_string(),
+    };
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        y + 12.0,
+        None,
+        &format!("■ The Crooked Foundation — FOE · {foe_word}"),
+        12.5,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
 /// Floor 2's FOE chamber: the admission desk — the audit table,
 /// the brazier calibration, and the Desk's gate.
 fn build_foe2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
@@ -6170,6 +6373,43 @@ fn build_map(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, sta
                     floor.class,
                     &floor3_status,
                     game.expedition.floor3.foe.state == FoeState::Fallen,
+                );
+            } else if index == 3 {
+                let repaired4 = game.expedition.floor4_chambers_repaired();
+                let floor4_status = match game.expedition.floor4.foe.state {
+                    FoeState::Fallen => format!(
+                        "FOE FALLEN — {}",
+                        game.expedition
+                            .floor4
+                            .foe
+                            .fallen_date
+                            .clone()
+                            .unwrap_or_default()
+                    ),
+                    _ if !game.expedition.floor4_reachable() => "BARRED".to_string(),
+                    _ if repaired4 > 0
+                        || game
+                            .expedition
+                            .floor4
+                            .chambers
+                            .iter()
+                            .any(|c| c.state == ChamberState::Diagnosed) =>
+                    {
+                        format!("CHARTING ({repaired4}/5)")
+                    }
+                    _ => "UNCHARTED".to_string(),
+                };
+                build_square(
+                    commands,
+                    pal,
+                    fonts,
+                    stage,
+                    rect,
+                    4,
+                    floor.domain,
+                    floor.class,
+                    &floor4_status,
+                    game.expedition.floor4.foe.state == FoeState::Fallen,
                 );
             } else {
                 build_square(

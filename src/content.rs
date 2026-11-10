@@ -2336,3 +2336,66 @@ pub const GATE3_TESTS: &str = "use the_gatehouse_release::{oldest_road, release_
      fn a_dark_release_does_not_leave() {\n\
      \x20   assert!(!release_ready(false, false, false));\n\
      }\n";
+
+// ---------------------------------------------------------------------------
+// Floor 4 — The Foundation Galleries. Domain 4: Memory layout.
+// Keeper: the Plumbmason. FOE: The Crooked Foundation.
+
+/// The floor's name.
+pub const FLOOR4_NAME: &str = "The Foundation Galleries";
+/// The domain this floor teaches.
+pub const FLOOR4_DOMAIN: &str = "Memory layout";
+/// The floor's keeper.
+pub const FLOOR4_KEEPER: &str = "the Plumbmason";
+
+/// The floor inscription, read at the camp stone.
+pub const FLOOR4_INTRO: &str = "Floor 4 — The Foundation Galleries. Below the valley the warrens hold the labyrinth up: galleries of foundation stones, each stencilled with its true dimensions, and a plumb line hanging in every room. The Plumbmason's law is short — layout is measurable fact, proven by assertion and never described in prose, and what the line says outranks what anyone remembers. Five chambers teach the measure: predict before you drop the line, count the voids byte by byte, find the niche that hides a mark for free, keep a treaty's promised offsets, and never trust a tag that lives only in a mason's head. At the galleries' heart the master foundation settles crooked, laid from a celebrated survey no one has checked against the ground.";
+
+/// Floor 4's five chambers, in design order.
+pub const FOUNDATION_CHAMBERS: [ChamberMeta; 5] = [
+    ChamberMeta {
+        name: "Sizes and alignment",
+        room: "The Predict-and-Measure bench",
+        inscription_title: "The Committed Slate",
+        inscription: "Commit the measure before the line drops. A prediction written down can be wrong honestly; a memory of one can only be wrong comfortably.",
+        demonstration: "The mason writes a figure on the slate, drops the line, and grades the slate — not the stone — where they disagree.",
+        slot_wants: "predictions committed, measured, and annotated",
+        prove_label: "Drop the line",
+    },
+    ChamberMeta {
+        name: "Padding and field order",
+        room: "The Smallest Wall",
+        inscription_title: "The Counted Voids",
+        inscription: "The wall is charged for every void it carries. Reorder the same stones and the voids move — count them byte by byte, and let every saved unit name the move that saved it.",
+        demonstration: "Five stones stand in bench order, their wall full of gaps; the same five, re-seated by their alignments, close the wall to its least span.",
+        slot_wants: "the smallest wall the stones allow",
+        prove_label: "Count the wall",
+    },
+    ChamberMeta {
+        name: "Enum encoding and the niche",
+        room: "The Seal Stones",
+        inscription_title: "The Free Mark",
+        inscription: "Some values can never occur, and the place they can never occupy is room for a mark that costs nothing. Find the niche before you pay for the tag.",
+        demonstration: "A crest pays a whole word for its absent-mark until the mason points at the number that cannot happen — and the mark moves into the gap, free.",
+        slot_wants: "every crest at its proven smallest",
+        prove_label: "Prove the crest",
+    },
+    ChamberMeta {
+        name: "The repr family",
+        room: "The Treaty Stones",
+        inscription_title: "The Promised Offsets",
+        inscription: "A treaty stone promises every offset and is held to all of them. A free stone promises nothing and owes nothing — seat one in the other's wall and the wall fails honestly, which is the kindest failure there is.",
+        demonstration: "The line walks the treaty wall and reads each offset aloud against the book; at the last stone it stops — the book's sum forgot the padding, and the stone overhangs the plinth by exactly that much.",
+        slot_wants: "promised offsets, proven and amended",
+        prove_label: "Prove the wall",
+    },
+    ChamberMeta {
+        name: "Unions and uninitialized memory",
+        room: "The Hollow Stones",
+        inscription_title: "The Mason's Head",
+        inscription: "A hollow stone holds one filling of two kinds, and the tag that says which kind lives only in the mason's head. Heads forget. The gallery's referee exists for the day one does — and for the blank stone used before it is full.",
+        demonstration: "The mason fills a cavity with a ratio, tags it in his head as a number, and reads it back: the bits answer faithfully, and the answer is nonsense — the referee's whistle is the only honest sound in the room.",
+        slot_wants: "tags that match their fillings, blanks used whole",
+        prove_label: "Read the stones",
+    },
+];

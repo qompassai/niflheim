@@ -449,6 +449,86 @@ impl Default for Floor3Progress {
     }
 }
 
+/// One chamber of Floor 4: state and work in progress.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor4ChamberProgress {
+    /// Resolution state.
+    pub state: ChamberState,
+    /// The deepest hint rung viewed for this chamber (0 = none).
+    pub hints_used: u8,
+    /// The facet: earned by a repair at full standard (rung ≤ 3).
+    pub facet: bool,
+    /// The work in progress.
+    #[serde(default)]
+    pub work: FoundationWork,
+}
+
+/// Floor 4's chamber work record. Fields land with their
+/// chambers (FLOOR4-BRIEF steps 2–4), each serde-defaulted so
+/// saves written by earlier steps load whole.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct FoundationWork {
+    /// Chambers 1–5: the chamber's charter has been read.
+    #[serde(default)]
+    pub watched: bool,
+}
+
+/// The Floor 4 FOE's progress: the crooked foundation's arc.
+/// The book, the re-survey, and the two re-cuts land with the
+/// FOE step; the gate record stands from the scaffolding.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor4FoeProgress {
+    /// Resolution state.
+    pub state: FoeState,
+    /// The re-cut has been verified by the line — this FOE's
+    /// standing-gate mark (its gate is the line itself).
+    pub gate_passed: bool,
+    /// The strike's phase.
+    pub strike: StrikePhase,
+    /// The date inscribed when the FOE fell (`YYYY-MM-DD`).
+    pub fallen_date: Option<String>,
+}
+
+/// Floor 4's whole progress record: five chambers and the FOE.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor4Progress {
+    /// The five chambers, in design order.
+    pub chambers: Vec<Floor4ChamberProgress>,
+    /// The FOE.
+    pub foe: Floor4FoeProgress,
+    /// The deepest hint rung viewed for the FOE.
+    pub foe_hints_used: u8,
+}
+
+impl Floor4Progress {
+    /// A fresh Floor 4: chambers unworked, the FOE standing.
+    pub fn new() -> Self {
+        Self {
+            chambers: (0..5)
+                .map(|_| Floor4ChamberProgress {
+                    state: ChamberState::Unworked,
+                    hints_used: 0,
+                    facet: false,
+                    work: FoundationWork::default(),
+                })
+                .collect(),
+            foe: Floor4FoeProgress {
+                state: FoeState::Standing,
+                gate_passed: false,
+                strike: StrikePhase::Idle,
+                fallen_date: None,
+            },
+            foe_hints_used: 0,
+        }
+    }
+}
+
+impl Default for Floor4Progress {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Floor 2's whole progress record: five chambers, the FOE, the
 /// admissions ledger, and the roster board's view state.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -571,6 +651,8 @@ struct SaveFile {
     floor2: Floor2Progress,
     #[serde(default)]
     floor3: Floor3Progress,
+    #[serde(default)]
+    floor4: Floor4Progress,
 }
 
 /// The whole expedition: the campaign's one source of truth.
@@ -600,6 +682,8 @@ pub struct Expedition {
     pub floor2: Floor2Progress,
     /// Floor 3's progress record.
     pub floor3: Floor3Progress,
+    /// Floor 4's progress record.
+    pub floor4: Floor4Progress,
 }
 
 impl Default for Expedition {
@@ -639,6 +723,7 @@ impl Expedition {
             gate_record: None,
             floor2: Floor2Progress::new(),
             floor3: Floor3Progress::new(),
+            floor4: Floor4Progress::new(),
         }
     }
 
@@ -2227,6 +2312,106 @@ impl Expedition {
             .map_or(0, |progress| progress.hints_used)
     }
 
+    /// Whether this chamber's work currently proves (§5.4):
+    /// each chamber's judge lands with its step; until then no
+    /// Floor 4 work proves.
+    pub fn floor4_diagnosed(&self, chamber: usize) -> bool {
+        if self.floor4.chambers.get(chamber).is_none() {
+            return false;
+        }
+        // The chambers' judges land with their steps (2–4);
+        // until then no Floor 4 work proves.
+        false
+    }
+
+    /// File this chamber's proof (the Prove verb): Unworked →
+    /// Diagnosed, when the work proves.
+    pub fn floor4_file_proof(&mut self, chamber: usize) -> Result<String, Refusal> {
+        if !self.floor4_diagnosed(chamber) {
+            return Err(Refusal("this gallery is not open yet".to_string()));
+        }
+        let progress = self
+            .floor4
+            .chambers
+            .get_mut(chamber)
+            .ok_or_else(|| Refusal("no such chamber".to_string()))?;
+        if progress.state == ChamberState::Repaired {
+            return Err(Refusal("this chamber already stands repaired".to_string()));
+        }
+        progress.state = ChamberState::Diagnosed;
+        Ok("The proof is filed with the Plumbmason's office.".to_string())
+    }
+
+    /// Repair a diagnosed chamber (the seal): Diagnosed →
+    /// Repaired, with the facet at full standard (§5.5).
+    pub fn floor4_repair_chamber(&mut self, chamber: usize) -> Result<String, Refusal> {
+        let progress = self
+            .floor4
+            .chambers
+            .get_mut(chamber)
+            .ok_or_else(|| Refusal("no such chamber".to_string()))?;
+        match progress.state {
+            ChamberState::Repaired => {
+                Err(Refusal("this chamber already stands repaired".to_string()))
+            }
+            ChamberState::Unworked => Err(Refusal(
+                "there is nothing to repair yet — assemble the proof first".to_string(),
+            )),
+            ChamberState::Diagnosed => {
+                progress.state = ChamberState::Repaired;
+                if progress.hints_used <= 3 {
+                    progress.facet = true;
+                    Ok("Repaired at full standard. A facet of the Brass \
+                         Eye Stone settles into the codex."
+                        .to_string())
+                } else {
+                    Ok("Repaired — though the seam was named, and the record \
+                         keeps it. No facet, but the floor still completes."
+                        .to_string())
+                }
+            }
+        }
+    }
+
+    /// Record that the player read a Floor 4 hint rung.
+    pub fn floor4_view_hint(&mut self, chamber: usize) -> u8 {
+        let Some(progress) = self.floor4.chambers.get_mut(chamber) else {
+            return 0;
+        };
+        progress.hints_used = (progress.hints_used + 1).min(4);
+        progress.hints_used
+    }
+
+    /// The deepest hint rung recorded for a Floor 4 chamber.
+    pub fn floor4_hints_used(&self, chamber: usize) -> u8 {
+        self.floor4
+            .chambers
+            .get(chamber)
+            .map_or(0, |progress| progress.hints_used)
+    }
+
+    /// Floor 4 stands open when the Stratum I → II stairs
+    /// stand lit (§5.6, over the §5.2 prerequisite of Floor 1):
+    /// FOE 1 fallen, FOE 2 or FOE 3 fallen, and every Stratum I
+    /// lantern keeper-lit.
+    pub fn floor4_reachable(&self) -> bool {
+        self.stairs_clauses().iter().all(|(lit, _)| *lit)
+    }
+
+    /// How many Floor 4 chambers stand repaired.
+    pub fn floor4_chambers_repaired(&self) -> usize {
+        self.floor4
+            .chambers
+            .iter()
+            .filter(|chamber| chamber.state == ChamberState::Repaired)
+            .count()
+    }
+
+    /// Whether Floor 4 is complete: five chambers + FOE.
+    pub fn floor4_complete(&self) -> bool {
+        self.floor4_chambers_repaired() == 5 && self.floor4.foe.state == FoeState::Fallen
+    }
+
     /// Floor 3 stands open when both valley FOEs have fallen
     /// (FULL-DESIGN §5.2: Floor 3 requires Floors 1 and 2).
     pub fn floor3_reachable(&self) -> bool {
@@ -2322,6 +2507,7 @@ impl Expedition {
             gate_record: self.gate_record.clone(),
             floor2: self.floor2.clone(),
             floor3: self.floor3.clone(),
+            floor4: self.floor4.clone(),
         };
         serde_json::to_string(&file).map_err(|error| SaveError::Corrupt {
             reason: error.to_string(),
@@ -2387,6 +2573,7 @@ impl Expedition {
             gate_record: file.gate_record,
             floor2: file.floor2,
             floor3: file.floor3,
+            floor4: file.floor4,
         };
         expedition.validate_invariants()?;
         Ok(expedition)
@@ -2416,12 +2603,24 @@ impl Expedition {
         if self.floor3.chambers.len() != 5 {
             return Err(corrupt("the save does not hold five Floor 3 chambers"));
         }
+        if self.floor4.chambers.len() != 5 {
+            return Err(corrupt("the save does not hold five Floor 4 chambers"));
+        }
         for chamber in 0..5 {
             if self.floor3.chambers[chamber].state != ChamberState::Unworked
                 && !self.floor3_diagnosed(chamber)
             {
                 return Err(corrupt(
                     "the save claims a Floor 3 proof its work does not hold",
+                ));
+            }
+        }
+        for chamber in 0..5 {
+            if self.floor4.chambers[chamber].state != ChamberState::Unworked
+                && !self.floor4_diagnosed(chamber)
+            {
+                return Err(corrupt(
+                    "the save claims a Floor 4 proof its work does not hold",
                 ));
             }
         }
@@ -2749,7 +2948,7 @@ mod tests {
     fn load_refuses_future_versions() {
         let expedition = Expedition::new();
         let text = expedition.save_json().expect("save");
-        let future = text.replace("\"version\":3", "\"version\":99");
+        let future = text.replace("\"version\":4", "\"version\":99");
         assert_eq!(
             Expedition::load_json(&future),
             Err(SaveError::FutureVersion { found: 99 })
@@ -2808,7 +3007,7 @@ mod tests {
     }
 
     /// Validation: a version-1 save (no floor2 field at all) loads
-    /// with a fresh Floor 2, and re-saves as version 2.
+    /// with a fresh Floor 2, and re-saves as version 4.
     #[test]
     fn version_one_saves_load_with_default_floor2() {
         let expedition = Expedition::new();
@@ -2819,7 +3018,7 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).expect("v1 loads");
         assert_eq!(loaded.floor2, Floor2Progress::new());
         let resaved = loaded.save_json().expect("re-save");
-        assert!(resaved.contains("\"version\":3"));
+        assert!(resaved.contains("\"version\":4"));
     }
 
     /// Validation: Floor 2 opens only when the Hoard has fallen.
@@ -2841,7 +3040,7 @@ mod tests {
     }
 
     /// Validation: a version-2 save (no floor3 field at all)
-    /// loads with a fresh Floor 3, and re-saves as version 3.
+    /// loads with a fresh Floor 3, and re-saves as version 4.
     #[test]
     fn version_two_saves_load_with_default_floor3() {
         let expedition = Expedition::new();
@@ -2852,7 +3051,48 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).expect("v2 loads");
         assert_eq!(loaded.floor3, Floor3Progress::new());
         let resaved = loaded.save_json().expect("re-save");
-        assert!(resaved.contains("\"version\":3"));
+        assert!(resaved.contains("\"version\":4"));
+    }
+
+    /// Validation: a version-3 save (no floor4 field at all)
+    /// loads with a fresh Floor 4, and re-saves as version 4.
+    #[test]
+    fn version_three_saves_load_with_default_floor4() {
+        let expedition = Expedition::new();
+        let text = expedition.save_json().expect("save");
+        let mut value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        value.as_object_mut().expect("object").remove("floor4");
+        value["version"] = serde_json::json!(3);
+        let loaded = Expedition::load_json(&value.to_string()).expect("v3 loads");
+        assert_eq!(loaded.floor4, Floor4Progress::new());
+        let resaved = loaded.save_json().expect("re-save");
+        assert!(resaved.contains("\"version\":4"));
+    }
+
+    /// Floor 4 opens only when the Stratum I stairs stand
+    /// fully lit (§5.6): FOE 1 fallen, FOE 2 or FOE 3 fallen,
+    /// and every Stratum I lantern keeper-lit.
+    #[test]
+    fn floor4_reachable_needs_the_whole_stairs() {
+        let mut expedition = Expedition::new();
+        assert!(!expedition.floor4_reachable());
+        expedition.foe.state = FoeState::Fallen;
+        assert!(
+            !expedition.floor4_reachable(),
+            "FOE 1 alone is not the stairs"
+        );
+        expedition.floor2.foe.state = FoeState::Fallen;
+        assert!(!expedition.floor4_reachable(), "the lanterns still wait");
+        // Lanterns: Floor 1 by its gate, Floor 2 by its
+        // chambers, Floor 3 by its gate.
+        expedition.foe.gate_passed = true;
+        expedition.floor3.foe.gate_passed = true;
+        for chamber in expedition.floor2.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        assert!(expedition.floor4_reachable());
+        assert!(!expedition.floor4_complete());
+        assert_eq!(Expedition::new().floor4, Floor4Progress::new());
     }
 
     /// Validation: Floor 3 opens only when both valley FOEs
