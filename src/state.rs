@@ -471,6 +471,21 @@ pub struct FoundationWork {
     /// Chambers 1–5: the chamber's charter has been read.
     #[serde(default)]
     pub watched: bool,
+    /// Chamber 1: the size committed to the slate, per stone.
+    #[serde(default)]
+    pub pred_size: [Option<u32>; 6],
+    /// Chamber 1: the alignment committed, per stone.
+    #[serde(default)]
+    pub pred_align: [Option<u32>; 6],
+    /// Chamber 1: the line has dropped on this stone.
+    #[serde(default)]
+    pub measured: [bool; 6],
+    /// Chamber 1: the annotation chosen for a surprise.
+    #[serde(default)]
+    pub annotate: [Option<usize>; 6],
+    /// Chamber 2: the wall's seating, in order.
+    #[serde(default)]
+    pub wall_order: Vec<u8>,
 }
 
 /// The Floor 4 FOE's progress: the crooked foundation's arc.
@@ -2312,23 +2327,58 @@ impl Expedition {
             .map_or(0, |progress| progress.hints_used)
     }
 
-    /// Whether this chamber's work currently proves (§5.4):
-    /// each chamber's judge lands with its step; until then no
-    /// Floor 4 work proves.
+    /// Whether this chamber's work currently proves (§5.4).
     pub fn floor4_diagnosed(&self, chamber: usize) -> bool {
-        if self.floor4.chambers.get(chamber).is_none() {
+        let Some(progress) = self.floor4.chambers.get(chamber) else {
             return false;
+        };
+        let work = &progress.work;
+        match chamber {
+            // Chamber 1: every stone measured, and every
+            // surprise carrying its true annotation.
+            0 => {
+                work.watched
+                    && work.measured.iter().all(|done| *done)
+                    && (0..crate::content::BENCH_STONES.len()).all(|stone| {
+                        !crate::puzzles::bench_missed(
+                            stone,
+                            work.pred_size[stone],
+                            work.pred_align[stone],
+                        ) || work.annotate[stone] == Some(crate::content::BENCH_TRUE_CAUSE[stone])
+                    })
+            }
+            // Chamber 2: all five seated at the least span.
+            1 => {
+                let pairs: Vec<(u32, u32)> = crate::content::WALL_STONES
+                    .iter()
+                    .map(|(_, size, align)| (*size, *align))
+                    .collect();
+                work.watched && work.wall_order.len() == crate::content::WALL_STONES.len() && {
+                    let seated: Vec<(u32, u32)> = work
+                        .wall_order
+                        .iter()
+                        .map(|stone| pairs[*stone as usize])
+                        .collect();
+                    crate::puzzles::wall_layout(&seated).0 == crate::puzzles::wall_minimum(&pairs)
+                }
+            }
+            _ => false,
         }
-        // The chambers' judges land with their steps (2–4);
-        // until then no Floor 4 work proves.
-        false
     }
 
     /// File this chamber's proof (the Prove verb): Unworked →
     /// Diagnosed, when the work proves.
     pub fn floor4_file_proof(&mut self, chamber: usize) -> Result<String, Refusal> {
         if !self.floor4_diagnosed(chamber) {
-            return Err(Refusal("this gallery is not open yet".to_string()));
+            return Err(Refusal(match chamber {
+                0 => "the bench is not yet true: every stone predicted, \
+                      measured, and its surprises annotated in your own hand"
+                    .to_string(),
+                1 => "the wall is not yet the smallest: seat all five \
+                      stones so the line reads the least span"
+                    .to_string(),
+                _ => "this gallery is not open yet".to_string(),
+            }));
         }
         let progress = self
             .floor4
@@ -2339,7 +2389,13 @@ impl Expedition {
             return Err(Refusal("this chamber already stands repaired".to_string()));
         }
         progress.state = ChamberState::Diagnosed;
-        Ok("The proof is filed with the Plumbmason's office.".to_string())
+        Ok(match chamber {
+            0 => "Filed: six stones, predicted before they were                   measured, and every surprise owned in writing."
+                .to_string(),
+            1 => "Filed: the same five stones, and the voids counted                   out of the wall."
+                .to_string(),
+            _ => "The proof is filed with the Plumbmason's office.".to_string(),
+        })
     }
 
     /// Repair a diagnosed chamber (the seal): Diagnosed →
@@ -2370,6 +2426,16 @@ impl Expedition {
                         .to_string())
                 }
             }
+        }
+    }
+
+    /// Reset one Floor 4 chamber's work to its starting
+    /// state: hint usage stays on the record.
+    pub fn floor4_reset_chamber(&mut self, chamber: usize) {
+        if let Some(progress) = self.floor4.chambers.get_mut(chamber) {
+            progress.state = ChamberState::Unworked;
+            progress.facet = false;
+            progress.work = FoundationWork::default();
         }
     }
 
@@ -3067,6 +3133,62 @@ mod tests {
         assert_eq!(loaded.floor4, Floor4Progress::new());
         let resaved = loaded.save_json().expect("re-save");
         assert!(resaved.contains("\"version\":4"));
+    }
+
+    /// Floor 4 Chambers 1–2: the bench judge (true slates,
+    /// honest surprises annotated truly, a wrong annotation
+    /// refused) and the wall judge (the bench order refused,
+    /// the least span accepted), on the record.
+    #[test]
+    fn floor4_bench_and_wall_judged() {
+        let mut expedition = Expedition::new();
+        // Chamber 1: true slates everywhere, except two
+        // honest surprises — the naive sum and the paid tag.
+        {
+            let work = &mut expedition.floor4.chambers[0].work;
+            work.watched = true;
+            for stone in 0..crate::content::BENCH_STONES.len() {
+                let (size, align) = crate::content::bench_stone_facts(stone);
+                work.pred_size[stone] = Some(size);
+                work.pred_align[stone] = Some(align);
+                work.measured[stone] = true;
+            }
+            work.pred_size[1] = Some(5);
+            work.pred_size[4] = Some(16);
+        }
+        assert!(!expedition.floor4_diagnosed(0), "surprises unannotated");
+        expedition.floor4.chambers[0].work.annotate[1] = Some(crate::content::BENCH_TRUE_CAUSE[1]);
+        assert!(!expedition.floor4_diagnosed(0), "one surprise still bare");
+        expedition.floor4.chambers[0].work.annotate[4] = Some(crate::content::BENCH_TRUE_CAUSE[4]);
+        assert!(expedition.floor4_diagnosed(0));
+        // A wrong annotation unmakes it.
+        expedition.floor4.chambers[0].work.annotate[4] = Some(0);
+        assert!(
+            !expedition.floor4_diagnosed(0),
+            "the wrong cause is no annotation"
+        );
+        expedition.floor4.chambers[0].work.annotate[4] = Some(crate::content::BENCH_TRUE_CAUSE[4]);
+        expedition.floor4_file_proof(0).expect("proof c1");
+        expedition.floor4_repair_chamber(0).expect("repair c1");
+        // Chamber 2: the bench order is not the smallest wall.
+        {
+            let work = &mut expedition.floor4.chambers[1].work;
+            work.watched = true;
+            work.wall_order = vec![0, 1, 2, 3, 4];
+        }
+        assert!(
+            !expedition.floor4_diagnosed(1),
+            "bench order carries its voids"
+        );
+        expedition.floor4.chambers[1].work.wall_order = vec![1, 2, 4, 3, 0];
+        assert!(expedition.floor4_diagnosed(1), "the least span, found");
+        expedition.floor4_file_proof(1).expect("proof c2");
+        expedition.floor4_repair_chamber(1).expect("repair c2");
+        assert_eq!(expedition.floor4_chambers_repaired(), 2);
+        // The reset stone restores the bench.
+        expedition.floor4_reset_chamber(0);
+        assert_eq!(expedition.floor4.chambers[0].state, ChamberState::Unworked);
+        assert!(!expedition.floor4.chambers[0].work.measured[0]);
     }
 
     /// Floor 4 opens only when the Stratum I stairs stand

@@ -2399,3 +2399,152 @@ pub const FOUNDATION_CHAMBERS: [ChamberMeta; 5] = [
         prove_label: "Read the stones",
     },
 ];
+
+/// Floor 4's chamber doors: the line each keeper speaks as
+/// the player enters.
+pub const FLOOR4_CHAMBER_INTROS: [&str; 5] = [
+    "The Predict-and-Measure bench. Six stones wait in a row, and the slate hangs beside them: commit your measure first — size, then alignment — and only then does the line drop. Where the slate and the stone disagree, the surprise is yours to annotate, in your own hand, before the chamber will complete.",
+    "The Smallest Wall. Five stones lie in bench order, and the wall they make in that order is full of voids. Seat them yourself, in any order you like — the line counts the wall byte by byte, and it will say what the least span is when you have found it.",
+    "The Seal Stones. Three crests, each paying more for its absent-mark than it should. Every crest offers its encodings on the bench; choose, then prove — the bench reads real sizes, and the smallest honest encoding is the one that keeps the mark in a niche, free.",
+    "The Treaty Stones. A wall under foreign spec: every offset promised in the book, and a free twin on the tray that promises nothing. Seat the treaty stones, drop the line — and mind the last stone, where the book's own sum was written carelessly.",
+    "The Hollow Stones. Two cavities with two possible fillings each, and the tag that says which kind lives only in the mason's head. Beside them a blank stone of four cells, to be filled one by one — the referee is watching, and the referee is patient, and the referee is Miri.",
+];
+
+/// Floor 4's chamber Examine texts.
+pub const F4_EXAMINE_TEXTS: [&str; 5] = [
+    "The bench: a slate, a chalk line, and six stones stencilled with everything except the two numbers that matter.",
+    "A low wall in bench order, its voids showing like missing teeth; the same stones stacked loose beside it.",
+    "Three crests under glass, each with its encodings priced in whole words — and one price in each set scratched out.",
+    "A treaty book open at the wall's page: four promises in a foreign hand, and the fourth written in a different ink.",
+    "Two hollow stones with their fillings beside them in bowls, and a blank stone quartered into four empty cells.",
+];
+
+/// Chamber 1's stones, in bench order. Their facts are not
+/// written here: `bench_stone_facts` measures the real types
+/// at runtime, so the bench can never drift from the truth.
+pub const BENCH_STONES: [&str; 6] = [
+    "a lone byte — u8",
+    "a byte and a word in one skin — (u8, u32)",
+    "a borrowed word — &str",
+    "a byte, or none — Option<u8>",
+    "a borrowed word, or none — Option<&u64>",
+    "a heap of bytes — Vec<u8>",
+];
+
+/// The bench's own measure of a stone: (size, alignment) of
+/// the real type, taken with `size_of` / `align_of`. This is
+/// the plumb line's whole doctrine in one function — the
+/// quantity itself, never a table about the quantity.
+pub fn bench_stone_facts(index: usize) -> (u32, u32) {
+    match index {
+        0 => (
+            std::mem::size_of::<u8>() as u32,
+            std::mem::align_of::<u8>() as u32,
+        ),
+        1 => (
+            std::mem::size_of::<(u8, u32)>() as u32,
+            std::mem::align_of::<(u8, u32)>() as u32,
+        ),
+        2 => (
+            std::mem::size_of::<&str>() as u32,
+            std::mem::align_of::<&str>() as u32,
+        ),
+        3 => (
+            std::mem::size_of::<Option<u8>>() as u32,
+            std::mem::align_of::<Option<u8>>() as u32,
+        ),
+        4 => (
+            std::mem::size_of::<Option<&u64>>() as u32,
+            std::mem::align_of::<Option<&u64>>() as u32,
+        ),
+        _ => (
+            std::mem::size_of::<Vec<u8>>() as u32,
+            std::mem::align_of::<Vec<u8>>() as u32,
+        ),
+    }
+}
+
+/// Chamber 1's annotation candidates per stone: why the
+/// slate and the stone disagreed. Exactly one per stone is
+/// true (`BENCH_TRUE_CAUSE`).
+pub const BENCH_CAUSES: [[&str; 3]; 6] = [
+    [
+        "Padding fills the gaps between the fields.",
+        "Nothing hides: a byte is a byte — size one, alignment one.",
+        "The absent-mark hides in a value that cannot occur.",
+    ],
+    [
+        "The absent-mark hides in a value that cannot occur.",
+        "Padding fills the gaps: the word must sit on its own alignment, and the byte waits before it.",
+        "It is two machine words: a pointer and a length.",
+    ],
+    [
+        "Padding fills the gaps between the fields.",
+        "It is two machine words: a pointer and a length.",
+        "The absent-mark hides in a value that cannot occur.",
+    ],
+    [
+        "The absent-mark hides in a value that cannot occur.",
+        "The tag stands beside the byte: every byte value can occur, so no mark is free.",
+        "Padding fills the gaps between the fields.",
+    ],
+    [
+        "The tag stands beside the word, paid in full.",
+        "The absent-mark hides in the one address that cannot occur: the null address.",
+        "Padding fills the gaps between the fields.",
+    ],
+    [
+        "It is two machine words: a pointer and a length.",
+        "Padding fills the gaps between the fields.",
+        "It is three machine words: pointer, length, and capacity.",
+    ],
+];
+
+/// The true annotation per bench stone, by index into
+/// `BENCH_CAUSES`.
+pub const BENCH_TRUE_CAUSE: [usize; 6] = [1, 1, 1, 1, 1, 2];
+
+/// Chamber 2's stones, in bench order: (name, size,
+/// alignment). The pairs are authored data — the layout of
+/// any order of them is computed by the one algorithm in
+/// puzzles.rs, and a unit test cross-checks the bench order
+/// and the minimum against a brute-force pass.
+pub const WALL_STONES: [(&str, u32, u32); 5] = [
+    ("the pin", 1, 1),
+    ("the beam", 8, 8),
+    ("the plate", 4, 4),
+    ("the shim", 1, 1),
+    ("the rod", 2, 2),
+];
+
+/// Chamber 1's charter, spoken at the watch.
+pub const BENCH_CHARTER: &str = "The bench's charter: commit the measure before the line drops — a prediction on the slate can be wrong honestly, and its surprise annotated in your own hand.";
+
+/// Chamber 2's charter, spoken at the watch.
+pub const WALL_CHARTER: &str = "The wall's charter: the stones are the same stones in any order — only the voids move. Count them byte by byte, and let every saved unit name the move that saved it.";
+
+/// Floor 4's chamber hint ladders, four rungs each; the
+/// fourth names the seam. Chambers 3–5 keep the gallery's
+/// general ladder until their own steps land.
+pub fn floor4_chamber_hints(index: usize) -> [&'static str; 4] {
+    match index {
+        0 => [
+            "Commit both numbers for a stone before you touch the line: an uncommitted slate cannot be graded, and the bench will refuse the drop.",
+            "Most stones are not the size of the thing they name. A borrowed word is two words; a heap is three; a pair pays for the larger partner's alignment.",
+            "Where the slate misses, the annotation is the lesson: padding, a tag paid in full, a niche, or plain word-count. Pick the cause that the measured numbers actually show.",
+            "The seam: a byte beside a word measures eight, not five — the gap is padding, and it is the commonest surprise on the bench. An Option over a reference measures one word, not two: the null address is the mark, and it is free.",
+        ],
+        1 => [
+            "Seat the stones and watch the count, not the wall: every void is a byte the wall is charged for.",
+            "A stone may only sit on its own alignment. A wide-aligned stone seated late drags a field of padding in front of it.",
+            "Seat in falling alignment — widest law first — and the voids close. The bench order's wall reads 24; the least span reads 16.",
+            "The seam: the beam seated second costs seven bytes of air before it. Nothing about the stones changed; only their order did — the void was never in the stones, it was in the sequence.",
+        ],
+        _ => [
+            "The Plumbmason's galleries reward the measured over the remembered: work the room's own instrument before you guess.",
+            "Read the inscription again, slowly. The rule of the room is carved on its stone, and the demonstration at the desk shows it kept once.",
+            "Every claim in this room can be proven on the spot. If you are asserting from memory, you are doing the thing the floor exists to cure.",
+            "The seam is named in the floor's own failure class: somewhere a proxy is being measured instead of the quantity. Find what the instrument actually reads.",
+        ],
+    }
+}

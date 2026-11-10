@@ -90,3 +90,84 @@ arms in Steps 2–4.
 - The Stratum II → III stairs recitation (§5.6) arrives
   with the first Stratum III door (Floor 9's scaffolding),
   as the I → II recitation arrived with Floor 3.
+
+## Step 2 — Chambers 1–2: the bench and the smallest wall
+
+### What landed
+
+- **`content.rs`** — Chamber intros and Examine texts for
+  all five galleries; the bench's furniture: `BENCH_STONES`
+  (six stones), `bench_stone_facts(index)` — the floor's
+  doctrine in one function: (size, alignment) taken from
+  the **real types** (`u8`, `(u8, u32)`, `&str`,
+  `Option<u8>`, `Option<&u64>`, `Vec<u8>`) with
+  `size_of`/`align_of` at runtime, so the bench can never
+  drift from the truth; `BENCH_CAUSES` / `BENCH_TRUE_CAUSE`
+  (each stone's one true surprise-cause among three);
+  `WALL_STONES` (five authored (size, align) pairs); both
+  charters; the hint ladders (Chambers 1–2 real, the rest
+  on the gallery's general ladder until their steps).
+- **`puzzles.rs`** — `bench_prediction_ok` /
+  `bench_missed`; `wall_layout` — the descent's one layout
+  algorithm (each offset aligned up, the span rounded to
+  the widest alignment; returns span and void bytes);
+  `wall_minimum` through the same algorithm over the
+  falling-alignment seating. The unit tests assert the
+  bench facts outright [(1,1), (8,4), (16,8), (2,1), (8,8),
+  (24,8)], the bench order's wall at (24, 8 voids), and —
+  the honest part — brute-force all 120 seatings to prove
+  no seating beats the claimed minimum of 16.
+- **`state.rs`** — `FoundationWork` gains the bench slate
+  (`pred_size`/`pred_align`/`measured`/`annotate`) and
+  `wall_order`. `floor4_diagnosed` judges: Chamber 1 —
+  watched, every stone measured, every surprise carrying
+  its true annotation; Chamber 2 — watched, all five
+  seated at the algorithm's minimum. Proof texts per
+  chamber; `floor4_reset_chamber` in the house shape.
+- **`game.rs`** — `Screen::Floor4Chamber` and the whole
+  chamber plumbing (verbs, Prove/Hint branches, the seal
+  and its confirm, the reset arm — Floor 4's chambers
+  reset properly), elements `F4Watch`, `F4Stone`,
+  `F4SizeUp/Down`, `F4AlignUp/Down`, `F4DropLine`,
+  `F4Annotate`, `F4Seat`, `F4WallReset`; the ephemeral
+  `f4_stone` slate selection; the chamber doors navigate.
+  The steppers are bounded (§ platform notes): size walks
+  1..=64, alignment walks 1, 2, 4, 8, 16. The line refuses
+  to drop on a blank slate.
+- **`shell.rs`** — `build_floor4_chamber` with the bench
+  panel (each stone's slate/line state under its button,
+  the selected stone's detail in the panel, steppers and
+  buttons drawn from state) and the wall panel (seatings,
+  the bench order's tally vs the player's, "the least
+  span" when it stands found). Quantities render large
+  and tabular (§7.3).
+
+Observed while mirroring, **not** fixed here (pre-existing,
+Floor 3's surface): Floor 3's chambers lay out a
+ResetChamber button whose press falls through to the
+match's catch-all — `floor3_reset_chamber` does not exist.
+Floor 4's chambers reset properly; the Floor 3 gap is
+recorded for Pax's word.
+
+### Gates (primo, pinned rustc 1.99.0)
+
+- `cargo fmt --check`: clean. `cargo clippy --all-targets
+  -- -D warnings`: exit 0.
+- `cargo test`: **126 passed / 0 failed** (was 122; +4:
+  puzzles 2 — the real-type facts, the brute-forced
+  minimum; state 1 — both judges with their refusals;
+  game 1 — both chambers played on the GUI surface, the
+  surprises annotated through the steppers).
+  Log: `~/.local/share/pax/niflheim-floor4-step2-build-20261110/cargo-test.log`.
+- Theodolite: **0 diagnostics** on all five touched files.
+- Determinism: the probe extended through both chambers;
+  saves byte-identical, sha256
+  `60261eff8786d71d956ac5e36b9aaf3f3abfe239d957d0c3dfaee13c9b10ae39`.
+- Android lib under the pin: 1,346,617,352 bytes. Launch
+  smoke under Xvfb: `cold_start_ms=910`, no panics.
+
+### Left open
+
+- Chambers 3–4 land in Step 3 (the Seal Stones, the
+  treaty wall); Chamber 5 and the Crooked Foundation in
+  Step 4; the driven whole-floor playthrough in Step 5.

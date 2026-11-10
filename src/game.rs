@@ -186,6 +186,8 @@ pub enum Screen {
     Floor3Hub,
     /// Floor 4's hub: the Foundation Galleries.
     Floor4Hub,
+    /// A Floor 4 chamber.
+    Floor4Chamber(usize),
     /// A Floor 3 chamber, by index (0–4).
     Floor3Chamber(usize),
     /// Floor 3's FOE: the Gatehouse Release.
@@ -310,6 +312,26 @@ pub enum El {
     F2Watch,
     /// Floor 3 chambers: read the desk's charter.
     F3Watch,
+    /// Floor 4: read the chamber's charter (the watch).
+    F4Watch,
+    /// Floor 4 Chamber 1: put this stone on the slate.
+    F4Stone(u8),
+    /// Floor 4 Chamber 1: step the slate's size down.
+    F4SizeDown,
+    /// Floor 4 Chamber 1: step the slate's size up.
+    F4SizeUp,
+    /// Floor 4 Chamber 1: step the slate's alignment down.
+    F4AlignDown,
+    /// Floor 4 Chamber 1: step the slate's alignment up.
+    F4AlignUp,
+    /// Floor 4 Chamber 1: drop the plumb line.
+    F4DropLine,
+    /// Floor 4 Chamber 1: cycle the surprise's annotation.
+    F4Annotate,
+    /// Floor 4 Chamber 2: seat this stone next in the wall.
+    F4Seat(u8),
+    /// Floor 4 Chamber 2: clear the wall back to the bench.
+    F4WallReset,
     /// Floor 3 Chamber 1: cycle one report's pair, by report.
     F3Pair(u8),
     /// Floor 3 Chamber 2: cycle one station's setting, by slot
@@ -533,6 +555,8 @@ enum ArmedFor {
     Floor2Chamber(usize),
     /// A Floor 3 chamber's repair.
     Floor3Chamber(usize),
+    /// A Floor 4 chamber's repair.
+    Floor4Chamber(usize),
     /// Floor 3 FOE's strike.
     Foe3,
     /// The FOE's strike.
@@ -568,6 +592,8 @@ pub struct Game {
     pub gate_floor2: bool,
     /// The gate in flight judges Floor 3's Release.
     pub gate_floor3: bool,
+    /// Floor 4 Chamber 1: the stone on the slate (ephemeral).
+    pub f4_stone: u8,
     /// The last gate report's detail (the record view's body).
     pub gate_detail: String,
     /// The hint rung currently shown in the hint reading.
@@ -627,6 +653,7 @@ impl Game {
             gate_running: false,
             gate_floor2: false,
             gate_floor3: false,
+            f4_stone: 0,
             gate_detail: String::new(),
             hint_showing: 0,
             editor_cursor: 0,
@@ -687,6 +714,7 @@ impl Game {
                 | Screen::Floor2Hub
                 | Screen::Floor3Hub
                 | Screen::Floor4Hub
+                | Screen::Floor4Chamber(_)
                 | Screen::Chamber(_)
                 | Screen::Floor2Chamber(_)
                 | Screen::Floor3Chamber(_)
@@ -736,6 +764,7 @@ impl Game {
             Screen::Chamber(index) => self.armed == Some(ArmedFor::Chamber(index)),
             Screen::Floor2Chamber(index) => self.armed == Some(ArmedFor::Floor2Chamber(index)),
             Screen::Floor3Chamber(index) => self.armed == Some(ArmedFor::Floor3Chamber(index)),
+            Screen::Floor4Chamber(index) => self.armed == Some(ArmedFor::Floor4Chamber(index)),
             Screen::Foe => self.expedition.foe.strike == StrikePhase::Armed,
             Screen::Floor2Foe => self.expedition.floor2.foe.strike == StrikePhase::Armed,
             Screen::Floor3Foe => self.expedition.floor3.foe.strike == StrikePhase::Armed,
@@ -939,7 +968,10 @@ impl Game {
             Screen::Floor2Hub | Screen::Floor3Hub | Screen::Floor4Hub => {
                 vec![Verb::Read, Verb::Map]
             }
-            Screen::Chamber(_) | Screen::Floor2Chamber(_) | Screen::Floor3Chamber(_) => vec![
+            Screen::Chamber(_)
+            | Screen::Floor2Chamber(_)
+            | Screen::Floor3Chamber(_)
+            | Screen::Floor4Chamber(_) => vec![
                 Verb::Examine,
                 Verb::Read,
                 Verb::Prove,
@@ -1019,6 +1051,51 @@ pub mod geom {
     /// 2's hub.
     pub fn door_floor4() -> Rect {
         Rect::new(640.0, 150.0, 124.0, 124.0)
+    }
+
+    /// Floor 4 Chamber 1: one bench stone's row.
+    pub fn f4_stone_row(stone: usize) -> Rect {
+        Rect::new(380.0, 100.0 + stone as f32 * 56.0, 300.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 1: the slate's size steppers.
+    pub fn f4_size_down() -> Rect {
+        Rect::new(380.0, 452.0, 44.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 1: the slate's size steppers.
+    pub fn f4_size_up() -> Rect {
+        Rect::new(508.0, 452.0, 44.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 1: the slate's alignment steppers.
+    pub fn f4_align_down() -> Rect {
+        Rect::new(596.0, 452.0, 44.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 1: the slate's alignment steppers.
+    pub fn f4_align_up() -> Rect {
+        Rect::new(724.0, 452.0, 44.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 1: the line drop.
+    pub fn f4_drop_line() -> Rect {
+        Rect::new(380.0, 500.0, 180.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 1: the annotation cycle.
+    pub fn f4_annotate() -> Rect {
+        Rect::new(580.0, 500.0, 188.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 2: one bench stone's seat row.
+    pub fn f4_seat_row(stone: usize) -> Rect {
+        Rect::new(380.0, 100.0 + stone as f32 * 56.0, 300.0, 30.0)
+    }
+
+    /// Floor 4 Chamber 2: clear the wall.
+    pub fn f4_wall_reset() -> Rect {
+        Rect::new(380.0, 500.0, 180.0, 30.0)
     }
 
     /// A roster group header row on Floor 2's panel.
@@ -1333,6 +1410,7 @@ impl Game {
             Screen::Chamber(_)
             | Screen::Floor2Chamber(_)
             | Screen::Floor3Chamber(_)
+            | Screen::Floor4Chamber(_)
             | Screen::Foe
             | Screen::Floor2Foe
             | Screen::Floor3Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
@@ -1563,6 +1641,7 @@ impl Game {
                     Screen::Chamber(index) => EXAMINE_TEXTS[index],
                     Screen::Floor2Chamber(index) => F2_EXAMINE_TEXTS[index],
                     Screen::Floor3Chamber(index) => F3_EXAMINE_TEXTS[index],
+                    Screen::Floor4Chamber(index) => content::F4_EXAMINE_TEXTS[index],
                     Screen::Foe => {
                         "The hoard-engine: a ledger the size of a door, turning its \
                          pages by itself, smiling with every leaf."
@@ -1685,9 +1764,29 @@ impl Game {
                     }
                     self.changed();
                 }
+                if let Screen::Floor4Chamber(index) = self.screen {
+                    match self.expedition.floor4_file_proof(index) {
+                        Ok(text) => {
+                            self.expedition.log_push(format!(
+                                "Proof filed in {}.",
+                                content::FOUNDATION_CHAMBERS[index].name
+                            ));
+                            self.say(StatusKind::Good, text);
+                        }
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
             }
             Verb::Hint => {
-                if let Screen::Floor3Chamber(index) = self.screen {
+                if let Screen::Floor4Chamber(index) = self.screen {
+                    if self.expedition.floor4_hints_used(index) == 0 {
+                        self.expedition.floor4_view_hint(index);
+                    }
+                    self.hint_showing = self.expedition.floor4_hints_used(index).max(1);
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                } else if let Screen::Floor3Chamber(index) = self.screen {
                     if self.expedition.floor3_hints_used(index) == 0 {
                         self.expedition.floor3_view_hint(index);
                     }
@@ -1989,12 +2088,10 @@ impl Game {
                     );
                 }
             }
-            El::Floor4Door(_) => {
-                self.say(
-                    StatusKind::Info,
-                    "The Plumbmason holds up a hand: this gallery is not \
-                     open yet — the benches are still being laid.",
-                );
+            El::Floor4Door(index) => {
+                let index = index as usize;
+                self.enter_screen(Screen::Floor4Chamber(index));
+                self.say(StatusKind::Info, content::FLOOR4_CHAMBER_INTROS[index]);
                 self.bump();
             }
 
@@ -2041,6 +2138,205 @@ impl Game {
             El::RosterToggle(group) => {
                 self.toggle_roster_group(group as usize);
             }
+            El::F4Watch => {
+                if let Screen::Floor4Chamber(index) = self.screen {
+                    if let Some(progress) = self.expedition.floor4.chambers.get_mut(index) {
+                        progress.work.watched = true;
+                    }
+                    self.say(
+                        StatusKind::Info,
+                        match index {
+                            0 => content::BENCH_CHARTER,
+                            1 => content::WALL_CHARTER,
+                            _ => "The Plumbmason nods at the gallery.",
+                        },
+                    );
+                    self.changed();
+                }
+            }
+            El::F4Stone(stone) => {
+                if self.screen == Screen::Floor4Chamber(0) {
+                    self.f4_stone = stone;
+                    self.say(StatusKind::Info, content::BENCH_STONES[stone as usize]);
+                    self.bump();
+                }
+            }
+            El::F4SizeUp => {
+                if self.screen == Screen::Floor4Chamber(0) {
+                    let stone = self.f4_stone as usize;
+                    let work = &mut self.expedition.floor4.chambers[0].work;
+                    work.pred_size[stone] = Some(match work.pred_size[stone] {
+                        None => 1,
+                        Some(64) => 1,
+                        Some(size) => size + 1,
+                    });
+                    self.changed();
+                }
+            }
+            El::F4SizeDown => {
+                if self.screen == Screen::Floor4Chamber(0) {
+                    let stone = self.f4_stone as usize;
+                    let work = &mut self.expedition.floor4.chambers[0].work;
+                    work.pred_size[stone] = Some(match work.pred_size[stone] {
+                        None => 64,
+                        Some(1) => 64,
+                        Some(size) => size - 1,
+                    });
+                    self.changed();
+                }
+            }
+            El::F4AlignUp => {
+                if self.screen == Screen::Floor4Chamber(0) {
+                    let stone = self.f4_stone as usize;
+                    let work = &mut self.expedition.floor4.chambers[0].work;
+                    work.pred_align[stone] = Some(match work.pred_align[stone] {
+                        None => 1,
+                        Some(1) => 2,
+                        Some(2) => 4,
+                        Some(4) => 8,
+                        Some(8) => 16,
+                        Some(_) => 1,
+                    });
+                    self.changed();
+                }
+            }
+            El::F4AlignDown => {
+                if self.screen == Screen::Floor4Chamber(0) {
+                    let stone = self.f4_stone as usize;
+                    let work = &mut self.expedition.floor4.chambers[0].work;
+                    work.pred_align[stone] = Some(match work.pred_align[stone] {
+                        None => 16,
+                        Some(16) => 8,
+                        Some(8) => 4,
+                        Some(4) => 2,
+                        Some(2) => 1,
+                        Some(_) => 16,
+                    });
+                    self.changed();
+                }
+            }
+            El::F4DropLine => {
+                if self.screen == Screen::Floor4Chamber(0) {
+                    let stone = self.f4_stone as usize;
+                    let said = {
+                        let work = &mut self.expedition.floor4.chambers[0].work;
+                        match (work.pred_size[stone], work.pred_align[stone]) {
+                            (Some(size), Some(align)) => {
+                                work.measured[stone] = true;
+                                let (true_size, true_align) = content::bench_stone_facts(stone);
+                                if (size, align) == (true_size, true_align) {
+                                    (
+                                        StatusKind::Good,
+                                        format!(
+                                            "The line falls: size {true_size}, \
+                                             alignment {true_align} — the slate \
+                                             is true."
+                                        ),
+                                    )
+                                } else {
+                                    (
+                                        StatusKind::Info,
+                                        format!(
+                                            "The line falls: size {true_size}, \
+                                             alignment {true_align} — the slate \
+                                             said {size} and {align}. A \
+                                             surprise: annotate it."
+                                        ),
+                                    )
+                                }
+                            }
+                            _ => (
+                                StatusKind::Refusal,
+                                "The slate is blank for this stone: commit \
+                                 a size and an alignment before the line \
+                                 may drop."
+                                    .to_string(),
+                            ),
+                        }
+                    };
+                    let (kind, text) = said;
+                    self.say(kind, text);
+                    self.changed();
+                }
+            }
+            El::F4Annotate => {
+                if self.screen == Screen::Floor4Chamber(0) {
+                    let stone = self.f4_stone as usize;
+                    let said = {
+                        let work = &mut self.expedition.floor4.chambers[0].work;
+                        if !work.measured[stone] {
+                            None
+                        } else {
+                            work.annotate[stone] = Some(match work.annotate[stone] {
+                                None => 0,
+                                Some(2) => 0,
+                                Some(choice) => choice + 1,
+                            });
+                            work.annotate[stone].map(|choice| content::BENCH_CAUSES[stone][choice])
+                        }
+                    };
+                    match said {
+                        Some(cause) => self.say(StatusKind::Info, cause),
+                        None => self.say(
+                            StatusKind::Refusal,
+                            "There is nothing to annotate until the line \
+                             has dropped on this stone.",
+                        ),
+                    }
+                    self.changed();
+                }
+            }
+            El::F4Seat(stone) => {
+                if self.screen == Screen::Floor4Chamber(1) {
+                    let said = {
+                        let work = &mut self.expedition.floor4.chambers[1].work;
+                        if work.wall_order.contains(&stone) {
+                            (
+                                StatusKind::Info,
+                                "That stone already stands in the wall.".to_string(),
+                            )
+                        } else if work.wall_order.len() >= content::WALL_STONES.len() {
+                            (
+                                StatusKind::Info,
+                                "The wall is full: five stones stand in it.".to_string(),
+                            )
+                        } else {
+                            work.wall_order.push(stone);
+                            let seated: Vec<(u32, u32)> = work
+                                .wall_order
+                                .iter()
+                                .map(|seated| {
+                                    let (_, size, align) = content::WALL_STONES[*seated as usize];
+                                    (size, align)
+                                })
+                                .collect();
+                            let (total, voids) = crate::puzzles::wall_layout(&seated);
+                            (
+                                StatusKind::Info,
+                                format!(
+                                    "Seated. The wall as it stands: span \
+                                     {total}, voids {voids}."
+                                ),
+                            )
+                        }
+                    };
+                    let (kind, text) = said;
+                    self.say(kind, text);
+                    self.changed();
+                }
+            }
+            El::F4WallReset => {
+                if self.screen == Screen::Floor4Chamber(1) {
+                    self.expedition.floor4.chambers[1].work.wall_order.clear();
+                    self.say(
+                        StatusKind::Info,
+                        "The wall is cleared: the five stones stand on \
+                         the bench again.",
+                    );
+                    self.changed();
+                }
+            }
+
             El::F3Watch => {
                 if let Screen::Floor3Chamber(index) = self.screen {
                     if let Some(progress) = self.expedition.floor3.chambers.get_mut(index) {
@@ -2712,6 +3008,16 @@ impl Game {
                     );
                     self.changed();
                 }
+                Screen::Floor4Chamber(index) => {
+                    self.expedition.floor4_reset_chamber(index);
+                    self.say(
+                        StatusKind::Info,
+                        "The proof is reset: the chamber stands as it was first \
+                         entered. Hint rungs already climbed stay on the record.",
+                    );
+                    self.changed();
+                }
+
                 _ => {}
             },
             El::EditorOpen => {
@@ -2868,6 +3174,26 @@ impl Game {
                     );
                 }
             },
+            Screen::Floor4Chamber(index) => match self.expedition.floor4.chambers[index].state {
+                ChamberState::Diagnosed => {
+                    self.armed = Some(ArmedFor::Floor4Chamber(index));
+                    self.say(
+                        StatusKind::Info,
+                        "The seal is pressed. Confirm to strike the repair home, or \
+                         stand down.",
+                    );
+                }
+                ChamberState::Repaired => {
+                    self.say(StatusKind::Info, "This chamber already stands repaired.");
+                }
+                ChamberState::Unworked => {
+                    self.say(
+                        StatusKind::Refusal,
+                        "The seal sleeps until the proof is complete.",
+                    );
+                }
+            },
+
             Screen::Floor3Chamber(index) => match self.expedition.floor3.chambers[index].state {
                 ChamberState::Diagnosed => {
                     self.armed = Some(ArmedFor::Floor3Chamber(index));
@@ -2963,6 +3289,21 @@ impl Game {
                 }
                 self.changed();
             }
+            Some(ArmedFor::Floor4Chamber(index)) => {
+                self.armed = None;
+                match self.expedition.floor4_repair_chamber(index) {
+                    Ok(text) => {
+                        self.expedition.log_push(format!(
+                            "{} repaired.",
+                            content::FOUNDATION_CHAMBERS[index].name
+                        ));
+                        self.say(StatusKind::Good, text);
+                    }
+                    Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                }
+                self.changed();
+            }
+
             Some(ArmedFor::Floor3Chamber(index)) => {
                 self.armed = None;
                 match self.expedition.floor3_repair_chamber(index) {
@@ -3280,6 +3621,11 @@ impl Game {
                     index + 1,
                     content::GATEHOUSE_CHAMBERS[index].name
                 ),
+                Screen::Floor4Chamber(index) => format!(
+                    "Chamber {} — {}",
+                    index + 1,
+                    content::FOUNDATION_CHAMBERS[index].name
+                ),
                 Screen::Foe => "The Hoard's Inscription".to_string(),
                 Screen::Floor2Foe => "The Menagerie's Inscription".to_string(),
                 Screen::Floor3Foe => "The Release's Inscription".to_string(),
@@ -3307,6 +3653,7 @@ impl Game {
                     content::MENAGERIE_CHAMBERS[index].inscription.to_string()
                 }
                 Screen::Floor3Chamber(index) => content::FLOOR3_CHAMBER_INTROS[index].to_string(),
+                Screen::Floor4Chamber(index) => content::FLOOR4_CHAMBER_INTROS[index].to_string(),
                 Screen::Foe => content::FOE_INSCRIPTION.to_string(),
                 Screen::Floor2Foe => content::FOE2_INSCRIPTION.to_string(),
                 Screen::Floor3Foe => content::FOE3_INSCRIPTION.to_string(),
@@ -3324,6 +3671,9 @@ impl Game {
                     3 => content::RAIL_CHARTER.to_string(),
                     _ => content::FLOOR3_CHAMBER_INTROS[index].to_string(),
                 },
+                Screen::Floor4Chamber(index) => content::FOUNDATION_CHAMBERS[index]
+                    .demonstration
+                    .to_string(),
                 Screen::Foe => content::FOE_DEMONSTRATION.to_string(),
                 Screen::Floor2Foe => content::FOE2_DEMONSTRATION.to_string(),
                 Screen::Floor3Foe => content::FOE3_INTRO.to_string(),
@@ -3334,6 +3684,7 @@ impl Game {
                 let text = match self.screen {
                     Screen::Floor2Chamber(index) => content::floor2_hints(index)[rung - 1],
                     Screen::Floor3Chamber(index) => content::floor3_chamber_hints(index)[rung - 1],
+                    Screen::Floor4Chamber(index) => content::floor4_chamber_hints(index)[rung - 1],
                     Screen::Floor2Foe => content::floor2_foe_hints()[rung - 1],
                     Screen::Floor3Foe => content::floor3_foe_hints()[rung - 1],
                     _ => {
@@ -3537,6 +3888,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Chamber(_)
         | Screen::Floor2Chamber(_)
         | Screen::Floor3Chamber(_)
+        | Screen::Floor4Chamber(_)
         | Screen::Foe
         | Screen::Floor2Foe
         | Screen::Floor3Foe
@@ -3595,6 +3947,14 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             layout_chamber_panel(&mut els, game, index);
             layout_seal(&mut els, game);
         }
+        Screen::Floor4Chamber(index) => {
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.push((El::ResetChamber, rects::RESET_BTN));
+            layout_floor4_chamber_panel(&mut els, game, index);
+            layout_seal(&mut els, game);
+        }
+
         Screen::Floor3Chamber(index) => {
             els.push((El::Desk, geom::desk()));
             els.push((El::Stone, geom::stone()));
@@ -3729,6 +4089,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         Screen::Chamber(index) => game.armed == Some(ArmedFor::Chamber(index)),
         Screen::Floor2Chamber(index) => game.armed == Some(ArmedFor::Floor2Chamber(index)),
         Screen::Floor3Chamber(index) => game.armed == Some(ArmedFor::Floor3Chamber(index)),
+        Screen::Floor4Chamber(index) => game.armed == Some(ArmedFor::Floor4Chamber(index)),
         Screen::Foe => game.expedition.foe.strike == StrikePhase::Armed,
         Screen::Floor2Foe => game.expedition.floor2.foe.strike == StrikePhase::Armed,
         Screen::Floor3Foe => game.expedition.floor3.foe.strike == StrikePhase::Armed,
@@ -3738,6 +4099,31 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
     if armed {
         els.push((El::SealConfirm, rects::SEAL_CONFIRM));
         els.push((El::SealCancel, rects::SEAL_CANCEL));
+    }
+}
+
+/// The Floor 4 chambers' panel elements: the watch, Chamber
+/// 1's stone rows, steppers, line drop, and annotation;
+/// Chamber 2's seat rows and the wall's reset.
+fn layout_floor4_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: usize) {
+    let _ = game;
+    els.push((El::F4Watch, geom::f2_watch()));
+    if chamber == 0 {
+        for stone in 0..content::BENCH_STONES.len() {
+            els.push((El::F4Stone(stone as u8), geom::f4_stone_row(stone)));
+        }
+        els.push((El::F4SizeDown, geom::f4_size_down()));
+        els.push((El::F4SizeUp, geom::f4_size_up()));
+        els.push((El::F4AlignDown, geom::f4_align_down()));
+        els.push((El::F4AlignUp, geom::f4_align_up()));
+        els.push((El::F4DropLine, geom::f4_drop_line()));
+        els.push((El::F4Annotate, geom::f4_annotate()));
+    }
+    if chamber == 1 {
+        for stone in 0..content::WALL_STONES.len() {
+            els.push((El::F4Seat(stone as u8), geom::f4_seat_row(stone)));
+        }
+        els.push((El::F4WallReset, geom::f4_wall_reset()));
     }
 }
 
@@ -4850,6 +5236,98 @@ mod tests {
         game.pointer_down(rect.cx(), rect.cy());
         game.pointer_up(rect.cx(), rect.cy());
         assert_eq!(game.screen, Screen::Floor4Hub);
+    }
+
+    /// Driven playthrough: Floor 4's first two chambers on
+    /// the GUI surface — the slate committed by steppers and
+    /// graded by the dropped line (two surprises annotated),
+    /// and the wall seated stone by stone to its least span.
+    #[test]
+    fn floor4_chambers_1_and_2_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn back_to_galleries(game: &mut Game) {
+            click(game, El::TabFloor);
+            click(game, El::DoorFloor4);
+            assert_eq!(game.screen, Screen::Floor4Hub);
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        // The stairs stand lit (the Step 1 fixture).
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.foe.gate_passed = true;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        game.expedition.floor3.foe.gate_passed = true;
+        for chamber in game.expedition.floor2.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        game.screen = Screen::Hub;
+        click(&mut game, El::DoorFloor4);
+        assert_eq!(game.screen, Screen::Floor4Hub);
+
+        // Chamber 1 — the bench. True slates are (size,
+        // align-presses): the align stepper walks 1,2,4,8,16,
+        // so alignment A takes its position + 1 presses.
+        click(&mut game, El::Floor4Door(0));
+        assert_eq!(game.screen, Screen::Floor4Chamber(0));
+        click(&mut game, El::F4Watch);
+        // (stone, size presses, align presses, annotate presses)
+        let slate: [(u8, u32, u32, u32); 6] = [
+            (0, 1, 1, 0),  // u8: 1 · 1, true
+            (1, 5, 3, 2),  // (u8, u32): slate 5 · 4 — surprise, annotate to 1
+            (2, 16, 4, 0), // &str: 16 · 8, true
+            (3, 2, 1, 0),  // Option<u8>: 2 · 1, true
+            (4, 16, 4, 2), // Option<&u64>: slate 16 · 8 — surprise, annotate to 1
+            (5, 24, 4, 0), // Vec<u8>: 24 · 8, true
+        ];
+        for (stone, sizes, aligns, annotates) in slate {
+            click(&mut game, El::F4Stone(stone));
+            for _ in 0..sizes {
+                click(&mut game, El::F4SizeUp);
+            }
+            for _ in 0..aligns {
+                click(&mut game, El::F4AlignUp);
+            }
+            click(&mut game, El::F4DropLine);
+            for _ in 0..annotates {
+                click(&mut game, El::F4Annotate);
+            }
+        }
+        assert!(game.expedition.floor4_diagnosed(0));
+        click(&mut game, El::Chip(Verb::Prove));
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor4.chambers[0].state,
+            ChamberState::Repaired
+        );
+        back_to_galleries(&mut game);
+
+        // Chamber 2 — the wall seated to its least span:
+        // beam, plate, rod, shim, pin.
+        click(&mut game, El::Floor4Door(1));
+        assert_eq!(game.screen, Screen::Floor4Chamber(1));
+        click(&mut game, El::F4Watch);
+        for stone in [1u8, 2, 4, 3, 0] {
+            click(&mut game, El::F4Seat(stone));
+        }
+        assert!(game.expedition.floor4_diagnosed(1));
+        click(&mut game, El::Chip(Verb::Prove));
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor4.chambers[1].state,
+            ChamberState::Repaired
+        );
+        assert_eq!(game.expedition.floor4_chambers_repaired(), 2);
     }
 
     /// The general pointer path still works outside overlays:

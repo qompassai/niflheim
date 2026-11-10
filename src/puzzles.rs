@@ -973,6 +973,56 @@ pub fn slate_entry_ok(entry: usize, verdict: Option<usize>) -> bool {
         .is_some_and(|log| verdict == Some(if log.ran { 0 } else { 1 }))
 }
 
+// ---------------------------------------------------------------------------
+// Floor 4 — memory layout, judged by measurement.
+
+/// Floor 4 Chamber 1: a committed prediction graded against
+/// the bench's own measure of the real type.
+pub fn bench_prediction_ok(index: usize, pred_size: u32, pred_align: u32) -> bool {
+    crate::content::bench_stone_facts(index) == (pred_size, pred_align)
+}
+
+/// Floor 4 Chamber 1: whether a measured stone's slate
+/// missed (and so owes an annotation).
+pub fn bench_missed(index: usize, pred_size: Option<u32>, pred_align: Option<u32>) -> bool {
+    match (pred_size, pred_align) {
+        (Some(size), Some(align)) => !bench_prediction_ok(index, size, align),
+        _ => false,
+    }
+}
+
+/// The one layout algorithm of the descent: seat (size,
+/// align) stones in the given order; each stone's offset is
+/// aligned up to its alignment, the wall's span is the last
+/// stone's end rounded up to the widest alignment. Returns
+/// (total span, void bytes) — the voids are every padding
+/// byte, counted one by one.
+pub fn wall_layout(stones: &[(u32, u32)]) -> (u32, u32) {
+    let mut offset = 0u32;
+    let mut voids = 0u32;
+    let mut widest = 1u32;
+    for &(size, align) in stones {
+        widest = widest.max(align);
+        let aligned = offset.div_ceil(align) * align;
+        voids += aligned - offset;
+        offset = aligned + size;
+    }
+    let total = offset.div_ceil(widest) * widest;
+    voids += total - offset;
+    (total, voids)
+}
+
+/// The smallest span the same stones allow, by the same
+/// algorithm: seat them in falling alignment (widest law
+/// first, then the heavier stone). A unit test brute-forces
+/// every seating of the chamber's stones and finds no
+/// smaller span, so this is a measured minimum, not a claim.
+pub fn wall_minimum(stones: &[(u32, u32)]) -> u32 {
+    let mut order: Vec<(u32, u32)> = stones.to_vec();
+    order.sort_by(|a, b| b.1.cmp(&a.1).then(b.0.cmp(&a.0)));
+    wall_layout(&order).0
+}
+
 #[cfg(test)]
 mod floor3_step4_tests {
     use super::*;
@@ -1001,5 +1051,71 @@ mod floor3_step4_tests {
         assert!(slate_entry_ok(2, Some(0)));
         assert!(!slate_entry_ok(0, Some(0)));
         assert!(!slate_entry_ok(2, None));
+    }
+}
+
+#[cfg(test)]
+mod floor4_step2_tests {
+    use super::*;
+
+    /// Floor 4: the bench's facts are the real types' facts —
+    /// the table the whole floor stands on, asserted outright.
+    #[test]
+    fn floor4_bench_facts_are_the_real_types() {
+        let expected = [(1, 1), (8, 4), (16, 8), (2, 1), (8, 8), (24, 8)];
+        for (index, facts) in expected.iter().enumerate() {
+            assert_eq!(
+                crate::content::bench_stone_facts(index),
+                *facts,
+                "stone {index}"
+            );
+        }
+        assert!(bench_prediction_ok(1, 8, 4));
+        assert!(
+            !bench_prediction_ok(1, 5, 4),
+            "the naive sum is not the size"
+        );
+        assert!(bench_missed(4, Some(16), Some(8)));
+        assert!(!bench_missed(4, Some(8), Some(8)));
+        assert!(!bench_missed(0, None, None), "uncommitted is not a miss");
+    }
+
+    /// Floor 4: the wall algorithm counts the bench order's
+    /// voids byte by byte, and its claimed minimum survives a
+    /// brute-force pass over every seating.
+    #[test]
+    fn floor4_wall_minimum_survives_brute_force() {
+        let stones: Vec<(u32, u32)> = crate::content::WALL_STONES
+            .iter()
+            .map(|(_, size, align)| (*size, *align))
+            .collect();
+        assert_eq!(wall_layout(&stones), (24, 8), "the bench order's wall");
+        assert_eq!(wall_minimum(&stones), 16, "the least span");
+        // Every permutation of five stones, judged by the
+        // same algorithm: none beats the claimed minimum.
+        fn permutations(items: &[(u32, u32)]) -> Vec<Vec<(u32, u32)>> {
+            if items.len() <= 1 {
+                return vec![items.to_vec()];
+            }
+            let mut out = Vec::new();
+            for i in 0..items.len() {
+                let mut rest = items.to_vec();
+                let head = rest.remove(i);
+                for mut tail in permutations(&rest) {
+                    let mut row = vec![head];
+                    row.append(&mut tail);
+                    out.push(row);
+                }
+            }
+            out
+        }
+        let all = permutations(&stones);
+        assert_eq!(all.len(), 120);
+        for seating in &all {
+            assert!(
+                wall_layout(seating).0 >= 16,
+                "a seating beat the minimum: {seating:?}"
+            );
+        }
     }
 }

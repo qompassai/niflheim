@@ -1018,6 +1018,9 @@ fn rebuild_now(
         Screen::Floor3Chamber(index) => {
             build_floor3_chamber(commands, game, &pal, fonts, stage, index)
         }
+        Screen::Floor4Chamber(index) => {
+            build_floor4_chamber(commands, game, &pal, fonts, stage, index)
+        }
         Screen::Floor3Foe => build_floor3_foe(commands, game, &pal, fonts, stage),
         Screen::Chamber(index) => build_chamber(commands, game, &pal, fonts, stage, index),
         Screen::Foe => build_foe(commands, game, &pal, fonts, stage),
@@ -1182,6 +1185,11 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
             "Floor 3 · Chamber {} — {}",
             index + 1,
             content::GATEHOUSE_CHAMBERS[index].name
+        ),
+        Screen::Floor4Chamber(index) => format!(
+            "Floor 4 · Chamber {} — {}",
+            index + 1,
+            content::FOUNDATION_CHAMBERS[index].name
         ),
 
         Screen::Floor3Foe => "Floor 3 · The Gatehouse Release".to_string(),
@@ -2756,6 +2764,375 @@ fn build_f3c4(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, st
 
 /// A Floor 3 chamber: the desk, the rule stone, the panel, the
 /// chamber's own field, and the seal.
+/// Floor 4's chamber rooms: the desk, the rule stone, and
+/// the per-chamber panels.
+fn build_floor4_chamber(
+    commands: &mut Commands,
+    game: &Game,
+    pal: &Pal,
+    fonts: &Fonts,
+    stage: Entity,
+    index: usize,
+) {
+    let meta = &content::FOUNDATION_CHAMBERS[index];
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        &format!("Chamber {} — {} · {}", index + 1, meta.name, meta.room),
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        Color::srgb_u8(120, 130, 140),
+        match index {
+            0 => "THE BENCH",
+            1 => "THE WALL",
+            2 => "THE SEAL STONES",
+            3 => "THE TREATY WALL",
+            _ => "THE HOLLOW STONES",
+        },
+        "the demonstration",
+    );
+    let stone = geom::stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(Color::srgb_u8(140, 140, 148)),
+        Some((2.0, pal.ink_dim)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 12.0,
+        stone.w,
+        "THE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 26.0,
+        stone.w,
+        "RULE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    build_panel_header(commands, pal, fonts, stage, meta.name, meta.room);
+    let progress = &game.expedition.floor4.chambers[index];
+    build_slot(
+        commands,
+        pal,
+        fonts,
+        stage,
+        progress.state,
+        meta.slot_wants,
+        progress.facet,
+    );
+    if index == 0 {
+        build_f4c1(commands, game, pal, fonts, stage);
+    }
+    if index == 1 {
+        build_f4c2(commands, game, pal, fonts, stage);
+    }
+}
+
+/// Chamber 1's panel: the six stones with their slate and
+/// line states, the selected stone's steppers, the line
+/// drop, and the annotation cycle.
+fn build_f4c1(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor4.chambers[0].work;
+    for (index, name) in content::BENCH_STONES.iter().enumerate() {
+        let rect = geom::f4_stone_row(index);
+        spawn_button(
+            commands,
+            stage,
+            rect,
+            name,
+            pal,
+            game.f4_stone as usize == index,
+            fonts,
+        );
+        let state = if !work.measured[index] {
+            match (work.pred_size[index], work.pred_align[index]) {
+                (Some(size), Some(align)) => {
+                    format!("slate {size} · {align} — unmeasured")
+                }
+                _ => "slate — uncommitted".to_string(),
+            }
+        } else {
+            let (true_size, true_align) = content::bench_stone_facts(index);
+            if crate::puzzles::bench_missed(index, work.pred_size[index], work.pred_align[index]) {
+                match work.annotate[index] {
+                    Some(_) => {
+                        format!("line {true_size} · {true_align} — surprise, annotated")
+                    }
+                    None => format!("line {true_size} · {true_align} — SURPRISE"),
+                }
+            } else {
+                format!("line {true_size} · {true_align} — the slate was true")
+            }
+        };
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 34.0,
+            Some(400.0),
+            &state,
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    let selected = game.f4_stone as usize;
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &format!("On the slate: {}", content::BENCH_STONES[selected]),
+        12.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    let detail = if work.measured[selected] {
+        let (true_size, true_align) = content::bench_stone_facts(selected);
+        if crate::puzzles::bench_missed(
+            selected,
+            work.pred_size[selected],
+            work.pred_align[selected],
+        ) {
+            match work.annotate[selected] {
+                Some(cause) => format!(
+                    "Measured {true_size} · {true_align}. Annotation: {}",
+                    content::BENCH_CAUSES[selected][cause]
+                ),
+                None => format!(
+                    "Measured {true_size} · {true_align} — a surprise, \
+                     awaiting its annotation."
+                ),
+            }
+        } else {
+            format!("Measured {true_size} · {true_align} — the slate was true.")
+        }
+    } else {
+        "Unmeasured: commit the slate, then drop the line.".to_string()
+    };
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        500.0,
+        Some(424.0),
+        &detail,
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        428.0,
+        None,
+        "SIZE",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        436.0,
+        458.0,
+        Some(64.0),
+        &work.pred_size[selected].map_or("—".to_string(), |v| v.to_string()),
+        13.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        596.0,
+        428.0,
+        None,
+        "ALIGN",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        652.0,
+        458.0,
+        Some(64.0),
+        &work.pred_align[selected].map_or("—".to_string(), |v| v.to_string()),
+        13.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_size_down(),
+        "−",
+        pal,
+        false,
+        fonts,
+    );
+    spawn_button(commands, stage, geom::f4_size_up(), "+", pal, false, fonts);
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_align_down(),
+        "−",
+        pal,
+        false,
+        fonts,
+    );
+    spawn_button(commands, stage, geom::f4_align_up(), "+", pal, false, fonts);
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_drop_line(),
+        "DROP THE LINE",
+        pal,
+        false,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_annotate(),
+        "ANNOTATE",
+        pal,
+        false,
+        fonts,
+    );
+}
+
+/// Chamber 2's panel: the five stones with their seatings,
+/// and the wall's tally against the bench order's.
+fn build_f4c2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor4.chambers[1].work;
+    for (index, (name, size, align)) in content::WALL_STONES.iter().enumerate() {
+        let rect = geom::f4_seat_row(index);
+        spawn_button(
+            commands,
+            stage,
+            rect,
+            &format!("{name} — {size} · {align}"),
+            pal,
+            work.wall_order.contains(&(index as u8)),
+            fonts,
+        );
+        let state = match work.wall_order.iter().position(|s| *s as usize == index) {
+            Some(position) => format!("stands {} in the wall", position + 1),
+            None => "on the bench".to_string(),
+        };
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 34.0,
+            Some(400.0),
+            &state,
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    let pairs: Vec<(u32, u32)> = content::WALL_STONES
+        .iter()
+        .map(|(_, size, align)| (*size, *align))
+        .collect();
+    let (bench_total, bench_voids) = crate::puzzles::wall_layout(&pairs);
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &format!("Bench order: span {bench_total} · voids {bench_voids}"),
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let yours = if work.wall_order.is_empty() {
+        "Your wall: unbuilt".to_string()
+    } else {
+        let seated: Vec<(u32, u32)> = work
+            .wall_order
+            .iter()
+            .map(|stone| pairs[*stone as usize])
+            .collect();
+        let (total, voids) = crate::puzzles::wall_layout(&seated);
+        if work.wall_order.len() == pairs.len() && total == crate::puzzles::wall_minimum(&pairs) {
+            format!("Your wall: span {total} · voids {voids} — the least span")
+        } else {
+            format!("Your wall: span {total} · voids {voids}")
+        }
+    };
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        500.0,
+        Some(424.0),
+        &yours,
+        12.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f4_wall_reset(),
+        "CLEAR THE WALL",
+        pal,
+        false,
+        fonts,
+    );
+}
+
 fn build_floor3_chamber(
     commands: &mut Commands,
     game: &Game,
