@@ -951,6 +951,9 @@ fn rebuild_now(
         Screen::Title => build_title(commands, game, &pal, fonts, stage),
         Screen::Hub => build_hub(commands, game, &pal, fonts, stage),
         Screen::Floor2Hub => build_floor2_hub(commands, game, &pal, fonts, stage),
+        Screen::Floor2Chamber(index) => {
+            build_floor2_chamber(commands, game, &pal, fonts, stage, index)
+        }
         Screen::Chamber(index) => build_chamber(commands, game, &pal, fonts, stage, index),
         Screen::Foe => build_foe(commands, game, &pal, fonts, stage),
     }
@@ -1101,6 +1104,11 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         }
         Screen::Foe => "Floor 1 · The Borrowed Hoard".to_string(),
         Screen::Floor2Hub => "Niflheim — Floor 2 · The Menagerie Grounds".to_string(),
+        Screen::Floor2Chamber(index) => format!(
+            "Floor 2 · Chamber {} — {}",
+            index + 1,
+            content::MENAGERIE_CHAMBERS[index].name
+        ),
         Screen::Title => "Niflheim".to_string(),
     };
     spawn_text(
@@ -2314,6 +2322,216 @@ fn build_chamber(
     };
     build_seal(commands, game, pal, fonts, stage, active, caption);
     build_bottom(commands, game, pal, fonts, stage);
+}
+
+fn build_floor2_chamber(
+    commands: &mut Commands,
+    game: &Game,
+    pal: &Pal,
+    fonts: &Fonts,
+    stage: Entity,
+    index: usize,
+) {
+    let meta = &content::MENAGERIE_CHAMBERS[index];
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        &format!("Chamber {} — {} · {}", index + 1, meta.name, meta.room),
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        Color::srgb_u8(166, 124, 58),
+        "THE FORGE",
+        "the demonstration",
+    );
+    let stone = geom::stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(Color::srgb_u8(140, 140, 148)),
+        Some((2.0, pal.ink_dim)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 12.0,
+        stone.w,
+        "THE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 26.0,
+        stone.w,
+        "RULE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    build_panel_header(commands, pal, fonts, stage, meta.name, meta.room);
+    let progress = &game.expedition.floor2.chambers[index];
+    build_slot(
+        commands,
+        pal,
+        fonts,
+        stage,
+        progress.state,
+        meta.slot_wants,
+        progress.facet,
+    );
+    if index == 0 {
+        build_f2c1(commands, game, pal, fonts, stage);
+    }
+    let (active, caption) = match progress.state {
+        ChamberState::Diagnosed => (true, "The seal wakes — press it to repair."),
+        ChamberState::Repaired => (false, "Repaired. This chamber's square fills."),
+        ChamberState::Unworked => (false, "The seal sleeps until the proof is complete."),
+    };
+    build_seal(commands, game, pal, fonts, stage, active, caption);
+    build_bottom(commands, game, pal, fonts, stage);
+}
+
+/// Floor 2 C1 — the Anvil Call: two performances to study, a blind
+/// run to name by behaviour, and the charter candidates to strike.
+fn build_f2c1(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor2.chambers[0].work;
+    spawn_button(
+        commands,
+        stage,
+        geom::f2_watch(),
+        if work.watched {
+            "Watch again"
+        } else {
+            "Watch the performances"
+        },
+        pal,
+        work.watched,
+        fonts,
+    );
+    if !work.watched {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            196.0,
+            Some(424.0),
+            "Two beasts have learned the Anvil Call at this forge. Watch them \
+             perform — then the screen comes down, and the call is sounded \
+             once more, unlabelled.",
+            12.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        return;
+    }
+    for (row, performer) in content::TRICK_PERFORMERS.iter().enumerate() {
+        let beast = &content::BEASTS[performer.beast];
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            196.0 + row as f32 * 44.0,
+            Some(424.0),
+            &format!("{} {}", beast.name, performer.performance),
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        284.0,
+        Some(424.0),
+        "Behind the screen, the call is sounded once more:",
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        300.0,
+        Some(424.0),
+        &format!("A beast {}", content::BLIND_RUN_PERFORMANCE),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        364.0,
+        Some(424.0),
+        "Strike the sigil that charters the call:",
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (choice, sigil) in content::CHARTER_CANDIDATES.iter().enumerate() {
+        spawn_button(
+            commands,
+            stage,
+            geom::f2_charter(choice),
+            sigil,
+            pal,
+            work.charter_choice == Some(choice),
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        428.0,
+        Some(424.0),
+        "Name the body that ran behind the screen:",
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (choice, performer) in content::TRICK_PERFORMERS.iter().enumerate() {
+        spawn_button(
+            commands,
+            stage,
+            geom::f2_run(choice),
+            content::BEASTS[performer.beast].name,
+            pal,
+            work.run_choice == Some(choice),
+            fonts,
+        );
+    }
 }
 
 /// C1 — the packing list and the Toll of Tallies (two sub-views).

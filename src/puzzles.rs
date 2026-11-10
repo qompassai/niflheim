@@ -9,8 +9,9 @@
 
 use crate::content::MASTER_PLAN;
 use crate::content::{
-    CHARTER, PACK_ITEMS, PLACARDS, PORTERS, READERS, RECORD_KEPT, RECORD_KEPT_SECOND,
-    RECORD_RESTORED, TOLL_KEEPER_A, TOLL_KEEPER_B,
+    BLIND_RUN_PERFORMANCE, CHARTER, PACK_ITEMS, PLACARDS, PORTERS, READERS, RECORD_KEPT,
+    RECORD_KEPT_SECOND, RECORD_RESTORED, TOLL_KEEPER_A, TOLL_KEEPER_B, TRICK_CHARTER,
+    TRICK_PERFORMERS,
 };
 use crate::core::{Census, census_of, parse_plan};
 
@@ -309,6 +310,30 @@ pub fn foe_double_row() -> Option<usize> {
         .position(|row| row.double_promised())
 }
 
+// ---------------------------------------------------------------------------
+// Floor 2, Chamber 1 — Traits and impls.
+// ---------------------------------------------------------------------------
+
+/// Whether `sigil` charters the Anvil Call: the sigil-book declares
+/// the trick under exactly one sigil.
+pub fn trick_charter_ok(sigil: &str) -> bool {
+    sigil == TRICK_CHARTER
+}
+
+/// Which taught beast ran the blind run, judged by behaviour
+/// alone: the index into `TRICK_PERFORMERS` whose performance text
+/// is the blind run's text.
+pub fn blind_run_performer() -> Option<usize> {
+    TRICK_PERFORMERS
+        .iter()
+        .position(|performer| performer.performance == BLIND_RUN_PERFORMANCE)
+}
+
+/// Whether the player's identification names the body that ran.
+pub fn identification_ok(choice: usize) -> bool {
+    blind_run_performer() == Some(choice)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,5 +458,29 @@ mod tests {
         assert_eq!(doubles, ["Heartstone Chart"]);
         assert_eq!(foe_uncopiable_rows().len(), 9);
         assert!(foe_double_row().is_some());
+    }
+
+    /// Validation: Forgehand charters the Anvil Call, and the blind
+    /// run resolves by behaviour to the variant performer, Soot.
+    #[test]
+    fn anvil_call_charter_and_blind_run() {
+        use crate::content::{BEASTS, CHARTER_CANDIDATES};
+        assert!(trick_charter_ok("Forgehand"));
+        assert!(CHARTER_CANDIDATES.contains(&"Forgehand"));
+        let runner = blind_run_performer().expect("the blind run has a body");
+        assert_eq!(BEASTS[TRICK_PERFORMERS[runner].beast].name, "Soot");
+        assert!(identification_ok(runner));
+    }
+
+    /// Adversarial: the sigils the performers wear do not charter
+    /// the call, the house performer is not the blind runner, and
+    /// an out-of-range identification never holds.
+    #[test]
+    fn anvil_call_refuses_resemblance_and_wrong_bodies() {
+        assert!(!trick_charter_ok("FireWard"));
+        assert!(!trick_charter_ok("Swift"));
+        assert!(!trick_charter_ok(""));
+        assert!(!identification_ok(0));
+        assert!(!identification_ok(usize::MAX));
     }
 }

@@ -918,3 +918,84 @@ pub const FOE2_NAME: &str = "The Menagerie";
 pub const FOE2_INSCRIPTION: &str = "The Menagerie wears every sigil and is bound by none. A thing that claims every trait answers to no bound, and the grounds cannot chart it.";
 /// The FOE demonstrated: the mechanism at its worst.
 pub const FOE2_DEMONSTRATION: &str = "The Menagerie crosses every post unchallenged, wearing the hearth's warmth, the mist's silence, the valley's speed, until no keeper can say what it is.";
+
+// ---------------------------------------------------------------------------
+// Floor 2, Chamber 1 — Traits and impls: the Anvil Call.
+// ---------------------------------------------------------------------------
+
+/// The house trick of the forge: a call chartered in the sigil-book.
+pub const TRICK_NAME: &str = "the Anvil Call";
+
+/// The sigil that charters the Anvil Call: the sigil-book declares
+/// the trick under this sigil, and no other.
+pub const TRICK_CHARTER: &str = "Forgehand";
+
+/// The sigils the proof slot offers as candidate charters. Two are
+/// traps of resemblance: FireWard is what both performing beasts
+/// wear to the hearth, and Swift is what one of them wears — a
+/// charter is the sigil that declares the trick, not a sigil the
+/// body happens to wear.
+pub const CHARTER_CANDIDATES: [&str; 3] = ["FireWard", "Forgehand", "Swift"];
+
+/// The house performance: the trick exactly as the sigil-book
+/// writes it — the default body of the call.
+pub const TRICK_HOUSE_PERFORMANCE: &str = "strikes the anvil once — a single square \
+    note, exactly as the sigil-book writes it, neither hurried nor held.";
+
+/// A variant performance: the same call, its ending made the
+/// performer's own — an overriding body of the trick.
+pub const TRICK_VARIANT_PERFORMANCE: &str = "strikes twice — the written note, then \
+    a second, softer one that falls like a feather: an ending of its own.";
+
+/// One beast that has learned the Anvil Call at the forge.
+pub struct TrickPerformer {
+    /// Index into [`BEASTS`].
+    pub beast: usize,
+    /// How this body performs the call (the behaviour text).
+    pub performance: &'static str,
+}
+
+/// The two beasts taught at the forge: Ember keeps the house body
+/// of the trick; Soot performs its own variant.
+pub const TRICK_PERFORMERS: [TrickPerformer; 2] = [
+    TrickPerformer {
+        beast: 0,
+        performance: TRICK_HOUSE_PERFORMANCE,
+    },
+    TrickPerformer {
+        beast: 2,
+        performance: TRICK_VARIANT_PERFORMANCE,
+    },
+];
+
+/// The blind run: behind the forge screen the call is sounded once
+/// more, unlabelled. Which body ran is knowable only by behaviour.
+pub const BLIND_RUN_PERFORMANCE: &str = TRICK_VARIANT_PERFORMANCE;
+
+/// The Floor 2 hint ladders, one per chamber, four rungs each —
+/// the same law as Floor 1's: viewing is free, rung 4 names the
+/// seam and forfeits the facet. Chambers beyond the first are
+/// carved by their own steps; until then their ladders carry the
+/// Sigilwright's placeholder line.
+pub fn floor2_hints(chamber: usize) -> [&'static str; 4] {
+    match chamber {
+        0 => [
+            "Watch both performances again. The call is one; the bodies are two — \
+             the difference lives in the ending.",
+            "A sigil charters a trick when the sigil-book declares the trick under \
+             it — not when a beast merely wears the sigil for other work.",
+            "The house body strikes once. The variant strikes twice, the second \
+             note falling soft. Which ending did the blind run have — and which \
+             sigil declares the call, whatever the beasts wear?",
+            "The seam is plain: the Anvil Call is chartered by Forgehand, and the \
+             blind run struck twice, feather-soft at the end — Soot, performing \
+             its own variant of the house trick.",
+        ],
+        _ => [
+            "The Sigilwright has not carved this ladder yet.",
+            "The Sigilwright has not carved this ladder yet.",
+            "The Sigilwright has not carved this ladder yet.",
+            "The Sigilwright has not carved this ladder yet.",
+        ],
+    }
+}

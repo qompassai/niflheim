@@ -23,8 +23,9 @@ use crate::content::{
 };
 use crate::core::{SAVE_FORMAT_VERSION, SAVE_MAGIC, SaveError, Settings, TextScale};
 use crate::puzzles::{
-    RecordKind, day_plan_overlap, foe_census, foe_uncopiable_rows, judge_placards,
-    lease_chain_problem, packing_problems, reconciled_toll, record_fits_slot, run_delivery,
+    RecordKind, day_plan_overlap, foe_census, foe_uncopiable_rows, identification_ok,
+    judge_placards, lease_chain_problem, packing_problems, reconciled_toll, record_fits_slot,
+    run_delivery, trick_charter_ok,
 };
 
 /// Most bytes of editor draft a save will carry.
@@ -145,6 +146,26 @@ impl ChamberWork {
     }
 }
 
+/// A Floor 2 chamber's work-in-progress: the player's current
+/// attempt. Plain data, saved verbatim; fields arrive chamber by
+/// chamber as their steps land, each serde-defaulted so saves
+/// written before a field existed load whole.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor2Work {
+    /// C1: the charter candidate chosen, as an index into
+    /// `CHARTER_CANDIDATES`.
+    pub charter_choice: Option<usize>,
+    /// C1: the charter slot stands filled.
+    pub charter_ok: bool,
+    /// C1: both performances have been watched.
+    pub watched: bool,
+    /// C1: the beast identified as the blind run's body, as an
+    /// index into `TRICK_PERFORMERS`.
+    pub run_choice: Option<usize>,
+    /// C1: the identification slot stands filled.
+    pub run_ok: bool,
+}
+
 /// One Floor 2 chamber's progress.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Floor2ChamberProgress {
@@ -154,6 +175,9 @@ pub struct Floor2ChamberProgress {
     pub hints_used: u8,
     /// The facet: earned by a repair at full standard (rung ≤ 3).
     pub facet: bool,
+    /// The work in progress.
+    #[serde(default)]
+    pub work: Floor2Work,
 }
 
 /// The Floor 2 FOE's progress: the audit arc.
@@ -199,6 +223,7 @@ impl Floor2Progress {
                     state: ChamberState::Unworked,
                     hints_used: 0,
                     facet: false,
+                    work: Floor2Work::default(),
                 })
                 .collect(),
             foe: Floor2FoeProgress {
@@ -573,6 +598,157 @@ impl Expedition {
                     progress.facet = true;
                     Ok(
                         "Repaired at full standard. A facet of the Plank Stone settles \
+                        into the codex."
+                            .to_string(),
+                    )
+                } else {
+                    Ok(
+                        "Repaired — though the seam was named, and the record keeps it. \
+                        No facet, but the floor still completes."
+                            .to_string(),
+                    )
+                }
+            }
+        }
+    }
+
+    /// View a hint rung for a Floor 2 chamber: Floor 1's ladder
+    /// law, kept on Floor 2's own record.
+    pub fn floor2_view_hint(&mut self, chamber: usize) -> u8 {
+        let Some(progress) = self.floor2.chambers.get_mut(chamber) else {
+            return 0;
+        };
+        progress.hints_used = (progress.hints_used + 1).min(4);
+        progress.hints_used
+    }
+
+    /// The deepest hint rung recorded for a Floor 2 chamber.
+    pub fn floor2_hints_used(&self, chamber: usize) -> u8 {
+        self.floor2
+            .chambers
+            .get(chamber)
+            .map_or(0, |c| c.hints_used)
+    }
+
+    /// Reset one Floor 2 chamber's work to its starting state, as
+    /// `reset_chamber` does for Floor 1: hint usage stays on the
+    /// record.
+    pub fn floor2_reset_chamber(&mut self, chamber: usize) {
+        if let Some(progress) = self.floor2.chambers.get_mut(chamber) {
+            progress.state = ChamberState::Unworked;
+            progress.facet = false;
+            progress.work = Floor2Work::default();
+        }
+    }
+
+    /// File a Floor 2 chamber's proof (the prove action). Chamber 1
+    /// judges both of its slots on every filing, as Floor 1's first
+    /// chamber does: the flags record the last judgement of the
+    /// work as it stands now, never a stale one.
+    pub fn floor2_file_proof(&mut self, chamber: usize) -> Result<String, Refusal> {
+        let progress = self
+            .floor2
+            .chambers
+            .get_mut(chamber)
+            .ok_or_else(|| Refusal("no such chamber".to_string()))?;
+        if progress.state == ChamberState::Repaired {
+            return Err(Refusal("this chamber already stands repaired".to_string()));
+        }
+        match chamber {
+            0 => {
+                let (charter_ok, run_ok, watched, charter_choice, run_choice) = {
+                    let work = &mut progress.work;
+                    work.charter_ok = matches!(
+                        work.charter_choice,
+                        Some(choice) if crate::content::CHARTER_CANDIDATES
+                            .get(choice)
+                            .is_some_and(|sigil| trick_charter_ok(sigil))
+                    );
+                    work.run_ok = work.watched
+                        && matches!(work.run_choice, Some(choice) if identification_ok(choice));
+                    (
+                        work.charter_ok,
+                        work.run_ok,
+                        work.watched,
+                        work.charter_choice,
+                        work.run_choice,
+                    )
+                };
+                if charter_ok && run_ok {
+                    progress.state = ChamberState::Diagnosed;
+                    Ok("The sigil is struck and rings true: the Anvil Call stands \
+                         chartered by Forgehand, and the body behind the screen is \
+                         named by its behaviour — Soot, and its own ending. The \
+                         forge door swings open."
+                        .to_string())
+                } else if !watched {
+                    Err(Refusal(
+                        "The forge asks nothing blind: watch both beasts perform \
+                         the call first — the desk replays it as often as you ask"
+                            .to_string(),
+                    ))
+                } else if charter_choice.is_none() {
+                    Err(Refusal(
+                        "The slot stands empty: strike the sigil that charters \
+                         the Anvil Call"
+                            .to_string(),
+                    ))
+                } else if !charter_ok {
+                    let chosen = charter_choice
+                        .and_then(|choice| crate::content::CHARTER_CANDIDATES.get(choice))
+                        .copied()
+                        .unwrap_or("That sigil");
+                    Err(Refusal(format!(
+                        "{chosen} does not charter the call. A charter is the sigil \
+                         that declares the trick in the sigil-book — not a sigil \
+                         the performing bodies happen to wear"
+                    )))
+                } else if run_choice.is_none() {
+                    Err(Refusal(
+                        "Name the body that ran behind the screen — by its \
+                         behaviour, not by any label"
+                            .to_string(),
+                    ))
+                } else {
+                    let named = run_choice
+                        .and_then(|choice| crate::content::TRICK_PERFORMERS.get(choice))
+                        .map(|performer| crate::content::BEASTS[performer.beast].name)
+                        .unwrap_or("that beast");
+                    Err(Refusal(format!(
+                        "That was not {named}'s running. Watch the ending: the \
+                         house body strikes once; a second, softer note is a \
+                         variant's signature"
+                    )))
+                }
+            }
+            _ => Err(Refusal(
+                "this chamber's proof is carved in a later step".to_string(),
+            )),
+        }
+    }
+
+    /// Repair a diagnosed Floor 2 chamber, under Floor 1's law: a
+    /// repair at full standard — hint rung 4 never viewed — earns
+    /// the chamber's facet for the codex.
+    pub fn floor2_repair_chamber(&mut self, chamber: usize) -> Result<String, Refusal> {
+        let progress = self
+            .floor2
+            .chambers
+            .get_mut(chamber)
+            .ok_or_else(|| Refusal("no such chamber".to_string()))?;
+        match progress.state {
+            ChamberState::Repaired => {
+                Err(Refusal("this chamber already stands repaired".to_string()))
+            }
+            ChamberState::Unworked => Err(Refusal(
+                "there is nothing to repair yet — assemble the proof first".to_string(),
+            )),
+            ChamberState::Diagnosed => {
+                progress.state = ChamberState::Repaired;
+                if progress.hints_used <= 3 {
+                    progress.facet = true;
+                    Ok(
+                        "Repaired at full standard. A facet of the Lens Stone settles \
                         into the codex."
                             .to_string(),
                     )
@@ -1293,5 +1469,102 @@ mod tests {
             Err(SaveError::Corrupt { .. }) => {}
             other => panic!("expected corrupt refusal, got {other:?}"),
         }
+    }
+
+    /// Floor 2 Chamber 1 solved as designed: watched, Forgehand
+    /// struck (candidate 1), the variant's body named (performer 1).
+    fn solve_f2c1(expedition: &mut Expedition) {
+        let work = &mut expedition.floor2.chambers[0].work;
+        work.watched = true;
+        work.charter_choice = Some(1);
+        work.run_choice = Some(1);
+    }
+
+    /// Validation: Chamber 1's proof diagnoses, and the repair
+    /// lands at full standard with its facet.
+    #[test]
+    fn floor2_chamber1_proof_diagnoses_and_repairs() {
+        let mut expedition = Expedition::new();
+        solve_f2c1(&mut expedition);
+        expedition.floor2_file_proof(0).expect("proof");
+        assert_eq!(expedition.floor2.chambers[0].state, ChamberState::Diagnosed);
+        assert!(expedition.floor2.chambers[0].work.charter_ok);
+        assert!(expedition.floor2.chambers[0].work.run_ok);
+        expedition.floor2_repair_chamber(0).expect("repair");
+        assert_eq!(expedition.floor2.chambers[0].state, ChamberState::Repaired);
+        assert!(expedition.floor2.chambers[0].facet);
+        assert_eq!(expedition.floor2_chambers_repaired(), 1);
+    }
+
+    /// Adversarial: filing unwatched is refused even with the right
+    /// answers set, and nothing is committed.
+    #[test]
+    fn floor2_chamber1_unwatched_filing_is_refused() {
+        let mut expedition = Expedition::new();
+        solve_f2c1(&mut expedition);
+        expedition.floor2.chambers[0].work.watched = false;
+        let refusal = expedition.floor2_file_proof(0).expect_err("refused");
+        assert!(refusal.message().contains("nothing blind"));
+        assert_eq!(expedition.floor2.chambers[0].state, ChamberState::Unworked);
+        assert!(!expedition.floor2.chambers[0].work.run_ok);
+    }
+
+    /// Adversarial: a worn sigil struck as the charter is refused
+    /// with the reason, and the house body named for the blind run
+    /// is refused too; the repair cannot precede the proof.
+    #[test]
+    fn floor2_chamber1_resemblance_and_wrong_body_are_refused() {
+        let mut expedition = Expedition::new();
+        solve_f2c1(&mut expedition);
+        expedition.floor2.chambers[0].work.charter_choice = Some(0);
+        let refusal = expedition.floor2_file_proof(0).expect_err("refused");
+        assert!(refusal.message().contains("FireWard does not charter"));
+        assert!(!expedition.floor2.chambers[0].work.charter_ok);
+        expedition.floor2.chambers[0].work.charter_choice = Some(1);
+        expedition.floor2.chambers[0].work.run_choice = Some(0);
+        let refusal = expedition.floor2_file_proof(0).expect_err("refused");
+        assert!(refusal.message().contains("not Ember's running"));
+        assert_eq!(expedition.floor2.chambers[0].state, ChamberState::Unworked);
+        assert!(expedition.floor2_repair_chamber(0).is_err());
+    }
+
+    /// Adversarial: a forged out-of-range identification is refused,
+    /// never panics, and a rung-4 repair earns no facet.
+    #[test]
+    fn floor2_chamber1_forged_choice_and_rung4() {
+        let mut expedition = Expedition::new();
+        solve_f2c1(&mut expedition);
+        expedition.floor2.chambers[0].work.run_choice = Some(usize::MAX);
+        assert!(expedition.floor2_file_proof(0).is_err());
+        expedition.floor2.chambers[0].work.run_choice = Some(1);
+        for _ in 0..4 {
+            expedition.floor2_view_hint(0);
+        }
+        assert_eq!(expedition.floor2_hints_used(0), 4);
+        expedition.floor2_file_proof(0).expect("proof");
+        expedition.floor2_repair_chamber(0).expect("repair");
+        assert!(!expedition.floor2.chambers[0].facet);
+    }
+
+    /// Validation: Chamber 1's work round-trips through the save,
+    /// and a save written before the work field existed loads with
+    /// a fresh work record.
+    #[test]
+    fn floor2_work_round_trips_and_defaults() {
+        let mut expedition = Expedition::new();
+        solve_f2c1(&mut expedition);
+        let text = expedition.save_json().expect("save");
+        let loaded = Expedition::load_json(&text).expect("load");
+        assert_eq!(
+            loaded.floor2.chambers[0].work,
+            expedition.floor2.chambers[0].work
+        );
+        let mut value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        value["floor2"]["chambers"][0]
+            .as_object_mut()
+            .expect("chamber object")
+            .remove("work");
+        let loaded = Expedition::load_json(&value.to_string()).expect("load without work");
+        assert_eq!(loaded.floor2.chambers[0].work, Floor2Work::default());
     }
 }
