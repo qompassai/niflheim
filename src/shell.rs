@@ -72,6 +72,10 @@ struct LastFingerprint(Option<u64>);
 #[derive(Resource, Default)]
 struct GateChannel(std::sync::Mutex<Option<Receiver<GateReport>>>);
 
+/// The lantern runs' answer slot, twin to the gate channel.
+#[derive(Resource, Default)]
+struct LanternChannel(std::sync::Mutex<Option<Receiver<crate::gate::LanternReport>>>);
+
 /// Whether a touch contact is currently down (mouse/touch arbiter).
 #[derive(Resource, Default)]
 struct TouchActive(bool);
@@ -111,6 +115,7 @@ pub fn run_app() {
         .insert_resource(LastFingerprint::default())
         .insert_resource(TouchActive::default())
         .insert_resource(GateChannel::default())
+        .insert_resource(LanternChannel::default())
         .add_systems(Startup, setup)
         .add_systems(
             Update,
@@ -434,7 +439,11 @@ fn game_tick(time: Res<Time>, mut game: ResMut<GameRes>, mut metrics: ResMut<Met
 /// Perform the game's file and gate requests. Gate runs happen on
 /// a worker thread (owned by the channel); the verdict is polled
 /// back here so the game never blocks on cargo.
-fn io_system(mut game: ResMut<GameRes>, gate_channel: ResMut<GateChannel>) {
+fn io_system(
+    mut game: ResMut<GameRes>,
+    gate_channel: ResMut<GateChannel>,
+    lantern_channel: ResMut<LanternChannel>,
+) {
     let game = &mut game.0;
     while let Some(request) = game.io.take() {
         match request {
@@ -487,7 +496,11 @@ fn io_system(mut game: ResMut<GameRes>, gate_channel: ResMut<GateChannel>) {
                 }
                 game.on_load_result(result);
             }
-            IoRequest::RunGate { code, floor2 } => {
+            IoRequest::RunGate {
+                code,
+                floor2,
+                floor3,
+            } => {
                 let (sender, receiver): (Sender<GateReport>, Receiver<GateReport>) =
                     std::sync::mpsc::channel();
                 *gate_channel
@@ -497,7 +510,9 @@ fn io_system(mut game: ResMut<GameRes>, gate_channel: ResMut<GateChannel>) {
                 let root = platform::gate_scratch_root();
                 platform::log_line("gate_run_started".to_string());
                 std::thread::spawn(move || {
-                    let report = if floor2 {
+                    let report = if floor3 {
+                        crate::gate::run_gate3(&root, &code, &crate::gate::GateLimits::default())
+                    } else if floor2 {
                         crate::gate::run_gate2(&root, &code, &crate::gate::GateLimits::default())
                     } else {
                         crate::gate::run_gate(&root, &code, &crate::gate::GateLimits::default())
@@ -505,8 +520,49 @@ fn io_system(mut game: ResMut<GameRes>, gate_channel: ResMut<GateChannel>) {
                     let _ = sender.send(report);
                 });
             }
+            IoRequest::RunLantern { kind, code } => {
+                let (sender, receiver): (
+                    Sender<crate::gate::LanternReport>,
+                    Receiver<crate::gate::LanternReport>,
+                ) = std::sync::mpsc::channel();
+                *lantern_channel
+                    .0
+                    .lock()
+                    .unwrap_or_else(|poison| poison.into_inner()) = Some(receiver);
+                let root = platform::gate_scratch_root();
+                platform::log_line("lantern_run_started".to_string());
+                std::thread::spawn(move || {
+                    let report = if kind == 0 {
+                        crate::gate::run_fmt(&root, &code, &crate::gate::GateLimits::default())
+                    } else {
+                        crate::gate::run_lint(&root, &code, &crate::gate::GateLimits::default())
+                    };
+                    let _ = sender.send(report);
+                });
+            }
         }
     }
+    let lantern_finished = {
+        let mut slot = lantern_channel
+            .0
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner());
+        match slot.as_ref().map(|receiver| receiver.try_recv()) {
+            Some(Ok(report)) => {
+                *slot = None;
+                Some(report)
+            }
+            _ => None,
+        }
+    };
+    if let Some(report) = lantern_finished {
+        platform::log_line(format!(
+            "lantern_run_finished kind={} passed={}",
+            report.kind, report.passed
+        ));
+        game.on_lantern_result(report);
+    }
+
     let finished = {
         let mut slot = gate_channel
             .0
@@ -961,6 +1017,7 @@ fn rebuild_now(
         Screen::Floor3Chamber(index) => {
             build_floor3_chamber(commands, game, &pal, fonts, stage, index)
         }
+        Screen::Floor3Foe => build_floor3_foe(commands, game, &pal, fonts, stage),
         Screen::Chamber(index) => build_chamber(commands, game, &pal, fonts, stage, index),
         Screen::Foe => build_foe(commands, game, &pal, fonts, stage),
         Screen::Floor2Foe => build_foe2(commands, game, &pal, fonts, stage),
@@ -1124,6 +1181,8 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
             index + 1,
             content::GATEHOUSE_CHAMBERS[index].name
         ),
+
+        Screen::Floor3Foe => "Floor 3 · The Gatehouse Release".to_string(),
 
         Screen::Title => "Niflheim".to_string(),
     };
@@ -2797,6 +2856,9 @@ fn build_floor3_chamber(
     if index == 3 {
         build_f3c4(commands, game, pal, fonts, stage);
     }
+    if index == 4 {
+        build_f3c5(commands, game, pal, fonts, stage);
+    }
     let (active, caption) = match progress.state {
         ChamberState::Diagnosed => (true, "The seal wakes — press it to repair."),
         ChamberState::Repaired => (false, "Repaired. This chamber's square fills."),
@@ -3030,6 +3092,500 @@ fn build_f3c2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, st
             fonts,
         );
     }
+}
+
+/// Floor 3 C5 — the Inspection: the Guidelines wall in the
+/// panel, the Hoard's five lines with their verdict buttons,
+/// the reason and the stamp, and the amendment rite's side
+/// desk in the panel.
+fn build_f3c5(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor3.chambers[4].work;
+    spawn_button(
+        commands,
+        stage,
+        geom::f2_watch(),
+        if work.watched {
+            "Read the wall again"
+        } else {
+            "Read the Guidelines wall"
+        },
+        pal,
+        work.watched,
+        fonts,
+    );
+    if !work.watched {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            196.0,
+            Some(424.0),
+            "The Guidelines wall covers the panel, and the Hoard from \
+             the first floor stands open under it. Read the wall \
+             before answering its lines.",
+            12.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        return;
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        196.0,
+        Some(424.0),
+        content::INSPECTION_CHARTER,
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (item, entry) in content::INSPECTION_ITEMS.iter().enumerate() {
+        let rect = geom::f3_check(item);
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            rect.y - 20.0,
+            Some(360.0),
+            entry.line,
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        let label = match work.checklist_choices[item] {
+            Some(verdict) => content::INSPECTION_VERDICTS[verdict].to_string(),
+            None => "— unanswered —".to_string(),
+        };
+        spawn_button(commands, stage, rect, &label, pal, false, fonts);
+    }
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        478.0,
+        Some(360.0),
+        "The set-aside line's reason:",
+        12.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let reason_label = match work.na_reason {
+        Some(reason) => content::NA_REASONS[reason].to_string(),
+        None => "— unnamed —".to_string(),
+    };
+    spawn_button(
+        commands,
+        stage,
+        geom::f3_na_reason(),
+        &reason_label,
+        pal,
+        false,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        540.0,
+        Some(360.0),
+        "The release's stamp:",
+        12.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let stamp_label = match work.msrv_choice {
+        Some(choice) => content::MSRV_CANDIDATES[choice].to_string(),
+        None => "— unstamped —".to_string(),
+    };
+    spawn_button(
+        commands,
+        stage,
+        geom::f3_msrv(),
+        &stamp_label,
+        pal,
+        false,
+        fonts,
+    );
+    // The side desk: the amendment and its rite.
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        545.0,
+        Some(424.0),
+        "THE SIDE DESK — AN AMENDMENT",
+        12.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        569.0,
+        Some(424.0),
+        content::AMENDMENT_TEXT,
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    let rite_label = if work.rite_stage >= 3 {
+        "The rite stands complete".to_string()
+    } else {
+        format!("Rite: {}", content::RITE_STAGES[work.rite_stage as usize])
+    };
+    spawn_button(
+        commands,
+        stage,
+        geom::f3_rite_field(),
+        &rite_label,
+        pal,
+        work.rite_stage >= 3,
+        fonts,
+    );
+}
+
+/// The Gatehouse Release's room: the great door, the slate and
+/// its verdicts, the stamp, the rite, the three lanterns, and
+/// the seal.
+fn build_floor3_foe(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Gatehouse Release — the great door",
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        Color::srgb_u8(120, 130, 140),
+        "THE RELEASE",
+        "a lantern already burning",
+    );
+    let stone = geom::stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(Color::srgb_u8(140, 140, 148)),
+        Some((2.0, pal.ink_dim)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 12.0,
+        stone.w,
+        "THE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 26.0,
+        stone.w,
+        "RULE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    let foe = &game.expedition.floor3.foe;
+    if !foe.slate_taken {
+        spawn_button(
+            commands,
+            stage,
+            geom::f3_slate_take(),
+            "Take up the log-slate",
+            pal,
+            false,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            180.0,
+            Some(360.0),
+            "The slate lies on the desk, claiming three passes run. \
+             The lantern over the door burns green and steady, and \
+             has not waited for you.",
+            12.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    } else {
+        for (entry, log) in content::LOG_SLATE.iter().enumerate() {
+            let rect = geom::f3_slate_entry(entry);
+            spawn_text(
+                commands,
+                stage,
+                380.0,
+                rect.y - 22.0,
+                Some(360.0),
+                log.text,
+                11.5,
+                false,
+                pal.ink,
+                Justify::Left,
+                fonts,
+            );
+            let label = match foe.slate_choices[entry] {
+                Some(0) => "It ran",
+                Some(_) => "It never ran",
+                None => "— unjudged —",
+            };
+            spawn_button(commands, stage, rect, label, pal, false, fonts);
+        }
+        if !foe.slate_done {
+            spawn_button(
+                commands,
+                stage,
+                geom::f3_reconcile(),
+                "Reconcile the slate",
+                pal,
+                false,
+                fonts,
+            );
+        }
+        spawn_text(
+            commands,
+            stage,
+            56.0,
+            240.0,
+            Some(300.0),
+            "The release's stamp:",
+            12.0,
+            true,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        let stamp_label = match foe.stamp_choice {
+            Some(choice) => content::MSRV_CANDIDATES[choice].to_string(),
+            None => "— unstamped —".to_string(),
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f3_stamp(),
+            &stamp_label,
+            pal,
+            false,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            56.0,
+            322.0,
+            Some(300.0),
+            "The amendment, at the door's side desk:",
+            12.0,
+            true,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        let rite_label = if foe.rite_stage >= 3 {
+            "The rite stands complete".to_string()
+        } else {
+            format!("Rite: {}", content::RITE_STAGES[foe.rite_stage as usize])
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f3_rite_field(),
+            &rite_label,
+            pal,
+            foe.rite_stage >= 3,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            56.0,
+            404.0,
+            Some(300.0),
+            "The lanterns — lit by doing on the draft as it stands; \
+             any edit douses all three:",
+            12.0,
+            true,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        spawn_button(
+            commands,
+            stage,
+            geom::f3_lantern(0),
+            if foe.lanterns[0] {
+                "Format · LIT"
+            } else {
+                "Format lantern"
+            },
+            pal,
+            foe.lanterns[0],
+            fonts,
+        );
+        spawn_button(
+            commands,
+            stage,
+            geom::f3_lantern(1),
+            if foe.lanterns[1] {
+                "Lint · LIT"
+            } else {
+                "Lint lantern"
+            },
+            pal,
+            foe.lanterns[1],
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            56.0,
+            470.0,
+            Some(300.0),
+            &format!(
+                "Tests lantern: {} — write the Release in the editor \
+                 and run its gate.",
+                if foe.lanterns[2] { "LIT" } else { "unlit" }
+            ),
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+    }
+    // The panel: the proof, line by line.
+    spawn_box(
+        commands,
+        stage,
+        rects::PANEL,
+        Some(pal.panel),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        84.0,
+        None,
+        "The Gatehouse Release",
+        19.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        112.0,
+        Some(424.0),
+        "FOE of Floor 3 — failure class #5: the Lantern That Lights Itself",
+        12.5,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let mark = |done: bool| if done { "■" } else { "○" };
+    let lines = [
+        format!("{} The slate reconciled", mark(foe.slate_done)),
+        format!(
+            "{} The stamp reads the oldest road",
+            mark(puzzles::msrv_ok(foe.stamp_choice))
+        ),
+        format!("{} The amendment rite entered", mark(foe.rite_stage >= 3)),
+        format!(
+            "{} Lanterns: format {} · lint {} · tests {}",
+            mark(foe.lanterns.iter().all(|lit| *lit)),
+            if foe.lanterns[0] { "lit" } else { "dark" },
+            if foe.lanterns[1] { "lit" } else { "dark" },
+            if foe.lanterns[2] { "lit" } else { "dark" },
+        ),
+        format!("{} The third gate passed", mark(foe.gate_passed)),
+    ];
+    let mut y = 176.0;
+    for line in lines {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            y,
+            Some(424.0),
+            &line,
+            12.5,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        y += 26.0;
+    }
+    if foe.state == FoeState::Fallen {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            y + 12.0,
+            Some(424.0),
+            &format!(
+                "FALLEN — {} · The Lantern Stone is in the codex; the \
+                 Gatehouse Key, in the pack.",
+                foe.fallen_date.clone().unwrap_or_default()
+            ),
+            12.5,
+            true,
+            pal.good,
+            Justify::Left,
+            fonts,
+        );
+    }
+    let (active, caption) = match foe.state {
+        FoeState::Fallen => (false, "The Release has left by the great door."),
+        _ if game.expedition.floor3_foe_proof_complete() && foe.gate_passed => {
+            (true, "The seal wakes — press it to strike.")
+        }
+        _ => (
+            false,
+            "The seal sleeps until the proof and the gate both stand.",
+        ),
+    };
+    build_seal(commands, game, pal, fonts, stage, active, caption);
+    build_bottom(commands, game, pal, fonts, stage);
 }
 
 fn build_floor2_chamber(
@@ -4719,6 +5275,59 @@ fn build_floor3_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
         Some((2.0, pal.edge)),
         0.0,
     );
+    let foe_door = geom::door_foe3();
+    spawn_box(
+        commands,
+        stage,
+        foe_door,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        foe_door.cx(),
+        foe_door.y + 10.0,
+        foe_door.w,
+        "THE FOE",
+        10.5,
+        true,
+        pal.ink_dim,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        foe_door.cx(),
+        foe_door.y + 28.0,
+        foe_door.w - 8.0,
+        "The Gatehouse Release",
+        11.5,
+        true,
+        pal.ink,
+        fonts,
+    );
+    let foe3_tag = match game.expedition.floor3.foe.state {
+        FoeState::Fallen => "FALLEN",
+        FoeState::Exposed => "EXPOSED",
+        FoeState::Standing => "",
+    };
+    if !foe3_tag.is_empty() {
+        spawn_text_centered(
+            commands,
+            stage,
+            foe_door.cx(),
+            foe_door.y + 88.0,
+            foe_door.w,
+            foe3_tag,
+            10.5,
+            true,
+            pal.good,
+            fonts,
+        );
+    }
+
     spawn_text(
         commands,
         stage,

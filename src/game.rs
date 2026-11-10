@@ -186,6 +186,8 @@ pub enum Screen {
     Floor3Hub,
     /// A Floor 3 chamber, by index (0–4).
     Floor3Chamber(usize),
+    /// Floor 3's FOE: the Gatehouse Release.
+    Floor3Foe,
 }
 
 /// What a reading overlay is showing.
@@ -314,6 +316,27 @@ pub enum El {
     /// Floor 3 Chamber 4: work one slip (slip, action:
     /// 0 advance, 1 seal, 2 return).
     F3Slip(u8, u8),
+    /// Floor 3 hub: the FOE's door.
+    DoorFoe3,
+    /// Floor 3 Chamber 5: cycle one line's verdict, by item.
+    F3Check(u8),
+    /// Floor 3 Chamber 5: cycle the set-aside line's reason.
+    F3NaReason,
+    /// Floor 3 Chamber 5: cycle the oldest-road stamp.
+    F3Msrv,
+    /// Floor 3 Chamber 5 and the Release: perform the rite's
+    /// next act.
+    F3Rite,
+    /// The Release: take up the log-slate.
+    F3SlateTake,
+    /// The Release: cycle one slate entry's verdict.
+    F3SlateEntry(u8),
+    /// The Release: reconcile the slate.
+    F3Reconcile,
+    /// The Release: cycle the stamp.
+    F3Stamp,
+    /// The Release: light a lantern (0 format, 1 lint).
+    F3Lantern(u8),
     /// Floor 2 Chamber 1: strike a charter candidate, by index.
     F2Charter(u8),
     /// Floor 2 Chamber 1: name the blind run's body, by performer index.
@@ -481,6 +504,17 @@ pub enum IoRequest {
         /// Which floor's gate judges it: Floor 2's Desk when
         /// true, Floor 1's Hoard when false.
         floor2: bool,
+        /// Floor 3's Release gate when true (it outranks the
+        /// Desk flag; a draft belongs to one FOE at a time).
+        floor3: bool,
+    },
+    /// Light one of the Release's lanterns on this code
+    /// (kind 0 format, 1 lint).
+    RunLantern {
+        /// Which lantern.
+        kind: u8,
+        /// The draft as it stands.
+        code: String,
     },
 }
 
@@ -493,6 +527,8 @@ enum ArmedFor {
     Floor2Chamber(usize),
     /// A Floor 3 chamber's repair.
     Floor3Chamber(usize),
+    /// Floor 3 FOE's strike.
+    Foe3,
     /// The FOE's strike.
     Foe,
     /// Floor 2 FOE's strike.
@@ -524,6 +560,8 @@ pub struct Game {
     /// The gate run judges Floor 2's Desk (set when the run is
     /// filed; read when its verdict returns).
     pub gate_floor2: bool,
+    /// The gate in flight judges Floor 3's Release.
+    pub gate_floor3: bool,
     /// The last gate report's detail (the record view's body).
     pub gate_detail: String,
     /// The hint rung currently shown in the hint reading.
@@ -582,6 +620,7 @@ impl Game {
             today: String::new(),
             gate_running: false,
             gate_floor2: false,
+            gate_floor3: false,
             gate_detail: String::new(),
             hint_showing: 0,
             editor_cursor: 0,
@@ -644,6 +683,7 @@ impl Game {
                 | Screen::Chamber(_)
                 | Screen::Floor2Chamber(_)
                 | Screen::Floor3Chamber(_)
+                | Screen::Floor3Foe
                 | Screen::Foe
                 | Screen::Floor2Foe
         )
@@ -691,6 +731,7 @@ impl Game {
             Screen::Floor3Chamber(index) => self.armed == Some(ArmedFor::Floor3Chamber(index)),
             Screen::Foe => self.expedition.foe.strike == StrikePhase::Armed,
             Screen::Floor2Foe => self.expedition.floor2.foe.strike == StrikePhase::Armed,
+            Screen::Floor3Foe => self.expedition.floor3.foe.strike == StrikePhase::Armed,
             _ => false,
         }
     }
@@ -767,9 +808,63 @@ impl Game {
     }
 
     /// The shell's answer to a gate run.
+    /// The shell's answer to a lantern run: the lantern
+    /// lights by its doing, and the format lantern's doing
+    /// rewrites the draft it returns.
+    pub fn on_lantern_result(&mut self, report: crate::gate::LanternReport) {
+        self.gate_running = false;
+        if report.passed {
+            if report.kind == 0 {
+                self.expedition
+                    .floor3_foe_light_lantern(0, Some(report.text));
+                self.say(
+                    StatusKind::Good,
+                    "The format lantern lights: the draft stands as \
+                     rustfmt leaves it.",
+                );
+            } else {
+                self.expedition.floor3_foe_light_lantern(1, None);
+                self.say(
+                    StatusKind::Good,
+                    "The lint lantern lights: clippy burns green over \
+                     the draft as it stands.",
+                );
+            }
+        } else {
+            self.say(
+                StatusKind::Refusal,
+                if report.kind == 0 {
+                    "rustfmt could not run over the draft — check its \
+                     shape in the editor."
+                } else {
+                    "clippy burns red over the draft as it stands."
+                },
+            );
+        }
+        self.changed();
+    }
+
     pub fn on_gate_result(&mut self, report: GateReport) {
         self.gate_running = false;
         self.gate_detail = report.detail.clone();
+        if self.gate_floor3 {
+            self.expedition.floor3.foe.gate_record = Some(report.summary.clone());
+            if report.tests_passed {
+                self.expedition.floor3_foe_mark_tests_passed();
+            }
+            if report.passed() {
+                self.expedition.floor3_foe_mark_gate_passed();
+                self.expedition
+                    .log_push("The gate stood open: the Gatehouse Release passed.");
+                self.say(StatusKind::Good, report.summary.clone());
+            } else {
+                self.expedition
+                    .log_push("The gate refused the Release; the draft is kept.");
+                self.say(StatusKind::Refusal, report.summary.clone());
+            }
+            self.changed();
+            return;
+        }
         if self.gate_floor2 {
             self.expedition.floor2.foe.gate_record = Some(report.summary.clone());
             if report.passed() {
@@ -850,7 +945,7 @@ impl Game {
                 Verb::Hint,
                 Verb::Map,
             ],
-            Screen::Floor2Foe => vec![
+            Screen::Floor2Foe | Screen::Floor3Foe => vec![
                 Verb::Examine,
                 Verb::Read,
                 Verb::Enumerate,
@@ -987,6 +1082,57 @@ pub mod geom {
             114.0,
             30.0,
         )
+    }
+
+    /// The Release's door on Floor 3's hub.
+    pub fn door_foe3() -> Rect {
+        Rect::new(600.0, 292.0, 168.0, 124.0)
+    }
+
+    /// Floor 3 Chamber 5: one Guideline line's verdict button.
+    pub fn f3_check(item: usize) -> Rect {
+        Rect::new(380.0, 104.0 + item as f32 * 76.0, 200.0, 30.0)
+    }
+
+    /// Floor 3 Chamber 5: the set-aside line's reason button.
+    pub fn f3_na_reason() -> Rect {
+        Rect::new(380.0, 500.0, 360.0, 30.0)
+    }
+
+    /// Floor 3 Chamber 5: the stamp button.
+    pub fn f3_msrv() -> Rect {
+        Rect::new(380.0, 556.0, 360.0, 30.0)
+    }
+
+    /// The rite's button in a room's field (Chamber 5's side
+    /// desk and the Release's door share the shape).
+    pub fn f3_rite_field() -> Rect {
+        Rect::new(56.0, 556.0, 300.0, 30.0)
+    }
+
+    /// The Release: the take-the-slate button.
+    pub fn f3_slate_take() -> Rect {
+        Rect::new(380.0, 120.0, 300.0, 34.0)
+    }
+
+    /// The Release: one slate entry's verdict button.
+    pub fn f3_slate_entry(entry: usize) -> Rect {
+        Rect::new(380.0, 104.0 + entry as f32 * 120.0, 170.0, 30.0)
+    }
+
+    /// The Release: the reconcile button.
+    pub fn f3_reconcile() -> Rect {
+        Rect::new(380.0, 500.0, 360.0, 30.0)
+    }
+
+    /// The Release: the stamp button.
+    pub fn f3_stamp() -> Rect {
+        Rect::new(56.0, 262.0, 300.0, 30.0)
+    }
+
+    /// The Release: a lantern button (0 format, 1 lint).
+    pub fn f3_lantern(kind: usize) -> Rect {
+        Rect::new(56.0 + kind as f32 * 156.0, 422.0, 144.0, 30.0)
     }
 
     /// Floor 2 C2: a sigil toggle in a service's bound row.
@@ -1169,7 +1315,8 @@ impl Game {
             | Screen::Floor2Chamber(_)
             | Screen::Floor3Chamber(_)
             | Screen::Foe
-            | Screen::Floor2Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
+            | Screen::Floor2Foe
+            | Screen::Floor3Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
             Screen::Title => true,
         }
     }
@@ -1406,6 +1553,11 @@ impl Game {
                          brazier burning at the door for the calibration, and the \
                          Menagerie watching its own table be read."
                     }
+                    Screen::Floor3Foe => {
+                        "The Gatehouse Release: a great door, a lantern \
+                         burning before its keeper came, and a slate that \
+                         claims three passes."
+                    }
                     Screen::Hub => {
                         "The vaults: five chamber doors, the Hoard's door, and the \
                          stairs — shut, for now."
@@ -1530,6 +1682,13 @@ impl Game {
                         self.expedition.floor2_foe_view_hint();
                     }
                     self.hint_showing = self.expedition.floor2_foe_hints_used().max(1);
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                } else if self.screen == Screen::Floor3Foe {
+                    if self.expedition.floor3_foe_hints_used() == 0 {
+                        self.expedition.floor3_foe_view_hint();
+                    }
+                    self.hint_showing = self.expedition.floor3_foe_hints_used().max(1);
                     self.overlay = Overlay::Reading(ReadingKind::Hint);
                     self.changed();
                 } else if let Some(challenge) = self.current_challenge() {
@@ -1780,16 +1939,8 @@ impl Game {
             }
             El::Floor3Door(index) => {
                 let index = index as usize;
-                if index < 4 {
-                    self.enter_screen(Screen::Floor3Chamber(index));
-                    self.say(StatusKind::Info, content::FLOOR3_CHAMBER_INTROS[index]);
-                } else {
-                    self.say(
-                        StatusKind::Info,
-                        "The Gatewright holds up a hand: this desk is not \
-                         open yet — the office is still being laid out.",
-                    );
-                }
+                self.enter_screen(Screen::Floor3Chamber(index));
+                self.say(StatusKind::Info, content::FLOOR3_CHAMBER_INTROS[index]);
                 self.bump();
             }
 
@@ -1847,7 +1998,22 @@ impl Game {
                                   in that order — and the desk runs the chain \
                                   itself."
                             }
-                            _ => "The Gatewright nods at the desk.",
+                            2 => {
+                                "The booth's charter: what a traveller causes \
+                                  leaves by a named door; what only the house \
+                                  can cause may stand — with its invariant \
+                                  named."
+                            }
+                            3 => {
+                                "The rail's charter: unaddressed, addressed, \
+                                  bodied, sealed — and the press knows the \
+                                  order in iron."
+                            }
+                            _ => {
+                                "The wall's charter: answer every line \
+                                  honestly, name the set-aside line's reason, \
+                                  and stamp the oldest road."
+                            }
                         },
                     );
                     self.changed();
@@ -1985,6 +2151,168 @@ impl Game {
                         Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
                     }
                     self.changed();
+                }
+            }
+
+            El::DoorFoe3 => {
+                if self.expedition.floor3.foe.state == FoeState::Fallen {
+                    self.say(
+                        StatusKind::Info,
+                        "The great door stands open and empty: the Release \
+                         has left, and its lantern burns honest without it.",
+                    );
+                } else {
+                    self.enter_screen(Screen::Floor3Foe);
+                    self.say(StatusKind::Info, content::FOE3_INTRO);
+                }
+                self.bump();
+            }
+            El::F3Check(item) => {
+                if self.screen == Screen::Floor3Chamber(4) {
+                    let item = item as usize;
+                    let work = &mut self.expedition.floor3.chambers[4].work;
+                    if let Some(slot) = work.checklist_choices.get_mut(item) {
+                        *slot = Some(match *slot {
+                            None => 0,
+                            Some(2) => 0,
+                            Some(choice) => choice + 1,
+                        });
+                        if let Some(choice) = *slot {
+                            self.say(StatusKind::Info, content::INSPECTION_VERDICTS[choice]);
+                        }
+                    }
+                    self.changed();
+                }
+            }
+            El::F3NaReason => {
+                if self.screen == Screen::Floor3Chamber(4) {
+                    let work = &mut self.expedition.floor3.chambers[4].work;
+                    work.na_reason = Some(match work.na_reason {
+                        None => 0,
+                        Some(2) => 0,
+                        Some(choice) => choice + 1,
+                    });
+                    if let Some(choice) = work.na_reason {
+                        self.say(StatusKind::Info, content::NA_REASONS[choice]);
+                    }
+                    self.changed();
+                }
+            }
+            El::F3Msrv => {
+                if self.screen == Screen::Floor3Chamber(4) {
+                    let work = &mut self.expedition.floor3.chambers[4].work;
+                    work.msrv_choice = Some(match work.msrv_choice {
+                        None => 0,
+                        Some(2) => 0,
+                        Some(choice) => choice + 1,
+                    });
+                    if let Some(choice) = work.msrv_choice {
+                        self.say(StatusKind::Info, content::MSRV_CANDIDATES[choice]);
+                    }
+                    self.changed();
+                }
+            }
+            El::F3Rite => {
+                if self.screen == Screen::Floor3Chamber(4) {
+                    match self.expedition.floor3_rite_act() {
+                        Ok(text) => self.say(StatusKind::Good, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                } else if self.screen == Screen::Floor3Foe {
+                    match self.expedition.floor3_foe_rite_act() {
+                        Ok(text) => self.say(StatusKind::Good, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+            El::F3SlateTake => {
+                if self.screen == Screen::Floor3Foe {
+                    self.expedition.floor3_foe_take_slate();
+                    self.say(
+                        StatusKind::Info,
+                        "The slate is in hand: three passes claimed. Judge \
+                         each by its paper and its hand.",
+                    );
+                    self.changed();
+                }
+            }
+            El::F3SlateEntry(entry) => {
+                if self.screen == Screen::Floor3Foe {
+                    let entry = entry as usize;
+                    let verdict = {
+                        let foe = &mut self.expedition.floor3.foe;
+                        foe.slate_choices.get_mut(entry).map(|slot| {
+                            *slot = Some(match *slot {
+                                None => 0,
+                                Some(0) => 1,
+                                Some(_) => 0,
+                            });
+                            *slot
+                        })
+                    };
+                    if let Some(choice) = verdict {
+                        self.say(
+                            StatusKind::Info,
+                            if choice == Some(0) {
+                                "It ran."
+                            } else {
+                                "It never ran."
+                            },
+                        );
+                    }
+                    self.changed();
+                }
+            }
+            El::F3Reconcile => {
+                if self.screen == Screen::Floor3Foe {
+                    match self.expedition.floor3_foe_reconcile() {
+                        Ok(text) => self.say(StatusKind::Good, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+            El::F3Stamp => {
+                if self.screen == Screen::Floor3Foe {
+                    let foe = &mut self.expedition.floor3.foe;
+                    foe.stamp_choice = Some(match foe.stamp_choice {
+                        None => 0,
+                        Some(2) => 0,
+                        Some(choice) => choice + 1,
+                    });
+                    if let Some(choice) = foe.stamp_choice {
+                        self.say(StatusKind::Info, content::MSRV_CANDIDATES[choice]);
+                    }
+                    self.changed();
+                }
+            }
+            El::F3Lantern(kind) => {
+                if self.screen == Screen::Floor3Foe {
+                    if self.gate_running {
+                        self.say(StatusKind::Info, "The engines are already awake on a run.");
+                    } else if self.editor_text().trim().is_empty() {
+                        self.say(
+                            StatusKind::Refusal,
+                            "The editor is empty — there is no draft to light a lantern over.",
+                        );
+                    } else {
+                        self.io = Some(IoRequest::RunLantern {
+                            kind,
+                            code: self.editor_text().to_string(),
+                        });
+                        self.gate_running = true;
+                        self.say(
+                            StatusKind::Info,
+                            if kind == 0 {
+                                "rustfmt wakes: the format lantern is lit by the doing."
+                            } else {
+                                "clippy wakes: the lint lantern is lit by the doing."
+                            },
+                        );
+                    }
+                    self.bump();
                 }
             }
 
@@ -2354,9 +2682,11 @@ impl Game {
                     );
                 } else {
                     self.gate_floor2 = self.screen == Screen::Floor2Foe;
+                    self.gate_floor3 = self.screen == Screen::Floor3Foe;
                     self.io = Some(IoRequest::RunGate {
                         code: self.editor_text().to_string(),
                         floor2: self.gate_floor2,
+                        floor3: self.gate_floor3,
                     });
                     self.gate_running = true;
                     self.say(
@@ -2369,6 +2699,9 @@ impl Game {
             El::ResetProof => {
                 if self.screen == Screen::Floor2Foe {
                     *self.expedition.floor2_foe_draft_mut() = content::GATE2_SCAFFOLD.to_string();
+                } else if self.screen == Screen::Floor3Foe {
+                    *self.expedition.floor3_foe_draft_mut() = content::GATE3_SCAFFOLD.to_string();
+                    self.expedition.floor3_foe_douse_lanterns();
                 } else {
                     self.expedition.editor_code = content::GATE_SCAFFOLD.to_string();
                 }
@@ -2525,6 +2858,18 @@ impl Game {
                 Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
             },
 
+            Screen::Floor3Foe => match self.expedition.floor3_foe_arm_strike() {
+                Ok(()) => {
+                    self.armed = Some(ArmedFor::Foe3);
+                    self.say(
+                        StatusKind::Info,
+                        "The seal is pressed. Confirm to strike the Release's \
+                         lantern wire, or stand down.",
+                    );
+                }
+                Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+            },
+
             Screen::Floor2Foe => match self.expedition.floor2_foe_arm_strike() {
                 Ok(()) => {
                     self.armed = Some(ArmedFor::Foe2);
@@ -2606,6 +2951,28 @@ impl Game {
                 self.changed();
             }
 
+            Some(ArmedFor::Foe3) => {
+                self.armed = None;
+                let date = if self.today.is_empty() {
+                    "an unrecorded day".to_string()
+                } else {
+                    self.today.clone()
+                };
+                match self.expedition.floor3_foe_confirm_strike(&date) {
+                    Ok(text) => {
+                        self.expedition
+                            .log_push(format!("The Gatehouse Release fell on {date}."));
+                        self.expedition.log_push(
+                            "The Lantern Stone entered the codex; the Gatehouse \
+                             Key, the pack.",
+                        );
+                        self.say(StatusKind::Good, text);
+                    }
+                    Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                }
+                self.changed();
+            }
+
             Some(ArmedFor::Foe2) => {
                 self.armed = None;
                 let date = if self.today.is_empty() {
@@ -2642,8 +3009,18 @@ impl Game {
     pub fn editor_text(&self) -> &str {
         if self.screen == Screen::Floor2Foe {
             self.expedition.floor2_foe_draft()
+        } else if self.screen == Screen::Floor3Foe {
+            self.expedition.floor3_foe_draft()
         } else {
             &self.expedition.editor_code
+        }
+    }
+
+    /// Editing the Release's draft douses its lanterns:
+    /// they were lit for the draft as it stood.
+    fn douse_if_release(&mut self) {
+        if self.screen == Screen::Floor3Foe {
+            self.expedition.floor3_foe_douse_lanterns();
         }
     }
 
@@ -2651,6 +3028,8 @@ impl Game {
     fn editor_text_mut(&mut self) -> &mut String {
         if self.screen == Screen::Floor2Foe {
             self.expedition.floor2_foe_draft_mut()
+        } else if self.screen == Screen::Floor3Foe {
+            self.expedition.floor3_foe_draft_mut()
         } else {
             &mut self.expedition.editor_code
         }
@@ -2662,6 +3041,8 @@ impl Game {
     pub fn gate_record(&self) -> Option<&str> {
         if self.screen == Screen::Floor2Foe {
             self.expedition.floor2.foe.gate_record.as_deref()
+        } else if self.screen == Screen::Floor3Foe {
+            self.expedition.floor3.foe.gate_record.as_deref()
         } else {
             self.expedition.gate_record.as_deref()
         }
@@ -2681,6 +3062,7 @@ impl Game {
 
     /// Insert text at the cursor (replacing any selection).
     pub fn editor_insert(&mut self, text: &str) {
+        self.douse_if_release();
         self.editor_delete_selection();
         let at = clamp_boundary(self.editor_text(), self.editor_cursor);
         self.editor_text_mut().insert_str(at, text);
@@ -2712,6 +3094,7 @@ impl Game {
 
     /// Backspace: delete the selection, or one char back.
     pub fn editor_backspace(&mut self) {
+        self.douse_if_release();
         if self.editor_delete_selection() {
             self.editor_sync_scroll();
             self.bump();
@@ -2730,6 +3113,7 @@ impl Game {
 
     /// Delete: one char forward.
     pub fn editor_delete(&mut self) {
+        self.douse_if_release();
         if self.editor_delete_selection() {
             self.editor_sync_scroll();
             self.bump();
@@ -2837,6 +3221,7 @@ impl Game {
                 ),
                 Screen::Foe => "The Hoard's Inscription".to_string(),
                 Screen::Floor2Foe => "The Menagerie's Inscription".to_string(),
+                Screen::Floor3Foe => "The Release's Inscription".to_string(),
                 _ => "The Inscription".to_string(),
             },
             ReadingKind::Demonstration => "The Demonstration".to_string(),
@@ -2862,6 +3247,7 @@ impl Game {
                 Screen::Floor3Chamber(index) => content::FLOOR3_CHAMBER_INTROS[index].to_string(),
                 Screen::Foe => content::FOE_INSCRIPTION.to_string(),
                 Screen::Floor2Foe => content::FOE2_INSCRIPTION.to_string(),
+                Screen::Floor3Foe => content::FOE3_INSCRIPTION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Demonstration => match self.screen {
@@ -2878,6 +3264,7 @@ impl Game {
                 },
                 Screen::Foe => content::FOE_DEMONSTRATION.to_string(),
                 Screen::Floor2Foe => content::FOE2_DEMONSTRATION.to_string(),
+                Screen::Floor3Foe => content::FOE3_INTRO.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Hint => {
@@ -2886,6 +3273,7 @@ impl Game {
                     Screen::Floor2Chamber(index) => content::floor2_hints(index)[rung - 1],
                     Screen::Floor3Chamber(index) => content::floor3_chamber_hints(index)[rung - 1],
                     Screen::Floor2Foe => content::floor2_foe_hints()[rung - 1],
+                    Screen::Floor3Foe => content::floor3_foe_hints()[rung - 1],
                     _ => {
                         let challenge = self.current_challenge().unwrap_or(0);
                         content::hints(challenge)[rung - 1]
@@ -3088,6 +3476,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor3Chamber(_)
         | Screen::Foe
         | Screen::Floor2Foe
+        | Screen::Floor3Foe
         | Screen::Floor3Hub => {
             els.push((El::TabFloor, rects::TAB_FLOOR));
             els.push((El::TabMap, rects::TAB_MAP));
@@ -3111,6 +3500,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             for index in 0..5 {
                 els.push((El::Floor3Door(index as u8), geom::door_chamber(index)));
             }
+            els.push((El::DoorFoe3, geom::door_foe3()));
         }
         Screen::Floor2Hub => {
             els.push((El::CampStone, geom::camp_stone()));
@@ -3171,6 +3561,28 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             }
             layout_seal(&mut els, game);
         }
+        Screen::Floor3Foe => {
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.push((El::ResetChamber, rects::RESET_BTN));
+            els.push((El::EditorOpen, geom::editor_open()));
+            if !game.expedition.floor3.foe.slate_taken {
+                els.push((El::F3SlateTake, geom::f3_slate_take()));
+            } else {
+                for entry in 0..content::LOG_SLATE.len() {
+                    els.push((El::F3SlateEntry(entry as u8), geom::f3_slate_entry(entry)));
+                }
+                if !game.expedition.floor3.foe.slate_done {
+                    els.push((El::F3Reconcile, geom::f3_reconcile()));
+                }
+                els.push((El::F3Stamp, geom::f3_stamp()));
+                els.push((El::F3Rite, geom::f3_rite_field()));
+                els.push((El::F3Lantern(0), geom::f3_lantern(0)));
+                els.push((El::F3Lantern(1), geom::f3_lantern(1)));
+            }
+            layout_seal(&mut els, game);
+        }
+
         Screen::Floor2Foe => {
             els.push((El::Desk, geom::desk()));
             els.push((El::Stone, geom::stone()));
@@ -3247,6 +3659,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         Screen::Floor3Chamber(index) => game.armed == Some(ArmedFor::Floor3Chamber(index)),
         Screen::Foe => game.expedition.foe.strike == StrikePhase::Armed,
         Screen::Floor2Foe => game.expedition.floor2.foe.strike == StrikePhase::Armed,
+        Screen::Floor3Foe => game.expedition.floor3.foe.strike == StrikePhase::Armed,
         _ => false,
     };
     els.push((El::Seal, rects::SEAL));
@@ -3286,6 +3699,14 @@ fn layout_floor3_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
                 ));
             }
         }
+    }
+    if chamber == 4 {
+        for item in 0..content::INSPECTION_ITEMS.len() {
+            els.push((El::F3Check(item as u8), geom::f3_check(item)));
+        }
+        els.push((El::F3NaReason, geom::f3_na_reason()));
+        els.push((El::F3Msrv, geom::f3_msrv()));
+        els.push((El::F3Rite, geom::f3_rite_field()));
     }
 }
 
@@ -3689,7 +4110,7 @@ mod tests {
         }
         click(&mut game, El::RunGate);
         let code = match game.io.take() {
-            Some(IoRequest::RunGate { code, floor2 }) => {
+            Some(IoRequest::RunGate { code, floor2, .. }) => {
                 assert!(floor2, "the desk files the second gate");
                 code
             }
@@ -3919,6 +4340,163 @@ mod tests {
             ChamberState::Repaired
         );
         assert_eq!(game.expedition.floor3_chambers_repaired(), 2);
+    }
+
+    /// Driven playthrough: Chamber 5 and the Release on the
+    /// GUI surface — the inspection answered, the rite gating
+    /// the seal on the record, and the FOE's arc: slate,
+    /// stamp, rite, lanterns lit through the game's own
+    /// result handlers, an edit dousing them, and the strike.
+    #[test]
+    fn floor3_chamber5_and_the_release_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        // Chambers 1–4 stand repaired (their own tests played
+        // them); this test plays 5 and the FOE.
+        for index in 0..4 {
+            game.expedition.floor3.chambers[index].state = ChamberState::Repaired;
+        }
+        game.screen = Screen::Floor3Hub;
+
+        // Chamber 5 — the Inspection.
+        click(&mut game, El::Floor3Door(4));
+        assert_eq!(game.screen, Screen::Floor3Chamber(4));
+        click(&mut game, El::F3Watch);
+        // Verdicts cycle unanswered → conforms → repaired →
+        // not applicable: item truths are [1, 0, 2, 0, 1].
+        for (item, presses) in [(0, 2), (1, 1), (2, 3), (3, 1), (4, 2)] {
+            for _ in 0..presses {
+                click(&mut game, El::F3Check(item));
+            }
+        }
+        click(&mut game, El::F3NaReason); // — unnamed — → reason 0
+        click(&mut game, El::F3Msrv); // — unstamped — → stamp 0
+        assert!(game.expedition.floor3_diagnosed(4));
+        game.do_verb(Verb::Prove);
+        // The seal refuses while the rite stands undone.
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor3.chambers[4].state,
+            ChamberState::Diagnosed,
+            "the rite gates the repair"
+        );
+        click(&mut game, El::F3Rite);
+        click(&mut game, El::F3Rite);
+        click(&mut game, El::F3Rite);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor3.chambers[4].state,
+            ChamberState::Repaired
+        );
+
+        // The Release: back up through the hubs to Floor 3's.
+        click(&mut game, El::TabFloor);
+        click(&mut game, El::DoorFloor2);
+        click(&mut game, El::DoorFloor3);
+        assert_eq!(game.screen, Screen::Floor3Hub);
+        click(&mut game, El::DoorFoe3);
+        assert_eq!(game.screen, Screen::Floor3Foe);
+        click(&mut game, El::F3SlateTake);
+        assert_eq!(game.expedition.floor3.foe.state, FoeState::Exposed);
+        // Verdicts cycle unjudged → ran → never ran: the slate
+        // reads [never, never, ran].
+        click(&mut game, El::F3SlateEntry(0));
+        click(&mut game, El::F3SlateEntry(0));
+        click(&mut game, El::F3SlateEntry(1));
+        click(&mut game, El::F3SlateEntry(1));
+        click(&mut game, El::F3SlateEntry(2));
+        click(&mut game, El::F3Reconcile);
+        assert!(game.expedition.floor3.foe.slate_done);
+        click(&mut game, El::F3Stamp);
+        click(&mut game, El::F3Rite);
+        click(&mut game, El::F3Rite);
+        click(&mut game, El::F3Rite);
+        assert!(game.expedition.floor3_foe_proof_complete());
+        // The lanterns light through the result handlers, as
+        // the shell delivers them. The gate flag stands as the
+        // RunGate press left it: this room's gate is Floor 3's.
+        game.gate_floor3 = true;
+        game.on_lantern_result(crate::gate::LanternReport {
+            kind: 0,
+            passed: true,
+            text: game.editor_text().to_string(),
+        });
+        game.on_lantern_result(crate::gate::LanternReport {
+            kind: 1,
+            passed: true,
+            text: String::new(),
+        });
+        game.on_gate_result(crate::gate::GateReport {
+            tests_passed: true,
+            tests_run: 6,
+            tests_failed: 0,
+            clippy_passed: true,
+            fmt_checked: true,
+            fmt_passed: true,
+            timed_out: false,
+            summary: "The gate stood open.".to_string(),
+            detail: String::new(),
+        });
+        assert_eq!(game.expedition.floor3.foe.lanterns, [true, true, true]);
+        assert!(game.expedition.floor3.foe.gate_passed);
+        // An edit douses all three lanterns and the gate.
+        game.editor_insert(" ");
+        assert_eq!(game.expedition.floor3.foe.lanterns, [false, false, false]);
+        assert!(!game.expedition.floor3.foe.gate_passed);
+        game.editor_backspace();
+        // Light them again and strike.
+        game.on_lantern_result(crate::gate::LanternReport {
+            kind: 0,
+            passed: true,
+            text: game.editor_text().to_string(),
+        });
+        game.on_lantern_result(crate::gate::LanternReport {
+            kind: 1,
+            passed: true,
+            text: String::new(),
+        });
+        game.on_gate_result(crate::gate::GateReport {
+            tests_passed: true,
+            tests_run: 6,
+            tests_failed: 0,
+            clippy_passed: true,
+            fmt_checked: true,
+            fmt_passed: true,
+            timed_out: false,
+            summary: "The gate stood open.".to_string(),
+            detail: String::new(),
+        });
+        game.today = "2026-11-10".to_string();
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(game.expedition.floor3.foe.state, FoeState::Fallen);
+        assert!(game.expedition.floor3_complete());
+        assert!(
+            game.expedition
+                .codex
+                .iter()
+                .any(|stone| *stone == content::LANTERN_STONE)
+        );
+        assert!(
+            game.expedition
+                .pack
+                .iter()
+                .any(|loot| *loot == content::GATEHOUSE_KEY)
+        );
     }
 
     /// The general pointer path still works outside overlays:

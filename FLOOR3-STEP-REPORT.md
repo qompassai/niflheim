@@ -253,3 +253,105 @@ closing brace; the compiler caught it and it was restored.
 - Chamber 5 (the Inspection) and the FOE (the Gatehouse
   Release) land in Step 4; the driven whole-floor playthrough
   in Step 5.
+
+## Step 4 — Chamber 5 (the Inspection) and the FOE (the Gatehouse Release)
+
+Authored directly by the coordinator (blocks + splicer), as
+Steps 1–3 of this floor. Two halves: 4a the judged core
+(gate, content, puzzles, state), 4b the rooms (game, shell).
+
+### What landed
+
+- **`gate.rs`** — `GateReport` gains `fmt_checked` /
+  `fmt_passed`; `passed()` now requires the format verdict
+  when one was taken. `RELEASE_SPEC` and `run_gate3`: the
+  Release's gate runs the hidden tests and clippy like its
+  elders, then holds the draft *as written* up to a bounded
+  `rustfmt --edition 2024 --check` — the format lantern is
+  part of the gate, not a courtesy. Two lantern runners
+  stand beside the gates: `run_fmt` (applies rustfmt in a
+  claimed scratch dir and returns the formatted text — the
+  lantern lights by *doing*, and the draft comes back
+  formatted) and `run_lint` (the Release's own clippy over
+  the assembled project). Both answer a `LanternReport`.
+  The hand-authored reference was verified rustfmt-true by
+  the gate itself.
+- **`content.rs`** — the Inspection's wall: the charter
+  (stating the oldest road: the gate honors every road
+  **from 1.85 onward**), five checklist items with true
+  verdicts [Repaired, Conforms, Not applicable, Conforms,
+  Repaired] — the fifth is the Stranger's Anvil line — the
+  set-aside line's candidate reasons (the true one: "The
+  Hoard seals nothing; it lends and holds."), the oldest-
+  road stamp candidates (true: 1.85), the amendment text,
+  and the rite's three stages. The FOE: the Gatehouse
+  Release, whose inscription names **failure class #5, The
+  Lantern That Lights Itself**; the log slate's three
+  claimed passes, of which only the third — fresh paper,
+  the draft's own mark — ever ran. Gate 3's crate
+  (`the_gatehouse_release`), scaffold, reference, and six
+  hidden tests. Chamber 4's hint ladder is real now.
+- **`puzzles.rs`** — the judges: `inspection_item_ok`,
+  `inspection_reason_ok`, `msrv_ok`, `slate_entry_ok`.
+- **`state.rs`** — Chamber 5's work (checklist choices, the
+  set-aside reason, the stamp, the rite stage); the rite
+  **gates the seal**: a Diagnosed Chamber 5 with the rite
+  unfinished refuses repair on the record. The Release's
+  record: slate taken/judged/done, the stamp, its own rite
+  entered in the book, three lanterns, the draft (with the
+  Step 5 `editor_started` discipline), and the gate record.
+  Proof complete = slate reconciled ∧ the stamp is the
+  oldest road ∧ the rite stands entered. Any edit douses
+  all three lanterns and the gate mark — they were lit for
+  the draft as it stood. The strike awards **the Lantern
+  Stone** ("A result unexamined is a gate unrun.") to the
+  codex and **the Gatehouse Key** to the pack.
+- **`game.rs` / `shell.rs`** — Chamber 5's desk (verdict
+  cycles, the reason and stamp fields, the rite button on
+  the side desk) and the Release's room on Floor 3's hub
+  (`geom::door_foe3()`, the spot Floor 2's FOE door proved
+  clear): the slate and its verdicts, the reconciliation,
+  the stamp, the rite button, three lantern buttons, the
+  editor, and the two-step seal. `IoRequest` learns
+  `floor3` and a `RunLantern` request; the shell runs gate
+  3 and both lanterns on threads and delivers their reports
+  through a `LanternChannel` twin to the gate's. Step 2's
+  placeholder refusal at the fifth desk's door is lifted.
+
+Build notes: the FOE door's layout push first landed in
+Floor 2's hub arm and was moved to Floor 3's; one splice
+set the Examine arm inside its neighbour's body (the parse
+error named it; relocated); one E0499 in the slate press
+(the verdict is computed inside the borrow's scope and
+spoken after it ends). The driven test sets `gate_floor3`
+exactly as the RunGate press leaves it before answering
+gate results through the handlers.
+
+### Gates (primo, pinned rustc 1.99.0)
+
+- `cargo fmt --check`: clean. `cargo clippy --all-targets
+  -- -D warnings`: exit 0.
+- `cargo test`: **118 passed / 0 failed** (was 108; +10:
+  gate 4 — the scaffold refused, the reference passing with
+  its format verdict, gates 1–2 leaving format unchecked,
+  both lanterns answering; puzzles 2 — the inspection
+  judges and the slate judge; state 3 — the judged
+  inspection with the rite gating its seal, the Release's
+  proof and strike, the doused lanterns; game 1 — Chamber
+  5 and the Release played on the GUI surface, the rite
+  refusing the seal on the record until walked).
+  Log: `~/.local/share/pax/niflheim-floor3-step4-build-20261110/cargo-test.log`.
+- Theodolite: **0 diagnostics** on all six touched files.
+- Determinism: the probe extended through Chamber 5 and
+  the Release's whole arc, run twice; saves byte-identical,
+  sha256
+  `aa4ed6795880c35976adbbb4ebbc5fa139b292724c581d05cec66715691cc236`.
+- Android lib under the pin: 1,345,769,504 bytes. Launch
+  smoke under Xvfb: `cold_start_ms=901`, no panics.
+
+### Left open
+
+- Step 5: the driven whole-floor playthrough (all five
+  chambers and the Release on the GUI surface, the gate
+  answered through the io slot as the shell delivers it)
+  and the floor's close-out. Floor 3 completes there.

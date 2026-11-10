@@ -943,3 +943,63 @@ mod floor3_step3_tests {
         assert!(!rail_complete(&[0, 1, 1]));
     }
 }
+
+/// Floor 3 Chamber 5's judges: a checklist line is answered
+/// when its verdict is the Hoard's true standing; the
+/// not-applicable line also needs its true reason; the stamp
+/// is the oldest road.
+pub fn inspection_item_ok(item: usize, verdict: Option<usize>) -> bool {
+    crate::content::INSPECTION_ITEMS
+        .get(item)
+        .is_some_and(|entry| verdict == Some(entry.verdict))
+}
+
+/// The not-applicable reason is the true one (index 0).
+pub fn inspection_reason_ok(reason: Option<usize>) -> bool {
+    reason == Some(0)
+}
+
+/// The oldest-road stamp is truly chosen (index 0).
+pub fn msrv_ok(choice: Option<usize>) -> bool {
+    choice == Some(0)
+}
+
+/// The Release's slate judge: an entry is reconciled when
+/// its verdict matches whether the pass truly ran
+/// (0 = it ran, 1 = it never ran).
+pub fn slate_entry_ok(entry: usize, verdict: Option<usize>) -> bool {
+    crate::content::LOG_SLATE
+        .get(entry)
+        .is_some_and(|log| verdict == Some(if log.ran { 0 } else { 1 }))
+}
+
+#[cfg(test)]
+mod floor3_step4_tests {
+    use super::*;
+
+    /// The inspection judges: every line under its true
+    /// verdict only, the reason and the stamp at their truths.
+    #[test]
+    fn inspection_judges_lines_reason_and_stamp() {
+        for (item, entry) in crate::content::INSPECTION_ITEMS.iter().enumerate() {
+            assert!(inspection_item_ok(item, Some(entry.verdict)));
+            assert!(!inspection_item_ok(item, Some((entry.verdict + 1) % 3)));
+            assert!(!inspection_item_ok(item, None));
+        }
+        assert!(inspection_reason_ok(Some(0)));
+        assert!(!inspection_reason_ok(Some(1)));
+        assert!(msrv_ok(Some(0)));
+        assert!(!msrv_ok(Some(1)));
+    }
+
+    /// The slate judges: the fresh-marked test pass ran; the
+    /// old-paper passes never did.
+    #[test]
+    fn slate_judges_the_old_paper() {
+        assert!(slate_entry_ok(0, Some(1)));
+        assert!(slate_entry_ok(1, Some(1)));
+        assert!(slate_entry_ok(2, Some(0)));
+        assert!(!slate_entry_ok(0, Some(0)));
+        assert!(!slate_entry_ok(2, None));
+    }
+}

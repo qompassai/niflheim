@@ -20,7 +20,9 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::content::{GATE_CARGO_TOML, GATE_TESTS, GATE2_CARGO_TOML, GATE2_TESTS};
+use crate::content::{
+    GATE_CARGO_TOML, GATE_TESTS, GATE2_CARGO_TOML, GATE2_TESTS, GATE3_CARGO_TOML, GATE3_TESTS,
+};
 
 /// Most bytes of player code the gate will assemble.
 pub const MAX_PLAYER_CODE_BYTES: usize = 64 * 1024;
@@ -198,6 +200,10 @@ pub struct GateReport {
     pub tests_failed: u32,
     /// `cargo clippy --all-targets -- -D warnings` exited clean.
     pub clippy_passed: bool,
+    /// Gate 3 only: whether the format verdict was taken.
+    pub fmt_checked: bool,
+    /// Gate 3 only: whether the draft stood formatted.
+    pub fmt_passed: bool,
     /// A deadline killed one of the runs.
     pub timed_out: bool,
     /// The one-line verdict, for the status line and the save.
@@ -207,9 +213,10 @@ pub struct GateReport {
 }
 
 impl GateReport {
-    /// Both halves of the gate stand.
+    /// Every lantern the gate carries stands: tests and
+    /// clippy always; format too, on the gates that check it.
     pub fn passed(&self) -> bool {
-        self.tests_passed && self.clippy_passed
+        self.tests_passed && self.clippy_passed && (!self.fmt_checked || self.fmt_passed)
     }
 
     /// A report for a run that never reached cargo.
@@ -221,6 +228,8 @@ impl GateReport {
             clippy_passed: false,
             timed_out: false,
             summary,
+            fmt_checked: false,
+            fmt_passed: false,
             detail: String::new(),
         }
     }
@@ -250,6 +259,13 @@ const DESK_SPEC: GateSpec = GateSpec {
     cargo_toml: GATE2_CARGO_TOML,
     tests: GATE2_TESTS,
     artifact: "Desk",
+};
+
+/// Floor 3's gate: the Gatehouse Release.
+const RELEASE_SPEC: GateSpec = GateSpec {
+    cargo_toml: GATE3_CARGO_TOML,
+    tests: GATE3_TESTS,
+    artifact: "Release",
 };
 
 /// Assemble `player_code` into a scratch project under
@@ -346,6 +362,8 @@ fn run_gate_in(
             tests_failed: failed_count,
             clippy_passed: false,
             timed_out: true,
+            fmt_checked: false,
+            fmt_passed: false,
             summary: format!(
                 "The gate's deadline fell: your {} ran past the bound and was \
                  stopped. Somewhere in it, something never finishes.",
@@ -415,6 +433,8 @@ fn run_gate_in(
         tests_failed: failed_count,
         clippy_passed,
         timed_out: clippy_timed_out,
+        fmt_checked: false,
+        fmt_passed: false,
         summary,
         detail,
     }
@@ -716,5 +736,199 @@ pub fn admitted(sigils: &[&str], bound: &[&str]) -> bool {
         assert!(report.timed_out, "report: {}", report.summary);
         assert!(started.elapsed() < Duration::from_secs(60));
         let _ = std::fs::remove_dir_all(&root);
+    }
+}
+
+/// Floor 3's gate: the Gatehouse Release.
+/// Assemble `player_code` and run the third gate: the
+/// Release's hidden suite and clippy, and the format lantern's
+/// verdict taken on the draft as written.
+pub fn run_gate3(scratch_root: &Path, player_code: &str, limits: &GateLimits) -> GateReport {
+    let mut report = run_gate_spec(scratch_root, player_code, limits, &RELEASE_SPEC);
+    report.fmt_checked = true;
+    report.fmt_passed = fmt_verdict(scratch_root, player_code, limits);
+    if report.tests_passed && report.clippy_passed && !report.fmt_passed {
+        report.summary = "The gate refuses on the format lantern: the tests pass and \
+             clippy burns green, but the draft as written is not the draft rustfmt \
+             would leave. The gate record holds its words."
+            .to_string();
+    }
+    report
+}
+
+/// The format lantern's verdict on a draft: rustfmt, bounded,
+/// asked only whether the draft as written is the draft it
+/// would leave.
+fn fmt_verdict(scratch_root: &Path, player_code: &str, limits: &GateLimits) -> bool {
+    let Ok(project) = claim_scratch(scratch_root) else {
+        return false;
+    };
+    let file = project.join("draft.rs");
+    let written = std::fs::write(&file, player_code);
+    let verdict = written.is_ok()
+        && matches!(
+            run_bounded(
+                "rustfmt",
+                &["--edition", "2024", "--check", file.to_str().unwrap_or_default()],
+                &project,
+                limits,
+            ),
+            Ok(run) if run.exit_code == Some(0) && !run.timed_out
+        );
+    let _ = std::fs::remove_dir_all(&project);
+    verdict
+}
+
+/// One lantern's verdict for the Release room: the format
+/// lantern carries the formatted draft back with it, because
+/// its light is the doing.
+pub struct LanternReport {
+    /// Which lantern: 0 format, 1 lint.
+    pub kind: u8,
+    /// Whether the lantern lit.
+    pub passed: bool,
+    /// For the format lantern, the draft as rustfmt leaves it.
+    pub text: String,
+}
+
+/// Light the format lantern: run rustfmt over the draft,
+/// bounded, and hand back the draft as it leaves it. The
+/// lantern lights whenever rustfmt ran clean — the doing is
+/// the light, even when the draft needed the doing.
+pub fn run_fmt(scratch_root: &Path, player_code: &str, limits: &GateLimits) -> LanternReport {
+    let refused = || LanternReport {
+        kind: 0,
+        passed: false,
+        text: String::new(),
+    };
+    let Ok(project) = claim_scratch(scratch_root) else {
+        return refused();
+    };
+    let file = project.join("draft.rs");
+    if std::fs::write(&file, player_code).is_err() {
+        let _ = std::fs::remove_dir_all(&project);
+        return refused();
+    }
+    let report = match run_bounded(
+        "rustfmt",
+        &["--edition", "2024", file.to_str().unwrap_or_default()],
+        &project,
+        limits,
+    ) {
+        Ok(run) if run.exit_code == Some(0) && !run.timed_out => {
+            match std::fs::read_to_string(&file) {
+                Ok(text) => LanternReport {
+                    kind: 0,
+                    passed: true,
+                    text,
+                },
+                Err(_) => refused(),
+            }
+        }
+        _ => refused(),
+    };
+    let _ = std::fs::remove_dir_all(&project);
+    report
+}
+
+/// Light the lint lantern: assemble the Release around the
+/// draft and run clippy at -D warnings, bounded.
+pub fn run_lint(scratch_root: &Path, player_code: &str, limits: &GateLimits) -> LanternReport {
+    let refused = || LanternReport {
+        kind: 1,
+        passed: false,
+        text: String::new(),
+    };
+    if player_code.len() > MAX_PLAYER_CODE_BYTES {
+        return refused();
+    }
+    let Ok(project) = claim_scratch(scratch_root) else {
+        return refused();
+    };
+    let assembled = (|| -> std::io::Result<()> {
+        std::fs::create_dir_all(project.join("src"))?;
+        std::fs::write(project.join("Cargo.toml"), RELEASE_SPEC.cargo_toml)?;
+        let lib = format!("#![forbid(unsafe_code)]\n{player_code}");
+        std::fs::write(project.join("src/lib.rs"), lib)?;
+        Ok(())
+    })();
+    if assembled.is_err() {
+        let _ = std::fs::remove_dir_all(&project);
+        return refused();
+    }
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_string());
+    let passed = matches!(
+        run_bounded(
+            &cargo,
+            &["clippy", "--offline", "--all-targets", "--", "-D", "warnings"],
+            &project,
+            limits,
+        ),
+        Ok(run) if run.exit_code == Some(0) && !run.timed_out
+    );
+    let _ = std::fs::remove_dir_all(&project);
+    LanternReport {
+        kind: 1,
+        passed,
+        text: String::new(),
+    }
+}
+
+#[cfg(test)]
+mod gate3_tests {
+    use super::*;
+    use crate::content::{GATE3_REFERENCE, GATE3_SCAFFOLD};
+
+    fn scratch(name: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("niflheim-gate3-test-{name}"));
+        let _ = std::fs::remove_dir_all(&root);
+        root
+    }
+
+    /// The third gate refuses the scaffold — and says the
+    /// format lantern was among its judges.
+    #[test]
+    fn gate3_refuses_the_scaffold() {
+        let root = scratch("scaffold");
+        let report = run_gate3(&root, GATE3_SCAFFOLD, &GateLimits::default());
+        assert!(!report.passed());
+        assert!(report.fmt_checked);
+    }
+
+    /// The reference release passes the whole gate, format
+    /// lantern included.
+    #[test]
+    fn gate3_passes_the_reference_release() {
+        let root = scratch("reference");
+        let report = run_gate3(&root, GATE3_REFERENCE, &GateLimits::default());
+        assert!(
+            report.fmt_checked && report.fmt_passed,
+            "{}",
+            report.summary
+        );
+        assert!(report.passed(), "{}", report.summary);
+    }
+
+    /// The first two gates never take the format verdict.
+    #[test]
+    fn earlier_gates_leave_format_unchecked() {
+        let root = scratch("unchecked");
+        let report = run_gate(&root, crate::content::GATE_SCAFFOLD, &GateLimits::default());
+        assert!(!report.fmt_checked);
+    }
+
+    /// The format lantern lights on the scaffold (rustfmt can
+    /// always do the doing) and hands back a formatted draft;
+    /// the lint lantern refuses it (todo bodies are not the
+    /// failure — the unimplemented claims are: clippy's
+    /// verdict on the scaffold is checked, not assumed).
+    #[test]
+    fn lanterns_answer_for_the_scaffold() {
+        let root = scratch("lanterns");
+        let fmt = run_fmt(&root, GATE3_SCAFFOLD, &GateLimits::default());
+        assert!(fmt.passed);
+        assert!(fmt.text.contains("todo!()"));
+        let lint = run_lint(&root, GATE3_REFERENCE, &GateLimits::default());
+        assert!(lint.passed, "the reference must lint clean");
     }
 }

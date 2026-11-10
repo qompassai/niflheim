@@ -1986,6 +1986,17 @@ pub fn floor3_chamber_hints(chamber: usize) -> [&'static str; 4] {
              advance fewer); the stranger's slip returned. The rail \
              reads sealed, sealed, returned.",
         ],
+        4 => [
+            "Five lines over one Hoard. Judge the Hoard as it stands \
+             today — with everything the floors below have done to it.",
+            "Two lines it keeps as written. Two it broke and the work \
+             below repaired. One governs something the Hoard is not.",
+            "The seal line is the stranger: the Hoard seals nothing — \
+             that is the reason, and it wants naming, not waiving.",
+            "Repaired, conforms, not-applicable (it lends and holds), \
+             conforms, repaired — and the stamp is the oldest road: \
+             1.85, the first candidate.",
+        ],
         _ => [
             "This desk is not open yet.",
             "This desk is not open yet.",
@@ -2112,3 +2123,216 @@ pub fn stage_name(stage: u8) -> &'static str {
         _ => "in the returns tray",
     }
 }
+
+/// Floor 3 Chamber 5's wall: the Guidelines, the oldest road,
+/// and the amendment rite — read at the watch.
+pub const INSPECTION_CHARTER: &str = "The Guidelines hang in \
+    five lines, and the Hoard from the first floor stands open \
+    under them for audit. Answer every line honestly: conforms, \
+    where the Hoard as it stands keeps the line; repaired, \
+    where it did not and the work below has mended it; \
+    not-applicable, where the line governs something the Hoard \
+    is not — with the reason named. Below the lines, the oldest \
+    road: the gate honors every road from 1.85 onward, and the \
+    release's stamp must say so. At the side desk, one amendment \
+    waits in its rite: read it, second it, enter it in the book.";
+
+/// One line of the Guidelines, with the Hoard's true standing
+/// under it (0 conforms, 1 repaired, 2 not applicable).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct InspectionItem {
+    /// The guideline line.
+    pub line: &'static str,
+    /// The Hoard's true verdict under it.
+    pub verdict: usize,
+}
+
+/// The five lines over the Hoard.
+pub const INSPECTION_ITEMS: [InspectionItem; 5] = [
+    InspectionItem {
+        line: "Every admission names its bound.",
+        verdict: 1,
+    },
+    InspectionItem {
+        line: "The keeper's name stands on the door.",
+        verdict: 0,
+    },
+    InspectionItem {
+        line: "No surface lends past its seal.",
+        verdict: 2,
+    },
+    InspectionItem {
+        line: "The oldest road is walked at every release.",
+        verdict: 0,
+    },
+    InspectionItem {
+        line: "A stranger's tool is weighed before it is wielded.",
+        verdict: 1,
+    },
+];
+
+/// The verdicts a checklist line can carry.
+pub const INSPECTION_VERDICTS: [&str; 3] = ["Conforms", "Repaired", "Not applicable"];
+
+/// The reasons the not-applicable line can carry; the true one
+/// is the first.
+pub const NA_REASONS: [&str; 3] = [
+    "The Hoard seals nothing; it lends and holds.",
+    "The Hoard predates the Guidelines wall.",
+    "The Hoard's keeper waived the line.",
+];
+
+/// The oldest road's stamp, as candidates; the true stamp is
+/// the first.
+pub const MSRV_CANDIDATES: [&str; 3] = [
+    "1.85 — the oldest road the gate still honors",
+    "1.99 — the pin the house builds under tonight",
+    "2.00 — the road not yet laid",
+];
+
+/// The amendment waiting at the side desk.
+pub const AMENDMENT_TEXT: &str = "Add to the Guidelines: a \
+    lantern lit by schedule is no lantern. A gate is run, or \
+    the release does not leave.";
+
+/// The amendment rite's three acts, in their order.
+pub const RITE_STAGES: [&str; 3] = [
+    "Read the proposal aloud",
+    "Second the proposal",
+    "Enter it in the book",
+];
+
+/// The Gatehouse Release: the floor's FOE (FULL-DESIGN §4,
+/// Floor 3). Failure class #5, the Lantern That Lights
+/// Itself, is its seam.
+pub const FOE3_NAME: &str = "The Gatehouse Release";
+
+/// The Release's introduction, spoken at its door.
+pub const FOE3_INTRO: &str = "The Gatehouse Release stands at \
+    the great door with its lantern already burning — green, \
+    steady, and lit before its keeper came in. Its log-slate \
+    claims every pass was run. The Gatewright says nothing, \
+    and hands you the slate.";
+
+/// The Release's inscription: failure class #5, named in the
+/// fiction as FULL-DESIGN requires of every FOE.
+pub const FOE3_INSCRIPTION: &str = "Here is kept the record \
+    of the fifth failure class: THE LANTERN THAT LIGHTS \
+    ITSELF — a gate believed run because its lantern burned. \
+    The lantern was wired to the clock, not to the work: it \
+    lit at the release hour whether the passes ran or not, \
+    and the house shipped on the strength of a light. The \
+    cure is not a brighter lantern. The cure is a lantern with \
+    no wire to the clock: lit by the doing, doused by the \
+    next touch of the draft.";
+
+/// One entry on the Release's log-slate.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LogEntry {
+    /// The entry as written.
+    pub text: &'static str,
+    /// Whether the pass truly ran.
+    pub ran: bool,
+}
+
+/// The log-slate's entries. Two are in an old hand on old
+/// paper; one carries the draft's own fresh mark.
+pub const LOG_SLATE: [LogEntry; 3] = [
+    LogEntry {
+        text: "Format pass — entered in a careful hand, on paper \
+               older than the draft it names.",
+        ran: false,
+    },
+    LogEntry {
+        text: "Lint pass — the same hand, the same old paper, the \
+               same hour struck twice.",
+        ran: false,
+    },
+    LogEntry {
+        text: "Test pass — entered fresh, the draft's own mark \
+               beside the count.",
+        ran: true,
+    },
+];
+
+/// The Release's hint ladder.
+pub fn floor3_foe_hints() -> [&'static str; 4] {
+    [
+        "Begin with the slate. It claims three passes; paper and \
+         hands testify about two of them.",
+        "A verdict per entry: ran, or never ran. Then reconcile — \
+         write the true slate over the claimed one.",
+        "The stamp is the oldest road, and the rite at the slate's \
+         side desk is done in its order: read, second, enter.",
+        "Three lanterns over the door, none wired to the clock: \
+         format the draft and the first lights; lint it and the \
+         second; run the gate and the third. Touch the draft and \
+         all three go out — that is the lantern honest.",
+    ]
+}
+
+/// The third gate's manifest: the Release judged as a crate.
+pub const GATE3_CARGO_TOML: &str = "[package]\n\
+     name = \"the_gatehouse_release\"\n\
+     version = \"0.1.0\"\n\
+     edition = \"2024\"\n\n\
+     [dependencies]\n";
+
+/// The third gate's scaffold, as the clerk left it.
+pub const GATE3_SCAFFOLD: &str = "// The Gatehouse Release, as the clerk left it: two claims\n\
+     // the release must make, neither yet made. The inscription\n\
+     // over the office names the oldest road; the lanterns over\n\
+     // the door say what ready means.\n\
+     \n\
+     /// The oldest road the gate still honors, as the stamp reads.\n\
+     pub fn oldest_road() -> &'static str {\n\
+     \x20   todo!()\n\
+     }\n\
+     \n\
+     /// Whether the release may leave: every lantern lit by doing.\n\
+     pub fn release_ready(fmt_done: bool, lint_done: bool, tests_done: bool) -> bool {\n\
+     \x20   todo!()\n\
+     }\n";
+
+/// The third gate's reference release, as the keeper keeps it.
+pub const GATE3_REFERENCE: &str = "pub fn oldest_road() -> &'static str {\n\
+     \x20   \"1.85\"\n\
+     }\n\
+     \n\
+     pub fn release_ready(fmt_done: bool, lint_done: bool, tests_done: bool) -> bool {\n\
+     \x20   fmt_done && lint_done && tests_done\n\
+     }\n";
+
+/// The third gate's hidden suite: the stamp must name the
+/// oldest road, and ready must mean every lantern.
+pub const GATE3_TESTS: &str = "use the_gatehouse_release::{oldest_road, release_ready};\n\
+     \n\
+     #[test]\n\
+     fn the_stamp_names_the_oldest_road() {\n\
+     \x20   assert_eq!(oldest_road(), \"1.85\");\n\
+     }\n\
+     \n\
+     #[test]\n\
+     fn ready_means_every_lantern() {\n\
+     \x20   assert!(release_ready(true, true, true));\n\
+     }\n\
+     \n\
+     #[test]\n\
+     fn an_unformatted_release_does_not_leave() {\n\
+     \x20   assert!(!release_ready(false, true, true));\n\
+     }\n\
+     \n\
+     #[test]\n\
+     fn an_unlinted_release_does_not_leave() {\n\
+     \x20   assert!(!release_ready(true, false, true));\n\
+     }\n\
+     \n\
+     #[test]\n\
+     fn an_untested_release_does_not_leave() {\n\
+     \x20   assert!(!release_ready(true, true, false));\n\
+     }\n\
+     \n\
+     #[test]\n\
+     fn a_dark_release_does_not_leave() {\n\
+     \x20   assert!(!release_ready(false, false, false));\n\
+     }\n";

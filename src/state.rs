@@ -19,8 +19,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::content::{
     ADMISSION_SERVICES, BEASTS, FOE_ADMISSIONS, FOE_CHALLENGE, GATE_SCAFFOLD, GATE2_SCAFFOLD,
-    HERALD_LETTERS, INTERNERS_HOARD, LEASES_INITIAL, LENS_STONE, PACK_ITEMS, PLACARDS, PLANK_STONE,
-    PLUGIN_MENAGERIE, ROSTER_GROUPS,
+    GATEHOUSE_KEY, HERALD_LETTERS, INTERNERS_HOARD, LANTERN_STONE, LEASES_INITIAL, LENS_STONE,
+    PACK_ITEMS, PLACARDS, PLANK_STONE, PLUGIN_MENAGERIE, ROSTER_GROUPS,
 };
 use crate::core::{SAVE_FORMAT_VERSION, SAVE_MAGIC, SaveError, Settings, TextScale};
 use crate::puzzles::{
@@ -322,6 +322,18 @@ pub struct GatehouseWork {
     /// authored starts live in the manual `Default` below.
     #[serde(default)]
     pub slip_stages: [u8; 3],
+    /// Chamber 5: the verdict chosen for each Guideline line.
+    #[serde(default)]
+    pub checklist_choices: [Option<usize>; 5],
+    /// Chamber 5: the reason named for the not-applicable line.
+    #[serde(default)]
+    pub na_reason: Option<usize>,
+    /// Chamber 5: the oldest-road stamp chosen.
+    #[serde(default)]
+    pub msrv_choice: Option<usize>,
+    /// Chamber 5: the amendment rite's stage (0–3).
+    #[serde(default)]
+    pub rite_stage: u8,
 }
 
 impl Default for GatehouseWork {
@@ -338,6 +350,10 @@ impl Default for GatehouseWork {
             // unaddressed, the tally and the stranger's slip
             // addressed (content::REQUEST_SLIPS).
             slip_stages: [0, 1, 1],
+            checklist_choices: [None; 5],
+            na_reason: None,
+            msrv_choice: None,
+            rite_stage: 0,
         }
     }
 }
@@ -355,8 +371,35 @@ pub struct Floor3FoeProgress {
     pub strike: StrikePhase,
     /// The date inscribed when the FOE fell (`YYYY-MM-DD`).
     pub fallen_date: Option<String>,
+    /// The log-slate has been taken up (and the FOE Exposed).
+    #[serde(default)]
+    pub slate_taken: bool,
+    /// The verdict per slate entry (0 = it ran, 1 = never ran).
+    #[serde(default)]
+    pub slate_choices: [Option<usize>; 3],
+    /// The slate stands reconciled.
+    #[serde(default)]
+    pub slate_done: bool,
+    /// The oldest-road stamp chosen in the Release room.
+    #[serde(default)]
+    pub stamp_choice: Option<usize>,
+    /// The amendment rite's stage in the Release room (0–3).
+    #[serde(default)]
+    pub rite_stage: u8,
+    /// The three lanterns, lit by doing: format, lint, tests.
+    #[serde(default)]
+    pub lanterns: [bool; 3],
+    /// The player's Release draft, once the editor touches it.
+    #[serde(default)]
+    pub draft: Option<String>,
+    /// The editor has been opened (an emptied draft is a
+    /// started draft, not an untouched one).
+    #[serde(default)]
+    pub editor_started: bool,
+    /// The third gate's last summary, for the record view.
+    #[serde(default)]
+    pub gate_record: Option<String>,
 }
-
 /// Floor 3's whole progress record: five chambers and the FOE.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Floor3Progress {
@@ -385,6 +428,15 @@ impl Floor3Progress {
                 gate_passed: false,
                 strike: StrikePhase::Idle,
                 fallen_date: None,
+                slate_taken: false,
+                slate_choices: [None; 3],
+                slate_done: false,
+                stamp_choice: None,
+                rite_stage: 0,
+                lanterns: [false; 3],
+                draft: None,
+                editor_started: false,
+                gate_record: None,
             },
             foe_hints_used: 0,
         }
@@ -1704,8 +1756,7 @@ impl Expedition {
     }
 
     /// Whether a Floor 3 chamber's diagnosis is complete.
-    /// Chambers 1–4 judge their work here; the Inspection
-    /// opens in its own step.
+    /// All five chambers judge their work here.
     pub fn floor3_diagnosed(&self, chamber: usize) -> bool {
         let Some(progress) = self.floor3.chambers.get(chamber) else {
             return false;
@@ -1745,10 +1796,21 @@ impl Expedition {
                         })
             }
             3 => work.watched && crate::puzzles::rail_complete(&work.slip_stages),
+            4 => {
+                work.watched
+                    && work
+                        .checklist_choices
+                        .iter()
+                        .enumerate()
+                        .all(|(item, verdict)| {
+                            crate::puzzles::inspection_item_ok(item, *verdict)
+                        })
+                    && crate::puzzles::inspection_reason_ok(work.na_reason)
+                    && crate::puzzles::msrv_ok(work.msrv_choice)
+            }
             _ => false,
         }
     }
-
     /// Act on one slip of Chamber 4's rail: advance it one
     /// stage in its order, seal it (only from bodied — the
     /// press's interlock refuses earlier), or send it to the
@@ -1842,6 +1904,10 @@ impl Expedition {
                 3 => "the rail is not yet true: both honest slips sealed, \
                       and the body-less slip in the returns tray"
                     .to_string(),
+                4 => "the inspection is not yet true: every line under its \
+                      honest verdict, the reason named, and the stamp the \
+                      oldest road"
+                    .to_string(),
                 _ => "this desk is not open yet".to_string(),
             }));
         }
@@ -1870,13 +1936,240 @@ impl Expedition {
                   can read them; two stand, each with its invariant \
                   written beneath in the keeper's hand."
                 .to_string(),
-            _ => "Proof filed. Two seals stand in the wax, and the \
+            3 => "Proof filed. Two seals stand in the wax, and the \
                   returns tray holds the third slip with its missing \
                   page noted — nothing sealed that was not bodied, \
                   nothing bodied that was not addressed."
                 .to_string(),
+            _ => "Proof filed. Five lines answered honestly — two \
+                  conform, two stand repaired, one set aside with its \
+                  reason named — and the stamp reads the oldest road: \
+                  1.85."
+                .to_string(),
         })
     }
+
+    /// Perform the next act of Chamber 5's amendment rite:
+    /// read the proposal, second it, enter it in the book —
+    /// in that order, at the side desk.
+    pub fn floor3_rite_act(&mut self) -> Result<String, Refusal> {
+        let work = &mut self.floor3.chambers[4].work;
+        let stage = work.rite_stage;
+        if stage >= 3 {
+            return Err(Refusal(
+                "the rite stands complete — the amendment is in the book".to_string(),
+            ));
+        }
+        work.rite_stage = stage + 1;
+        Ok(match stage {
+            0 => "You read the proposal aloud, and the office hears it: \
+                  a lantern lit by schedule is no lantern."
+                .to_string(),
+            1 => "The Gatewright seconds it, in her own hand: run, or \
+                  the release does not leave."
+                .to_string(),
+            _ => "Entered in the book, under the Guidelines' five lines — \
+                  the wall has a sixth line now, and the Release will \
+                  be judged by it."
+                .to_string(),
+        })
+    }
+
+    /// Take up the Release's log-slate: the FOE is Exposed
+    /// from this moment.
+    pub fn floor3_foe_take_slate(&mut self) {
+        self.floor3.foe.slate_taken = true;
+        if self.floor3.foe.state == FoeState::Standing {
+            self.floor3.foe.state = FoeState::Exposed;
+        }
+    }
+
+    /// Whether the slate stands reconciled: every entry's
+    /// verdict true, the true slate written.
+    pub fn floor3_foe_slate_done(&self) -> bool {
+        self.floor3.foe.slate_done
+    }
+
+    /// Reconcile the slate: with every entry judged, write the
+    /// true slate over the claimed one.
+    pub fn floor3_foe_reconcile(&mut self) -> Result<String, Refusal> {
+        let foe = &mut self.floor3.foe;
+        if !foe.slate_taken {
+            return Err(Refusal(
+                "take the slate up first — a reconciliation needs the slate in hand".to_string(),
+            ));
+        }
+        let judged = foe
+            .slate_choices
+            .iter()
+            .enumerate()
+            .all(|(entry, verdict)| crate::puzzles::slate_entry_ok(entry, *verdict));
+        if !judged {
+            return Err(Refusal(
+                "the verdicts do not yet read true: judge every entry by \
+                 its paper and its hand, then reconcile"
+                    .to_string(),
+            ));
+        }
+        foe.slate_done = true;
+        Ok(
+            "The slate is reconciled: two passes struck through as never \
+            run, one standing as it was written. The lantern over the \
+            door flickers — it is not used to being believed honestly."
+                .to_string(),
+        )
+    }
+
+    /// Perform the next act of the Release's amendment rite —
+    /// the same rite as the Inspection's side desk, performed
+    /// here on the release's own amendment.
+    pub fn floor3_foe_rite_act(&mut self) -> Result<String, Refusal> {
+        let stage = self.floor3.foe.rite_stage;
+        if stage >= 3 {
+            return Err(Refusal(
+                "the rite stands complete — the amendment is in the book".to_string(),
+            ));
+        }
+        self.floor3.foe.rite_stage = stage + 1;
+        Ok(match stage {
+            0 => "You read the proposal aloud at the great door.".to_string(),
+            1 => "The Gatewright seconds it, in her own hand.".to_string(),
+            _ => "Entered in the book. The Release stands under a line \
+                  it did not have this morning."
+                .to_string(),
+        })
+    }
+
+    /// The Release's proof, whole: the slate reconciled, the
+    /// stamp the oldest road, the rite complete. (The gate is
+    /// the strike's other half, tracked apart.)
+    pub fn floor3_foe_proof_complete(&self) -> bool {
+        self.floor3.foe.slate_done
+            && crate::puzzles::msrv_ok(self.floor3.foe.stamp_choice)
+            && self.floor3.foe.rite_stage >= 3
+    }
+
+    /// Light a lantern by its doing (game-side, on the shell's
+    /// reports): kind 0 takes the formatted draft back, kind 1
+    /// is the lint run's word.
+    pub fn floor3_foe_light_lantern(&mut self, kind: u8, formatted: Option<String>) {
+        if kind == 0 {
+            if let Some(text) = formatted {
+                self.floor3.foe.draft = Some(text);
+            }
+            self.floor3.foe.lanterns[0] = true;
+        } else if kind == 1 {
+            self.floor3.foe.lanterns[1] = true;
+        }
+    }
+
+    /// The gate's tests stood: the third lantern lights.
+    pub fn floor3_foe_mark_tests_passed(&mut self) {
+        self.floor3.foe.lanterns[2] = true;
+    }
+
+    /// The third gate passed whole: the strike may be armed.
+    pub fn floor3_foe_mark_gate_passed(&mut self) {
+        self.floor3.foe.gate_passed = true;
+    }
+
+    /// The Release's draft as the editor reads it: the
+    /// scaffold until the editor first touches it.
+    pub fn floor3_foe_draft(&self) -> &str {
+        if !self.floor3.foe.editor_started {
+            crate::content::GATE3_SCAFFOLD
+        } else {
+            self.floor3.foe.draft.as_deref().unwrap_or("")
+        }
+    }
+
+    /// The Release's draft, materializing the scaffold on
+    /// first touch (the editor's "empty = untouched" rule,
+    /// with the Step 5 lesson: emptied is not untouched — see
+    /// `editor_started`).
+    pub fn floor3_foe_draft_mut(&mut self) -> &mut String {
+        let foe = &mut self.floor3.foe;
+        if !foe.editor_started {
+            foe.editor_started = true;
+            if foe.draft.is_none() {
+                foe.draft = Some(crate::content::GATE3_SCAFFOLD.to_string());
+            }
+        }
+        foe.draft.as_mut().expect("draft materialized")
+    }
+
+    /// Any touch of the draft douses all three lanterns and
+    /// unmakes the gate's pass: a lantern lit for a draft that
+    /// no longer stands is the FOE's own failure wearing the
+    /// player's hand.
+    pub fn floor3_foe_douse_lanterns(&mut self) {
+        self.floor3.foe.lanterns = [false; 3];
+        self.floor3.foe.gate_passed = false;
+    }
+
+    /// Arm the Release's strike: proof complete and the gate
+    /// passed, as with every FOE.
+    pub fn floor3_foe_arm_strike(&mut self) -> Result<(), Refusal> {
+        if self.floor3.foe.state == FoeState::Fallen {
+            return Err(Refusal("the Release has already left".to_string()));
+        }
+        if !self.floor3_foe_proof_complete() {
+            return Err(Refusal(
+                "the strike sleeps until the proof is complete: the slate \
+                 reconciled, the stamp true, the rite entered"
+                    .to_string(),
+            ));
+        }
+        if !self.floor3.foe.gate_passed {
+            return Err(Refusal(
+                "the strike sleeps until the third gate passes: three \
+                 lanterns, lit by doing, on the draft as it stands"
+                    .to_string(),
+            ));
+        }
+        self.floor3.foe.strike = StrikePhase::Armed;
+        Ok(())
+    }
+
+    /// Confirm the strike: the Release falls, and the Lantern
+    /// Stone and the Gatehouse Key change hands.
+    pub fn floor3_foe_confirm_strike(&mut self, date: &str) -> Result<String, Refusal> {
+        if self.floor3.foe.state == FoeState::Fallen {
+            return Err(Refusal("the Release has already left".to_string()));
+        }
+        if self.floor3.foe.strike != StrikePhase::Armed {
+            return Err(Refusal(
+                "the strike is not armed — press the seal first".to_string(),
+            ));
+        }
+        self.floor3.foe.strike = StrikePhase::Idle;
+        self.floor3.foe.state = FoeState::Fallen;
+        self.floor3.foe.fallen_date = Some(date.to_string());
+        if !self.codex.iter().any(|stone| stone == LANTERN_STONE) {
+            self.codex.push(LANTERN_STONE.to_string());
+        }
+        if !self.pack.iter().any(|loot| loot == GATEHOUSE_KEY) {
+            self.pack.push(GATEHOUSE_KEY.to_string());
+        }
+        Ok("The strike lands — not a release punished, but a lantern \
+            rewired: its wire to the clock is cut in front of the whole \
+            office, and the new lantern is fitted with no wire at all. \
+            It will burn when the work is done, and not before. The \
+            Release leaves by the great door under its own true light."
+            .to_string())
+    }
+
+    /// Record that the player read a Release hint rung.
+    pub fn floor3_foe_view_hint(&mut self) -> u8 {
+        self.floor3.foe_hints_used = (self.floor3.foe_hints_used + 1).min(4);
+        self.floor3.foe_hints_used
+    }
+
+    /// The deepest Release hint rung recorded.
+    pub fn floor3_foe_hints_used(&self) -> u8 {
+        self.floor3.foe_hints_used
+    }
+
     /// Repair a Floor 3 chamber whose proof stands filed, and
     /// settle its facet when the hints stayed shallow — the
     /// two-step seal's second step.
@@ -1886,6 +2179,14 @@ impl Expedition {
             .chambers
             .get_mut(chamber)
             .ok_or_else(|| Refusal("no such chamber".to_string()))?;
+        if chamber == 4 && progress.state == ChamberState::Diagnosed && progress.work.rite_stage < 3
+        {
+            return Err(Refusal(
+                "the amendment rite stands undone at the side desk — read it, \
+                 second it, enter it, and the seal will answer"
+                    .to_string(),
+            ));
+        }
         match progress.state {
             ChamberState::Repaired => {
                 Err(Refusal("this chamber already stands repaired".to_string()))
@@ -2115,7 +2416,7 @@ impl Expedition {
         if self.floor3.chambers.len() != 5 {
             return Err(corrupt("the save does not hold five Floor 3 chambers"));
         }
-        for chamber in 0..4 {
+        for chamber in 0..5 {
             if self.floor3.chambers[chamber].state != ChamberState::Unworked
                 && !self.floor3_diagnosed(chamber)
             {
@@ -2736,6 +3037,102 @@ mod tests {
         expedition.floor3.chambers[3].state = ChamberState::Diagnosed;
         let text = expedition.save_json().expect("save");
         assert!(Expedition::load_json(&text).is_err());
+    }
+
+    /// Validation: Chamber 5's inspection is judged line by
+    /// line — and its repair waits on the amendment rite even
+    /// after the proof stands filed.
+    #[test]
+    fn floor3_chamber5_inspection_and_rite() {
+        let mut expedition = Expedition::new();
+        {
+            let work = &mut expedition.floor3.chambers[4].work;
+            work.watched = true;
+            for (item, entry) in crate::content::INSPECTION_ITEMS.iter().enumerate() {
+                work.checklist_choices[item] = Some(entry.verdict);
+            }
+            work.na_reason = Some(0);
+            work.msrv_choice = Some(1);
+        }
+        assert!(
+            !expedition.floor3_diagnosed(4),
+            "the pin is not the oldest road"
+        );
+        expedition.floor3.chambers[4].work.msrv_choice = Some(0);
+        assert!(expedition.floor3_diagnosed(4));
+        expedition.floor3_file_proof(4).expect("proof files");
+        // The seal refuses while the rite stands undone.
+        assert!(expedition.floor3_repair_chamber(4).is_err());
+        expedition.floor3_rite_act().expect("read");
+        expedition.floor3_rite_act().expect("second");
+        expedition.floor3_rite_act().expect("enter");
+        assert!(
+            expedition.floor3_rite_act().is_err(),
+            "the rite does not repeat"
+        );
+        expedition.floor3_repair_chamber(4).expect("repair lands");
+        assert_eq!(expedition.floor3_chambers_repaired(), 1);
+    }
+
+    /// Validation: the Release's whole arc at state level —
+    /// slate judged and reconciled, stamp, rite, lanterns,
+    /// gate, strike — and the awards land.
+    #[test]
+    fn floor3_foe_arc_completes() {
+        let mut expedition = Expedition::new();
+        expedition.floor3_foe_take_slate();
+        assert_eq!(expedition.floor3.foe.state, FoeState::Exposed);
+        expedition.floor3.foe.slate_choices = [Some(1), Some(1), Some(0)];
+        expedition.floor3_foe_reconcile().expect("reconcile");
+        expedition.floor3.foe.stamp_choice = Some(0);
+        expedition.floor3_foe_rite_act().expect("read");
+        expedition.floor3_foe_rite_act().expect("second");
+        expedition.floor3_foe_rite_act().expect("enter");
+        assert!(expedition.floor3_foe_proof_complete());
+        // The strike sleeps until the gate passes.
+        assert!(expedition.floor3_foe_arm_strike().is_err());
+        expedition.floor3_foe_light_lantern(0, Some("formatted".to_string()));
+        expedition.floor3_foe_light_lantern(1, None);
+        expedition.floor3_foe_mark_tests_passed();
+        expedition.floor3_foe_mark_gate_passed();
+        assert_eq!(expedition.floor3.foe.lanterns, [true, true, true]);
+        // A touch of the draft douses all three.
+        expedition.floor3_foe_douse_lanterns();
+        assert_eq!(expedition.floor3.foe.lanterns, [false, false, false]);
+        assert!(!expedition.floor3.foe.gate_passed);
+        expedition.floor3_foe_light_lantern(0, None);
+        expedition.floor3_foe_light_lantern(1, None);
+        expedition.floor3_foe_mark_tests_passed();
+        expedition.floor3_foe_mark_gate_passed();
+        expedition.floor3_foe_arm_strike().expect("arm");
+        expedition
+            .floor3_foe_confirm_strike("2026-11-10")
+            .expect("strike lands");
+        assert_eq!(expedition.floor3.foe.state, FoeState::Fallen);
+        assert!(
+            expedition
+                .codex
+                .iter()
+                .any(|s| s == crate::content::LANTERN_STONE)
+        );
+        assert!(
+            expedition
+                .pack
+                .iter()
+                .any(|l| l == crate::content::GATEHOUSE_KEY)
+        );
+        assert!(!expedition.floor3_complete(), "the chambers still stand");
+    }
+
+    /// Adversarial: the slate refuses reconciliation while an
+    /// entry is misjudged — the old paper is the tell.
+    #[test]
+    fn floor3_foe_slate_refuses_a_faithful_reading() {
+        let mut expedition = Expedition::new();
+        expedition.floor3_foe_take_slate();
+        expedition.floor3.foe.slate_choices = [Some(0), Some(0), Some(0)];
+        assert!(expedition.floor3_foe_reconcile().is_err());
+        assert!(!expedition.floor3_foe_slate_done());
     }
 
     /// Adversarial: a forged Floor 2 record of the wrong size is
