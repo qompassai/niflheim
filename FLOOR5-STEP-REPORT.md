@@ -118,3 +118,67 @@ this lane now prefixes `PATH=$HOME/.cargo/bin:$PATH`.
 - Floor 6's door hangs on this hub at Floor 6's
   scaffolding, in the same (640, 150) spot Floor 5's door
   proved here.
+
+## Step 2 — Chambers 1–2: the Pointer Walks, the Two Tenants
+
+Committed by the Part A coordinator lane under the
+completion spec (D-1190; start authorization D-1205),
+per DS-10: lane #5 built and gated this step before the
+stop order; the commit waited for the spec. Every gate
+below was RE-RUN at commit time on the uncommitted tree
+(D-567) and re-passed before the commit was made.
+Evidence: `~/.local/share/pax/niflheim-f5s2-regate-20261110/`
+on primo.
+
+### What landed
+
+- **`state.rs`** — VeilWork gains the two chambers' fields,
+  all serde-defaulted: C1 `cards_read: [bool; 6]`, `walked`,
+  `refused`; C2 `predictions: [u8; 8]`, `judged`,
+  `annotations: [Option<usize>; 8]`. The Floor 5 judges and
+  proof refusals now cover chambers 1–2.
+- **`puzzles.rs`** — the pure judges: `step_cracked` (a
+  Pointer Walks step's card claim is false),
+  `tenancy_correct` / `tenancy_missed` (the Two Tenants
+  verdicts against the authored tenancy table).
+- **`content.rs`** — the Pointer Walks' six contract cards,
+  the eight tenancy placards with their deciding rules, and
+  the two chambers' four-rung hint ladders (the fourth rung
+  names each seam).
+- **`game.rs` / `shell.rs`** — the chamber surfaces: card
+  reading before stepping, the step/refuse presses, the
+  prediction, judging and annotation presses, and the
+  per-chamber builders for chambers 1–2.
+
+### Gates (primo, pinned rustc 1.99.0) — re-run at commit time
+
+- `cargo fmt --check`: clean. `cargo clippy --all-targets
+  -- -D warnings`: exit 0.
+- `cargo test`: **145 passed / 0 failed** (was 139 at
+  Step 1; +6). Log: `cargo-test.log` in the evidence dir
+  above.
+- Theodolite (cured route; bacon producer first,
+  `.bacon-locations` present at session start): a planted
+  control on puzzles.rs read live E0308 diagnostics in the
+  same session where content.rs, state.rs, game.rs and
+  shell.rs read 0; the clean session reads **0 on all five
+  touched files** — the zeros are verified, not assumed.
+  puzzles.rs restored byte-identical after the plant
+  (sha256 `d7254e3d…` on both sides).
+- Determinism: the Step 2 probe (the earlier playthrough
+  extended through the Pointer Walks and the Two Tenants)
+  run twice; saves byte-identical, sha256
+  `456c7b47ffbc91f13e4bf45759267938a9bdb79a85c3a8609dc155c1679f9c33`
+  — the same hash lane #5 recorded, as it must be: the tree
+  did not move between its gate run and this commit.
+- Android lib under the pin: 1,347,792,040 bytes (the size
+  lane #5 recorded). Launch smoke under Xvfb:
+  `cold_start_ms=4639`, no panics (the start time runs
+  higher under shared load; the gate is the line's presence
+  plus zero panics, and both hold).
+
+### Left open
+
+- Chambers 3–4 land in Step 3 (the Contract Cards, the
+  Split Beam); Chamber 5 and the Thing Behind the Veil in
+  Step 4; the driven whole-floor playthrough in Step 5.

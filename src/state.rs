@@ -644,6 +644,25 @@ pub struct VeilWork {
     /// The demonstration has been watched.
     #[serde(default)]
     pub watched: bool,
+    /// Chamber 1: the six cards have been read.
+    #[serde(default)]
+    pub cards_read: [bool; 6],
+    /// Chamber 1: steps resolved (walked or refused), 0..=6.
+    #[serde(default)]
+    pub walked: usize,
+    /// Chamber 1: the cracked stone has been refused by name.
+    #[serde(default)]
+    pub refused: bool,
+    /// Chamber 2: the eight calls (0 uncalled, 1 sound,
+    /// 2 unsound).
+    #[serde(default)]
+    pub predictions: [u8; 8],
+    /// Chamber 2: the referee has stamped the calls.
+    #[serde(default)]
+    pub judged: bool,
+    /// Chamber 2: per-miss annotation (the deciding rule).
+    #[serde(default)]
+    pub annotations: [Option<usize>; 8],
 }
 
 /// Floor 5, one chamber's progress.
@@ -2713,14 +2732,31 @@ impl Expedition {
         self.floor4_chambers_repaired() == 5 && self.floor4.foe.state == FoeState::Fallen
     }
 
-    /// Whether a Floor 5 chamber's work presently proves out.
-    /// No chamber proves yet: the judges land with their
-    /// chambers in Steps 2–4.
+    /// Whether a Floor 5 chamber's work presently proves
+    /// out (§5.4 of the brief).
     pub fn floor5_diagnosed(&self, chamber: usize) -> bool {
-        let Some(_progress) = self.floor5.chambers.get(chamber) else {
+        let Some(progress) = self.floor5.chambers.get(chamber) else {
             return false;
         };
-        false
+        let work = &progress.work;
+        match chamber {
+            // Chamber 1: all six stones resolved under their
+            // cards, the cracked one refused by name.
+            0 => work.watched && work.walked == 6 && work.refused,
+            // Chamber 2: the calls stamped with at least
+            // seven true, and every miss annotated with the
+            // rule that decided it.
+            1 => {
+                work.watched
+                    && work.judged
+                    && crate::puzzles::tenancy_correct(&work.predictions) >= 7
+                    && (0..crate::content::TENANCIES.len()).all(|index| {
+                        !crate::puzzles::tenancy_missed(&work.predictions, index)
+                            || work.annotations[index] == Some(crate::content::TENANCIES[index].2)
+                    })
+            }
+            _ => false,
+        }
     }
 
     /// File one Floor 5 chamber's proof once its work proves:
@@ -3801,6 +3837,46 @@ mod tests {
         expedition.floor4.foe.state = FoeState::Fallen;
         assert!(expedition.floor5_reachable());
         assert!(!expedition.floor5_complete());
+    }
+
+    /// Floor 5 Step 2 state: the walk judges on stones
+    /// resolved under their cards, and the tenancies on
+    /// stamped calls with every miss annotated by its rule.
+    #[test]
+    fn floor5_walk_and_tenancies_judged() {
+        let mut expedition = Expedition::new();
+        // Chamber 1: a completed walk, unwatched, does not prove.
+        {
+            let work = &mut expedition.floor5.chambers[0].work;
+            work.walked = 6;
+            work.refused = true;
+        }
+        assert!(!expedition.floor5_diagnosed(0));
+        expedition.floor5.chambers[0].work.watched = true;
+        assert!(expedition.floor5_diagnosed(0));
+        expedition.floor5.chambers[0].work.refused = false;
+        assert!(!expedition.floor5_diagnosed(0), "the refusal is the step");
+        expedition.floor5.chambers[0].work.refused = true;
+        expedition.floor5_file_proof(0).expect("walk proof");
+        expedition.floor5_repair_chamber(0).expect("walk repair");
+        // Chamber 2: seven true calls, the miss annotated.
+        {
+            let work = &mut expedition.floor5.chambers[1].work;
+            work.watched = true;
+            for (index, (_, sound, _)) in crate::content::TENANCIES.iter().enumerate() {
+                work.predictions[index] = if *sound { 1 } else { 2 };
+            }
+            work.predictions[1] = 1; // the repainting writer, called sound
+            work.judged = true;
+        }
+        assert!(!expedition.floor5_diagnosed(1), "the miss is unannotated");
+        expedition.floor5.chambers[1].work.annotations[1] = Some(2);
+        assert!(expedition.floor5_diagnosed(1));
+        expedition.floor5.chambers[1].work.annotations[1] = Some(0);
+        assert!(
+            !expedition.floor5_diagnosed(1),
+            "the wrong rule does not annotate a miss"
+        );
     }
     /// Floor 4 Step 3 state: the crests judge on measured
     /// sizes, and the treaty wall judges the seating, the

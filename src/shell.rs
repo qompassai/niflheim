@@ -6585,6 +6585,152 @@ fn build_floor5_chamber(
         meta.slot_wants,
         progress.facet,
     );
+    if index == 0 {
+        build_f5c1(commands, game, pal, fonts, stage);
+    }
+    if index == 1 {
+        build_f5c2(commands, game, pal, fonts, stage);
+    }
+}
+
+/// Chamber 1's panel: the six steps with their card and
+/// yard states, and the walker's standing.
+fn build_f5c1(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor5.chambers[0].work;
+    for (index, (card, seen, cracked)) in content::STEP_CARDS.iter().enumerate() {
+        let rect = geom::f5_card_row(index);
+        spawn_button(
+            commands,
+            stage,
+            rect,
+            &format!("STEP {}", index + 1),
+            pal,
+            work.walked == index,
+            fonts,
+        );
+        let state = if index < work.walked {
+            if *cracked {
+                "refused by name — stepped around".to_string()
+            } else {
+                "stepped — the yard held".to_string()
+            }
+        } else if work.cards_read[index] {
+            format!("card read — the yard shows: {seen}")
+        } else {
+            "unread — the yard unexamined".to_string()
+        };
+        let _ = card;
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 34.0,
+            Some(400.0),
+            &state,
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &format!(
+            "The walker stands at step {} of 6{}.",
+            work.walked,
+            if work.refused {
+                "; the cracked stone stands refused"
+            } else {
+                ""
+            }
+        ),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// Chamber 2's panel: the eight placards with their calls,
+/// and after the referee's stamp, their truth and the
+/// annotations under the misses.
+fn build_f5c2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor5.chambers[1].work;
+    for (index, (text, _, _)) in content::TENANCIES.iter().enumerate() {
+        let rect = geom::f5_placard_row(index);
+        let called = work.predictions[index];
+        let label = if work.judged {
+            let missed = crate::puzzles::tenancy_missed(&work.predictions, index);
+            format!(
+                "TENANCY {} — {}",
+                index + 1,
+                if missed { "MISS" } else { "TRUE" }
+            )
+        } else {
+            format!(
+                "TENANCY {} — {}",
+                index + 1,
+                match called {
+                    1 => "SOUND",
+                    2 => "UNSOUND",
+                    _ => "uncalled",
+                }
+            )
+        };
+        spawn_button(commands, stage, rect, &label, pal, false, fonts);
+        let state = if work.judged && crate::puzzles::tenancy_missed(&work.predictions, index) {
+            match work.annotations[index] {
+                Some(rule) => format!("{text} · rule: {}", content::TENANCY_RULES[rule]),
+                None => format!("{text} · rule: — unannotated"),
+            }
+        } else {
+            text.to_string()
+        };
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 34.0,
+            Some(400.0),
+            &state,
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    let called_count = work
+        .predictions
+        .iter()
+        .filter(|called| **called != 0)
+        .count();
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &if work.judged {
+            format!(
+                "Stamped: {} of 8 true.",
+                crate::puzzles::tenancy_correct(&work.predictions)
+            )
+        } else {
+            format!("Calls made: {called_count} of 8.")
+        },
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
 }
 
 /// Floor 5's hub: the Veilworks — five chamber doors, the camp

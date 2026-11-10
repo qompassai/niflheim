@@ -1329,3 +1329,86 @@ mod floor4_step4_tests {
         assert_eq!(best, 16, "no seating of the free four beats the budget");
     }
 }
+
+// ---------------------------------------------------------------------------
+// Floor 5 — the Veilworks: the Pointer Walks and the Two
+// Tenants. The judges are pure over the recorded work: the
+// walk is six stones resolved under their cards, one of them
+// refused; the tenancies are eight calls the referee stamps,
+// with every miss annotated by its deciding rule.
+// ---------------------------------------------------------------------------
+
+/// Whether a Pointer Walks step's stone is cracked (the
+/// footing fails its card).
+pub fn step_cracked(step: usize) -> bool {
+    crate::content::STEP_CARDS
+        .get(step)
+        .map(|(_, _, cracked)| *cracked)
+        .unwrap_or(false)
+}
+
+/// How many of the eight tenancy calls are true.
+pub fn tenancy_correct(predictions: &[u8; 8]) -> usize {
+    crate::content::TENANCIES
+        .iter()
+        .zip(predictions.iter())
+        .filter(|((_, sound, _), called)| **called != 0 && (**called == 1) == *sound)
+        .count()
+}
+
+/// Whether a tenancy call was made and missed.
+pub fn tenancy_missed(predictions: &[u8; 8], index: usize) -> bool {
+    let Some((_, sound, _)) = crate::content::TENANCIES.get(index) else {
+        return false;
+    };
+    let called = predictions.get(index).copied().unwrap_or(0);
+    called != 0 && (called == 1) != *sound
+}
+
+#[cfg(test)]
+mod floor5_tests {
+    use super::*;
+
+    /// Validation: exactly one of the six stones is cracked,
+    /// and it is the fourth.
+    #[test]
+    fn exactly_one_step_is_cracked() {
+        let cracked: Vec<usize> = (0..6).filter(|step| step_cracked(*step)).collect();
+        assert_eq!(cracked, vec![3]);
+        assert!(!step_cracked(6), "no seventh step");
+    }
+
+    /// Validation: a perfect set of calls scores eight.
+    #[test]
+    fn tenancy_perfect_calls_score_eight() {
+        let mut predictions = [0u8; 8];
+        for (index, (_, sound, _)) in crate::content::TENANCIES.iter().enumerate() {
+            predictions[index] = if *sound { 1 } else { 2 };
+        }
+        assert_eq!(tenancy_correct(&predictions), 8);
+        assert!((0..8).all(|index| !tenancy_missed(&predictions, index)));
+    }
+
+    /// Adversarial: uncalled placards score nothing and miss
+    /// nothing — the referee cannot be rushed by silence.
+    #[test]
+    fn tenancy_uncalled_scores_zero() {
+        let predictions = [0u8; 8];
+        assert_eq!(tenancy_correct(&predictions), 0);
+        assert!((0..8).all(|index| !tenancy_missed(&predictions, index)));
+    }
+
+    /// Adversarial: an inverted call is a miss, and only the
+    /// inverted placard misses.
+    #[test]
+    fn tenancy_inverted_call_misses_alone() {
+        let mut predictions = [0u8; 8];
+        for (index, (_, sound, _)) in crate::content::TENANCIES.iter().enumerate() {
+            predictions[index] = if *sound { 1 } else { 2 };
+        }
+        predictions[1] = 1; // the repainting writer, called sound
+        assert_eq!(tenancy_correct(&predictions), 7);
+        assert!(tenancy_missed(&predictions, 1));
+        assert!(!tenancy_missed(&predictions, 0));
+    }
+}

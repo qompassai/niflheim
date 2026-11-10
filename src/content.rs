@@ -2959,7 +2959,7 @@ pub const HUNT_CHARTER: &str = "The Veilwalker runs the machine slowly under \
 
 /// The hint ladders for Floor 5's chambers. At scaffolding only the
 /// general ladder stands; each chamber's own ladder lands with it.
-pub fn floor5_chamber_hints(_chamber: usize) -> [&'static str; 4] {
+pub fn floor5_general_hints() -> [&'static str; 4] {
     [
         "The Veilworks reward the read card over the lifted tool: before any \
          work, read what the mechanism in front of you assumes — the press \
@@ -2974,4 +2974,123 @@ pub fn floor5_chamber_hints(_chamber: usize) -> [&'static str; 4] {
          the whole value, not the part you touched — look for the place \
          where a card, a tenancy, or a seam quietly narrows it.",
     ]
+}
+
+/// Floor 5 Chamber 1's six steps: each step's card (the
+/// precondition it states), the yard's account of the stone,
+/// and whether the stone is cracked. Exactly one stone is
+/// cracked — the fourth — and its card, like all the cards,
+/// is honest: it is the footing that fails the card.
+pub const STEP_CARDS: [(&str, &str, bool); 6] = [
+    (
+        "Step only where the stone is whole and pinned at both ends.",
+        "whole, pinned at both ends",
+        false,
+    ),
+    (
+        "The footing must ring true under the pole's tap, never hollow.",
+        "rings true under the tap",
+        false,
+    ),
+    (
+        "No step on a stone that shifts when the pole leans on it.",
+        "steady under the lean",
+        false,
+    ),
+    (
+        "Step only where the stone is whole — a cracked stone keeps no one.",
+        "CRACKED across the middle",
+        true,
+    ),
+    (
+        "The stone must sit flush with its neighbours, lip to lip.",
+        "flush with its neighbours",
+        false,
+    ),
+    (
+        "The last stone must be dry; a wet sheen slides underfoot.",
+        "dry, dusted with chalk",
+        false,
+    ),
+];
+
+/// The aliasing rules the Two Tenants are judged by — the
+/// annotation names one of these as the rule that decided a
+/// miss.
+pub const TENANCY_RULES: [&str; 5] = [
+    "Any number of readers may hold a value at once.",
+    "A writer holds the value alone: no reader, no second writer.",
+    "While a writer holds it, no reader may be inside.",
+    "Two writers never hold the same value at once.",
+    "A hold ends at its last use; after that, the room is free.",
+];
+
+/// Floor 5 Chamber 2's eight tenancies: the placard's text,
+/// whether the tenancy is sound, and the rule that decides
+/// it (the annotation a miss must name).
+pub const TENANCIES: [(&str, bool, usize); 8] = [
+    ("Three readers share the ledger, reading in turn.", true, 0),
+    (
+        "A writer repaints the sign while two readers read it.",
+        false,
+        2,
+    ),
+    ("One writer works the room alone, the door barred.", true, 1),
+    ("Two writers take opposite ends of the same beam.", false, 3),
+    (
+        "A reader sets the book down; then a writer enters.",
+        true,
+        4,
+    ),
+    (
+        "A reader's finger holds the page while a writer rewrites it.",
+        false,
+        2,
+    ),
+    ("Four readers pass one map from hand to hand.", true, 0),
+    ("Two writers share one page, both pens moving.", false, 3),
+];
+
+/// Chamber 1's hint ladder.
+pub fn floor5_walk_hints() -> [&'static str; 4] {
+    [
+        "Read every card before its step: the walker will not move on an \
+         unread card, and the yard's account of each stone appears only \
+         with its card in hand.",
+        "Walk the sound steps in order. The card states the footing the \
+         step needs; the yard shows the footing it has — compare them \
+         before you commit your weight.",
+        "One stone in six fails its card: its card is honest, and the \
+         footing is cracked. That step is not walked; it is refused, by \
+         name, and stepped around.",
+        "The failing step is the fourth stone: its card demands a whole \
+         stone and the yard shows a crack across the middle. Read its \
+         card, press Refuse the step, and walk on — the refusal is the \
+         step.",
+    ]
+}
+
+/// Chamber 2's hint ladder.
+pub fn floor5_tenancy_hints() -> [&'static str; 4] {
+    [
+        "Call every placard before the referee is called in: SOUND if the \
+         tenancy honours the room's law, UNSOUND if it breaks it.",
+        "The law has two halves: readers may share freely, and a writer \
+         holds the room alone. Every placard turns on one of the two.",
+        "After the referee stamps the calls, each miss must be annotated \
+         with the rule that decided it — the stamp alone is not the \
+         proof; the named rule is.",
+        "The misses turn on two rules: a writer among readers breaks \
+         'while a writer holds it, no reader may be inside'; two writers \
+         together break 'two writers never hold the same value at once'.",
+    ]
+}
+
+/// Floor 5's per-chamber hint ladders, dispatched by chamber.
+pub fn floor5_chamber_hints(chamber: usize) -> [&'static str; 4] {
+    match chamber {
+        0 => floor5_walk_hints(),
+        1 => floor5_tenancy_hints(),
+        _ => floor5_general_hints(),
+    }
 }

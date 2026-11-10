@@ -326,6 +326,18 @@ pub enum El {
     F4Watch,
     /// Floor 5: watch the demonstration.
     F5Watch,
+    /// Floor 5 Chamber 1: read one step's card.
+    F5Card(u8),
+    /// Floor 5 Chamber 1: walk the next step.
+    F5Walk,
+    /// Floor 5 Chamber 1: refuse the next step by name.
+    F5RefuseStep,
+    /// Floor 5 Chamber 2: cycle one placard's call.
+    F5Placard(u8),
+    /// Floor 5 Chamber 2: call the referee.
+    F5Judge,
+    /// Floor 5 Chamber 2: cycle one miss's annotation.
+    F5Annotate(u8),
     /// Floor 4 Chamber 1: put this stone on the slate.
     F4Stone(u8),
     /// Floor 4 Chamber 1: step the slate's size down.
@@ -1136,6 +1148,36 @@ pub mod geom {
     /// FOE's door below.
     pub fn door_floor5() -> Rect {
         Rect::new(640.0, 150.0, 124.0, 124.0)
+    }
+
+    /// Floor 5 Chamber 1: one step's card row.
+    pub fn f5_card_row(step: usize) -> Rect {
+        Rect::new(380.0, 100.0 + step as f32 * 56.0, 300.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 1: walk the next step.
+    pub fn f5_walk_btn() -> Rect {
+        Rect::new(380.0, 452.0, 180.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 1: refuse the next step.
+    pub fn f5_refuse_btn() -> Rect {
+        Rect::new(580.0, 452.0, 188.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 2: one placard's row.
+    pub fn f5_placard_row(index: usize) -> Rect {
+        Rect::new(380.0, 100.0 + index as f32 * 48.0, 300.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 2: one miss's annotation cycle.
+    pub fn f5_annotate_row(index: usize) -> Rect {
+        Rect::new(688.0, 100.0 + index as f32 * 48.0, 88.0, 30.0)
+    }
+
+    /// Floor 5 Chamber 2: call the referee.
+    pub fn f5_judge_btn() -> Rect {
+        Rect::new(380.0, 508.0, 220.0, 30.0)
     }
 
     /// Floor 4 Chamber 1: one bench stone's row.
@@ -2835,6 +2877,203 @@ impl Game {
                             _ => "The Veilwalker nods at the gauze.",
                         },
                     );
+                    self.changed();
+                }
+            }
+
+            El::F5Card(step) => {
+                if let Screen::Floor5Chamber(0) = self.screen {
+                    let step = step as usize;
+                    self.expedition.floor5.chambers[0].work.cards_read[step] = true;
+                    let (card, seen, _) = content::STEP_CARDS[step];
+                    self.say(
+                        StatusKind::Info,
+                        format!("Card {} — {card} The yard shows: {seen}.", step + 1),
+                    );
+                    self.changed();
+                }
+            }
+
+            El::F5Walk => {
+                if let Screen::Floor5Chamber(0) = self.screen {
+                    let (walked, read) = {
+                        let work = &self.expedition.floor5.chambers[0].work;
+                        (
+                            work.walked,
+                            work.cards_read.get(work.walked).copied().unwrap_or(false),
+                        )
+                    };
+                    if walked >= 6 {
+                        self.say(StatusKind::Info, "The path stands walked.");
+                    } else if !read {
+                        self.say(
+                            StatusKind::Refusal,
+                            "Read the card first: the walker steps on read \
+                             cards only — an unread step is a guess with \
+                             your weight on it.",
+                        );
+                    } else if puzzles::step_cracked(walked) {
+                        self.say(
+                            StatusKind::Refusal,
+                            "The pole rings the stone and it gives a dull, \
+                             split note — the footing fails its card. This \
+                             step is not walked; it is refused, by name.",
+                        );
+                    } else {
+                        self.expedition.floor5.chambers[0].work.walked += 1;
+                        let now = self.expedition.floor5.chambers[0].work.walked;
+                        self.say(
+                            StatusKind::Info,
+                            if now == 6 {
+                                "The last stone takes her weight true. The \
+                                 path stands walked."
+                                    .to_string()
+                            } else {
+                                format!("Step {} stands. The yard holds.", now)
+                            },
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F5RefuseStep => {
+                if let Screen::Floor5Chamber(0) = self.screen {
+                    let (walked, read) = {
+                        let work = &self.expedition.floor5.chambers[0].work;
+                        (
+                            work.walked,
+                            work.cards_read.get(work.walked).copied().unwrap_or(false),
+                        )
+                    };
+                    if walked >= 6 {
+                        self.say(StatusKind::Info, "The path stands walked.");
+                    } else if !read {
+                        self.say(
+                            StatusKind::Refusal,
+                            "Read the card first: a refusal, like a step, \
+                             is made on the card — not on a hunch.",
+                        );
+                    } else if puzzles::step_cracked(walked) {
+                        let work = &mut self.expedition.floor5.chambers[0].work;
+                        work.refused = true;
+                        work.walked += 1;
+                        self.say(
+                            StatusKind::Good,
+                            "Refused by name: the cracked stone is stepped \
+                             around, its card honoured in the only way it \
+                             can be. The refusal stands on the record.",
+                        );
+                    } else {
+                        self.say(
+                            StatusKind::Refusal,
+                            "This footing holds: the yard rings true and \
+                             the card allows the step. Refusing a sound \
+                             step is not caution — it is a misread card.",
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F5Placard(index) => {
+                if let Screen::Floor5Chamber(1) = self.screen {
+                    let index = index as usize;
+                    if self.expedition.floor5.chambers[1].work.judged {
+                        self.say(
+                            StatusKind::Info,
+                            "The referee has stamped the calls; what \
+                             remains is the annotations.",
+                        );
+                    } else if let Some(slot) = self.expedition.floor5.chambers[1]
+                        .work
+                        .predictions
+                        .get_mut(index)
+                    {
+                        *slot = (*slot + 1) % 3;
+                        let word = match *slot {
+                            1 => "SOUND",
+                            2 => "UNSOUND",
+                            _ => "uncalled",
+                        };
+                        self.say(
+                            StatusKind::Info,
+                            format!("Tenancy {} called {word}.", index + 1),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F5Judge => {
+                if let Screen::Floor5Chamber(1) = self.screen {
+                    let work = &mut self.expedition.floor5.chambers[1].work;
+                    if work.judged {
+                        self.say(
+                            StatusKind::Info,
+                            "The referee has already stamped this set.",
+                        );
+                    } else if work.predictions.contains(&0) {
+                        self.say(
+                            StatusKind::Refusal,
+                            "Call every placard first: the referee stamps \
+                             a full set, or none.",
+                        );
+                    } else {
+                        work.judged = true;
+                        let correct = puzzles::tenancy_correct(&work.predictions);
+                        self.say(
+                            StatusKind::Info,
+                            format!(
+                                "The referee stamps the set: {correct} of 8 \
+                                 true. {}",
+                                if correct >= 7 {
+                                    "The calls stand — annotate every miss \
+                                     with its deciding rule."
+                                } else {
+                                    "Below the bar of seven: reset the \
+                                     chamber and call them again."
+                                }
+                            ),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F5Annotate(index) => {
+                if let Screen::Floor5Chamber(1) = self.screen {
+                    let index = index as usize;
+                    let missed = {
+                        let work = &self.expedition.floor5.chambers[1].work;
+                        work.judged && puzzles::tenancy_missed(&work.predictions, index)
+                    };
+                    if !missed {
+                        self.say(
+                            StatusKind::Refusal,
+                            "Only a stamped miss is annotated: the true \
+                             calls need no rule named under them.",
+                        );
+                    } else {
+                        let work = &mut self.expedition.floor5.chambers[1].work;
+                        let next = match work.annotations[index] {
+                            None => Some(0),
+                            Some(rule) if rule + 1 < content::TENANCY_RULES.len() => Some(rule + 1),
+                            Some(_) => None,
+                        };
+                        work.annotations[index] = next;
+                        self.say(
+                            StatusKind::Info,
+                            match next {
+                                Some(rule) => format!(
+                                    "Tenancy {} annotated: {}",
+                                    index + 1,
+                                    content::TENANCY_RULES[rule]
+                                ),
+                                None => format!("Tenancy {} annotation cleared.", index + 1),
+                            },
+                        );
+                    }
                     self.changed();
                 }
             }
@@ -4972,9 +5211,24 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
 /// The Floor 5 chambers' panel elements: the watch; each
 /// chamber's own controls land with its step.
 fn layout_floor5_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: usize) {
-    let _ = game;
-    let _ = chamber;
     els.push((El::F5Watch, geom::f2_watch()));
+    if chamber == 0 {
+        for step in 0..content::STEP_CARDS.len() {
+            els.push((El::F5Card(step as u8), geom::f5_card_row(step)));
+        }
+        els.push((El::F5Walk, geom::f5_walk_btn()));
+        els.push((El::F5RefuseStep, geom::f5_refuse_btn()));
+    }
+    if chamber == 1 {
+        for index in 0..content::TENANCIES.len() {
+            els.push((El::F5Placard(index as u8), geom::f5_placard_row(index)));
+            let work = &game.expedition.floor5.chambers[1].work;
+            if work.judged && puzzles::tenancy_missed(&work.predictions, index) {
+                els.push((El::F5Annotate(index as u8), geom::f5_annotate_row(index)));
+            }
+        }
+        els.push((El::F5Judge, geom::f5_judge_btn()));
+    }
 }
 
 /// The Floor 4 chambers' panel elements: the watch, Chamber
@@ -6188,6 +6442,94 @@ mod tests {
         game.pointer_down(rect.cx(), rect.cy());
         game.pointer_up(rect.cx(), rect.cy());
         assert_eq!(game.screen, Screen::Floor5Hub);
+    }
+
+    /// Floor 5 Step 2, driven on the GUI surface: the Pointer
+    /// Walks is read, walked, and refused at the cracked
+    /// stone, and the Two Tenants are called, stamped, and
+    /// annotated — both chambers through the seal.
+    #[test]
+    fn floor5_chambers_one_and_two_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn to_floor5_hub(game: &mut Game) {
+            game.screen = Screen::Hub;
+            game.expedition.foe.state = FoeState::Fallen;
+            game.expedition.foe.gate_passed = true;
+            game.expedition.floor2.foe.state = FoeState::Fallen;
+            game.expedition.floor3.foe.gate_passed = true;
+            for chamber in game.expedition.floor2.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            for chamber in game.expedition.floor4.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor4.foe.state = FoeState::Fallen;
+            click(game, El::DoorFloor4);
+            click(game, El::DoorFloor5);
+            assert_eq!(game.screen, Screen::Floor5Hub);
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        to_floor5_hub(&mut game);
+        // Chamber 1 — the Pointer Walks.
+        click(&mut game, El::Floor5Door(0));
+        click(&mut game, El::F5Watch);
+        for step in 0..6u8 {
+            click(&mut game, El::F5Card(step));
+            if step == 3 {
+                click(&mut game, El::F5RefuseStep);
+            } else {
+                click(&mut game, El::F5Walk);
+            }
+        }
+        assert!(game.expedition.floor5_diagnosed(0));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor5.chambers[0].state,
+            ChamberState::Repaired
+        );
+        // Chamber 2 — the Two Tenants.
+        click(&mut game, El::TabFloor);
+        to_floor5_hub(&mut game);
+        click(&mut game, El::Floor5Door(1));
+        click(&mut game, El::F5Watch);
+        for (index, (_, sound, _)) in content::TENANCIES.iter().enumerate() {
+            // One deliberate miss: the repainting writer (index
+            // 1) is called sound.
+            let presses = if index == 1 || *sound { 1 } else { 2 };
+            for _ in 0..presses {
+                click(&mut game, El::F5Placard(index as u8));
+            }
+        }
+        click(&mut game, El::F5Judge);
+        assert!(game.expedition.floor5.chambers[1].work.judged);
+        assert!(!game.expedition.floor5_diagnosed(1));
+        for _ in 0..3 {
+            click(&mut game, El::F5Annotate(1));
+        }
+        assert_eq!(
+            game.expedition.floor5.chambers[1].work.annotations[1],
+            Some(2)
+        );
+        assert!(game.expedition.floor5_diagnosed(1));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor5.chambers[1].state,
+            ChamberState::Repaired
+        );
     }
     /// Floor 4 Step 3, driven on the GUI surface: the crests
     /// are cut to their niches and measured, and the treaty
