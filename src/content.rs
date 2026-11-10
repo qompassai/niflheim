@@ -3222,6 +3222,259 @@ pub fn floor5_beam_hints() -> [&'static str; 4] {
          right.",
     ]
 }
+/// One UB Hunt station: the work it claims to do, the
+/// seeded fault it carries (an index into `FAULT_KINDS`),
+/// and — for a faulted station — the three contracts its
+/// card may show, exactly one of them true.
+pub struct Station {
+    /// The station's name.
+    pub name: &'static str,
+    /// The work it claims to do, as the room placards it.
+    pub duty: &'static str,
+    /// The seeded fault's index into `FAULT_KINDS`, if any.
+    pub fault: Option<usize>,
+    /// The three contracts offered for a faulted station;
+    /// blank for sound ones.
+    pub contracts: [&'static str; 3],
+    /// The true contract's index (faulted stations only).
+    pub true_contract: u8,
+}
+
+/// The three seeded fault shapes, at miniature size: the
+/// tenth class's roots, one per faulted station.
+pub const FAULT_KINDS: [&str; 3] = [
+    "two writers fused into one tenancy",
+    "a room read after it was emptied",
+    "a read of an unfilled blank",
+];
+
+/// The UB Hunt's six stations (FULL-DESIGN §19 / Floor 5
+/// brief, Chamber 5). Three are sound; three carry one
+/// seeded fault each — the Twin Pens (two writers fused),
+/// the Second Reading (read after the emptying), the Blank
+/// Ledger (read of an unfilled blank).
+pub const STATIONS: [Station; 6] = [
+    Station {
+        name: "The Night Store",
+        duty: "It keeps lent sections ready overnight and returns each \
+               at dawn, to its keeper only.",
+        fault: None,
+        contracts: ["", "", ""],
+        true_contract: 0,
+    },
+    Station {
+        name: "The Twin Pens",
+        duty: "Two pens keep one room's diary together, trading it \
+               back and forth through the day.",
+        fault: Some(0),
+        contracts: [
+            "Two hands may write one room whenever their turns are \
+             called in order.",
+            "Writers sharing a room must simply be careful.",
+            "One writer at a time holds the room; a second writer \
+             waits until the first's hold is spent.",
+        ],
+        true_contract: 2,
+    },
+    Station {
+        name: "The Second Reading",
+        duty: "When a room is emptied at dusk, the reader reads it \
+               once more, to be sure the emptying took.",
+        fault: Some(1),
+        contracts: [
+            "What has been emptied is gone: no reading of it stands \
+             after the emptying.",
+            "An emptied room may be read once more, to be sure it is \
+             empty.",
+            "A careful reader may read emptied rooms at need.",
+        ],
+        true_contract: 0,
+    },
+    Station {
+        name: "The Fresh Press",
+        duty: "It prints each page once, in order, and hands it to \
+               no other press.",
+        fault: None,
+        contracts: ["", "", ""],
+        true_contract: 0,
+    },
+    Station {
+        name: "The Blank Ledger",
+        duty: "A new page is read at intake to learn its markings \
+               before anything is written on it.",
+        fault: Some(2),
+        contracts: [
+            "A blank page reads as whatever the reader expects.",
+            "An unfilled page is not read: the face refuses the \
+             reading until a first write has landed.",
+            "Blank pages are read as zero, by long custom.",
+        ],
+        true_contract: 1,
+    },
+    Station {
+        name: "The Quiet Shelf",
+        duty: "One writer or many readers, by the old law: never \
+               both at once.",
+        fault: None,
+        contracts: ["", "", ""],
+        true_contract: 0,
+    },
+];
+
+/// Chamber 5's hint ladder: the hunt's method — lens first,
+/// verdict second, the card to close — and the seam the
+/// fourth rung names.
+pub fn floor5_hunt_hints() -> [&'static str; 4] {
+    [
+        "Lens first, verdict second: a verdict entered blind is a \
+         guess wearing a badge.",
+        "Three of the six stations hunt. Their faults are the old \
+         shapes at miniature size: hands fused, a read after the \
+         emptying, a read of nothing.",
+        "A faulted station is not convicted by its verdict alone: \
+         its card must also be set to the one true contract of the \
+         three it offers.",
+        "The seam: undefined behaviour is not a mystery — it is a \
+         contract broken at exactly one place, here at miniature \
+         size as the FOE works it at full size: find where the \
+         promise and the act part, and the station names itself.",
+    ]
+}
+
+/// The FOE's name: the tenth failure class with a face.
+pub const FOE5_NAME: &str = "The Thing Behind the Veil";
+
+/// The FOE's door speaks this on entry.
+pub const FOE5_INTRO: &str = "Behind the last gauze the workshops share one long beam — \
+    and something has been borrowing it out of both ends at once.";
+
+/// The FOE chamber's inscription.
+pub const FOE5_INSCRIPTION: &str = "Here is kept the record of the tenth failure class: THE \
+    MOVING FLOOR — a store that grows, shrinks, or slides while a \
+    reference into it stands in another hand, so the reference comes \
+    to name a different room, or none. The Thing Behind the Veil is \
+    that class with a face: a beam borrowed at both ends, grown in \
+    the middle, and read after the growth by a lens that trusted the \
+    old address.";
+
+/// The FOE's demonstration.
+pub const FOE5_DEMONSTRATION: &str = "The Veilwalker draws the gauze aside. The beam hangs \
+    in its frame, lent at both ends, chalked with its six cells — \
+    and while you watch, a seventh cell buds in the middle and every \
+    chalked address slides one place down.";
+
+/// The codex stone the Thing's fall records.
+pub const ICE_STONE: &str = "The Ice Stone";
+
+/// The pack loot the Thing's fall records.
+pub const VEILWALKERS_BUFFER: &str = "The Veilwalker's Buffer";
+
+/// The trace's three exhibits, in the referee's order: a
+/// (name, spoken account) pair each. The names are what an
+/// out-of-order refusal cites as the missing prior sight.
+pub const FOE5_EXHIBITS: [(&str, &str); 3] = [
+    (
+        "a live shared loan",
+        "Exhibit, first sight: a shared loan stands live on the \
+         beam — the Splitter's end borrowed by the night watch, its \
+         address chalked and trusted.",
+    ),
+    (
+        "a growth while the loan was out",
+        "Exhibit, second sight: with the loan still out, the beam \
+         grows — a cell buds mid-beam and every address past the bud \
+         slides. The loan's chalk now names the wrong cell.",
+    ),
+    (
+        "the lens's verdict",
+        "Exhibit, third sight: the lens reads the chalked address \
+         and finds a stranger's cell wearing the borrowed name. \
+         Verdict: the floor moved under a standing reference — the \
+         tenth class, in the flesh.",
+    ),
+];
+
+/// The referee's five standing-gate cases: a (name, walked
+/// outcome) pair each, judged for real against the beam's
+/// model in `puzzles::beam_case_holds`.
+pub const FOE5_CASES: [(&str, &str); 5] = [
+    (
+        "Growth under a loan",
+        "Case one walked: with a loan out, the beam is asked to \
+         grow — and refuses at the face. The floor holds.",
+    ),
+    (
+        "Access past the end",
+        "Case two walked: a hand reaches one past the last cell — \
+         refused, plainly. No undefined step is taken.",
+    ),
+    (
+        "The drop order",
+        "Case three walked: the beam is dropped cell by cell — each \
+         exactly once, none twice, none leaked.",
+    ),
+    (
+        "The empty element",
+        "Case four walked: an unfilled cell refuses access — and \
+         the beam still grows beside it. Emptiness is a state, not \
+         a hole.",
+    ),
+    (
+        "Overflow at capacity",
+        "Case five walked: at its stated capacity the beam refuses \
+         one more cell — refused, not wrapped, not spilled.",
+    ),
+];
+
+/// The beam's contract card, as the repair rewrites it:
+/// three lines, three phrasings each, exactly one checkable
+/// truth per line — a loan freezes the whole beam; growth is
+/// refused while any loan is out; the face exposes no
+/// operation that can move the beam under a reference.
+pub const FOE5_CARD: [[&str; 3]; 3] = [
+    [
+        "A loan leans on the beam, and the beam leans back.",
+        "A loan freezes the whole beam: while it stands, the beam \
+         does not move, grow, or shrink.",
+        "A loan covers the part it touches; the rest of the beam is \
+         free.",
+    ],
+    [
+        "Growth waits politely until every loan comes home.",
+        "It grows fastest when no hand is watching.",
+        "Growth is refused while any loan is out — refused at the \
+         face, by name.",
+    ],
+    [
+        "A reference, once given, is the caller's own lookout.",
+        "No operation the face exposes can move the beam under a \
+         standing reference.",
+        "The face shows every operation, and the careful may audit \
+         them.",
+    ],
+];
+
+/// The checkable phrasing per line of the beam's card.
+pub const FOE5_CARD_KEY: [u8; 3] = [1, 2, 1];
+
+/// The FOE's hint ladder: exhibits in order, the referee's
+/// walk, the card rewritten — and the seam the fourth rung
+/// names.
+pub fn floor5_foe_hints() -> [&'static str; 4] {
+    [
+        "Three sights, in the referee's order: the loan, the \
+         growth, the verdict. The veil opens one layer at a time.",
+        "Then the referee's five cases, walked one by one against \
+         the beam — growth, reach, drops, the empty cell, the brim.",
+        "The strike also wants the beam's card rewritten: three \
+         lines, each with exactly one checkable truth, like the rack \
+         in Chamber 3.",
+        "The seam: a shared loan freezes the whole beam because \
+         addresses are the beam's word — growth under a loan breaks \
+         the word. The card's truths are the freeze, the refusal, \
+         and no hidden mover.",
+    ]
+}
 /// Floor 5's per-chamber hint ladders, dispatched by chamber.
 pub fn floor5_chamber_hints(chamber: usize) -> [&'static str; 4] {
     match chamber {

@@ -19,16 +19,17 @@ use serde::{Deserialize, Serialize};
 
 use crate::content::{
     ADMISSION_SERVICES, BEASTS, BRASS_EYE_STONE, FOE_ADMISSIONS, FOE_CHALLENGE, GATE_SCAFFOLD,
-    GATE2_SCAFFOLD, GATEHOUSE_KEY, HERALD_LETTERS, INTERNERS_HOARD, LANTERN_STONE, LEASES_INITIAL,
-    LENS_STONE, PACK_ITEMS, PLACARDS, PLANK_STONE, PLUGIN_MENAGERIE, PLUMB_LINE, ROSTER_GROUPS,
+    GATE2_SCAFFOLD, GATEHOUSE_KEY, HERALD_LETTERS, ICE_STONE, INTERNERS_HOARD, LANTERN_STONE,
+    LEASES_INITIAL, LENS_STONE, PACK_ITEMS, PLACARDS, PLANK_STONE, PLUGIN_MENAGERIE, PLUMB_LINE,
+    ROSTER_GROUPS, VEILWALKERS_BUFFER,
 };
 use crate::core::{SAVE_FORMAT_VERSION, SAVE_MAGIC, SaveError, Settings, TextScale};
 use crate::puzzles::{
     RecordKind, bound_exact, bound_missing, bound_unjustified, collar_route_ok,
-    collision_reading_ok, day_plan_overlap, errand_choice_ok, foe_census, foe_uncopiable_rows,
-    foe2_disagreement_row, foe2_row_disagrees, identification_ok, judge_placards, kennel_choice_ok,
-    lease_chain_problem, packing_problems, reconciled_toll, record_fits_slot, registry_bars_ok,
-    run_delivery, trick_charter_ok,
+    collision_reading_ok, day_plan_overlap, errand_choice_ok, foe_card_repaired, foe_census,
+    foe_uncopiable_rows, foe2_disagreement_row, foe2_row_disagrees, hunt_complete,
+    identification_ok, judge_placards, kennel_choice_ok, lease_chain_problem, packing_problems,
+    reconciled_toll, record_fits_slot, registry_bars_ok, run_delivery, trick_charter_ok,
 };
 
 /// Most bytes of editor draft a save will carry.
@@ -663,6 +664,17 @@ pub struct VeilWork {
     /// Chamber 2: per-miss annotation (the deciding rule).
     #[serde(default)]
     pub annotations: [Option<usize>; 8],
+    /// Chamber 5: this station has been under the lens.
+    #[serde(default)]
+    pub lensed: [bool; 6],
+    /// Chamber 5: the verdict entered per station (0
+    /// unentered, 1 sound, 2 faulted).
+    #[serde(default)]
+    pub verdicts: [u8; 6],
+    /// Chamber 5: the contract showing on each station's
+    /// card (only a faulted station's card is judged).
+    #[serde(default)]
+    pub cards: [u8; 6],
     /// Chamber 3: the chosen phrasing per line, per tool.
     #[serde(default)]
     pub card_lines: [[u8; 3]; 4],
@@ -707,6 +719,16 @@ pub struct Floor5FoeProgress {
     pub strike: StrikePhase,
     /// The date inscribed when the FOE fell (`YYYY-MM-DD`).
     pub fallen_date: Option<String>,
+    /// The trace's exhibits, in the referee's order: the
+    /// live loan, the growth, the lens's verdict.
+    #[serde(default)]
+    pub exhibits: [bool; 3],
+    /// The referee's five standing-gate cases, walked.
+    #[serde(default)]
+    pub walked: [bool; 5],
+    /// The beam's rewritten contract card, line by line.
+    #[serde(default)]
+    pub card: [u8; 3],
 }
 
 /// The whole of Floor 5: five chambers and the FOE.
@@ -737,6 +759,9 @@ impl Floor5Progress {
                 gate_passed: false,
                 strike: StrikePhase::Idle,
                 fallen_date: None,
+                exhibits: [false; 3],
+                walked: [false; 5],
+                card: [0; 3],
             },
             foe_hints_used: 0,
         }
@@ -2786,6 +2811,7 @@ impl Expedition {
                     && work.worked == [true, true]
                     && work.dropped == [true, true]
             }
+            4 => hunt_complete(&work.lensed, &work.verdicts, &work.cards),
             _ => false,
         }
     }
@@ -2924,6 +2950,160 @@ impl Expedition {
     /// Whether Floor 5 is complete: five chambers + FOE.
     pub fn floor5_complete(&self) -> bool {
         self.floor5_chambers_repaired() == 5 && self.floor5.foe.state == FoeState::Fallen
+    }
+
+    /// Exhibit one sight of the trace, in the referee's
+    /// order: the live shared loan, the growth while it was
+    /// out, the lens's verdict. A sight taken out of order is
+    /// refused, naming the sight that must come first; the
+    /// first sight taken stands the Thing Exposed.
+    pub fn floor5_foe_exhibit(&mut self, exhibit: usize) -> Result<String, Refusal> {
+        if exhibit >= crate::content::FOE5_EXHIBITS.len() {
+            return Err(Refusal("no such sight in the trace".to_string()));
+        }
+        if self.floor5.foe.exhibits[exhibit] {
+            return Ok("That sight already stands exhibited.".to_string());
+        }
+        for prior in 0..exhibit {
+            if !self.floor5.foe.exhibits[prior] {
+                return Err(Refusal(format!(
+                    "the trace is read in order: first, {} — nothing \
+                     stands behind the veil until each sight follows \
+                     the last",
+                    crate::content::FOE5_EXHIBITS[prior].0
+                )));
+            }
+        }
+        self.floor5.foe.exhibits[exhibit] = true;
+        if self.floor5.foe.state == FoeState::Standing {
+            self.floor5.foe.state = FoeState::Exposed;
+        }
+        Ok(crate::content::FOE5_EXHIBITS[exhibit].1.to_string())
+    }
+
+    /// The Thing's proof, whole: the trace exhibited in
+    /// order, all three sights.
+    pub fn floor5_foe_proof_complete(&self) -> bool {
+        self.floor5.foe.exhibits.iter().all(|seen| *seen)
+    }
+
+    /// Walk one of the referee's five standing-gate cases
+    /// against the beam: the case is run on the model in
+    /// `puzzles`, and its outcome must be the discipline's.
+    /// The walk waits on the diagnosis — cases are run
+    /// against a diagnosed fault, not a rumour.
+    pub fn floor5_foe_walk_case(&mut self, case: usize) -> Result<String, Refusal> {
+        if !self.floor5_foe_proof_complete() {
+            return Err(Refusal(
+                "the referee walks cases against a diagnosed fault, \
+                 not a rumour: exhibit the trace first"
+                    .to_string(),
+            ));
+        }
+        if case >= crate::content::FOE5_CASES.len() {
+            return Err(Refusal("no such case on the referee's slate".to_string()));
+        }
+        if self.floor5.foe.walked[case] {
+            return Ok("That case already stands walked.".to_string());
+        }
+        if !crate::puzzles::beam_case_holds(case) {
+            return Err(Refusal(
+                "the case does not hold — the beam's discipline is \
+                 not what its card promises"
+                    .to_string(),
+            ));
+        }
+        self.floor5.foe.walked[case] = true;
+        self.floor5_foe_refresh_gate();
+        Ok(crate::content::FOE5_CASES[case].1.to_string())
+    }
+
+    /// The gate is the referee's walk: all five cases hold.
+    fn floor5_foe_refresh_gate(&mut self) {
+        let foe = &mut self.floor5.foe;
+        foe.gate_passed = foe.walked.iter().all(|done| *done);
+    }
+
+    /// The repair stands when the beam's card shows its
+    /// three checkable truths.
+    pub fn floor5_foe_repair_ok(&self) -> bool {
+        foe_card_repaired(&self.floor5.foe.card)
+    }
+
+    /// Arm the Thing's strike: the trace exhibited in order,
+    /// the referee's walk complete, and the beam's card
+    /// rewritten — as with every FOE.
+    pub fn floor5_foe_arm_strike(&mut self) -> Result<(), Refusal> {
+        if self.floor5.foe.state == FoeState::Fallen {
+            return Err(Refusal(
+                "the Thing has already stepped out from behind the veil".to_string(),
+            ));
+        }
+        if !self.floor5_foe_proof_complete() {
+            return Err(Refusal(
+                "the strike sleeps until the trace stands exhibited: \
+                 the loan, the growth, the lens's verdict, in order"
+                    .to_string(),
+            ));
+        }
+        if !self.floor5.foe.gate_passed {
+            return Err(Refusal(
+                "the strike sleeps until the referee's walk stands \
+                 complete: five cases against the beam"
+                    .to_string(),
+            ));
+        }
+        if !self.floor5_foe_repair_ok() {
+            return Err(Refusal(
+                "the strike sleeps until the beam's card stands \
+                 rewritten: three lines, three checkable truths"
+                    .to_string(),
+            ));
+        }
+        self.floor5.foe.strike = StrikePhase::Armed;
+        Ok(())
+    }
+
+    /// Confirm the strike: the beam is re-hung unborrowed,
+    /// the veil drawn aside for good, and the Ice Stone and
+    /// the Veilwalker's Buffer change hands.
+    pub fn floor5_foe_confirm_strike(&mut self, date: &str) -> Result<String, Refusal> {
+        if self.floor5.foe.state == FoeState::Fallen {
+            return Err(Refusal(
+                "the Thing has already stepped out from behind the veil".to_string(),
+            ));
+        }
+        if self.floor5.foe.strike != StrikePhase::Armed {
+            return Err(Refusal(
+                "the strike is not armed — press the seal first".to_string(),
+            ));
+        }
+        self.floor5.foe.strike = StrikePhase::Idle;
+        self.floor5.foe.state = FoeState::Fallen;
+        self.floor5.foe.fallen_date = Some(date.to_string());
+        if !self.codex.iter().any(|stone| stone == ICE_STONE) {
+            self.codex.push(ICE_STONE.to_string());
+        }
+        if !self.pack.iter().any(|loot| loot == VEILWALKERS_BUFFER) {
+            self.pack.push(VEILWALKERS_BUFFER.to_string());
+        }
+        Ok("The strike lands — not a beam smashed, but a discipline \
+            restored: the loans are called home, the chalk is struck \
+            through, and the beam is re-hung under the rewritten card, \
+            its addresses good because they cannot move. Behind the \
+            gauze there is only gauze."
+            .to_string())
+    }
+
+    /// Record that the player read a Thing hint rung.
+    pub fn floor5_foe_view_hint(&mut self) -> u8 {
+        self.floor5.foe_hints_used = (self.floor5.foe_hints_used + 1).min(4);
+        self.floor5.foe_hints_used
+    }
+
+    /// The deepest Thing hint rung recorded.
+    pub fn floor5_foe_hints_used(&self) -> u8 {
+        self.floor5.foe_hints_used
     }
     /// Take the dimension book down: the re-survey may begin,
     /// and the Foundation stands Exposed.
@@ -3910,6 +4090,65 @@ mod tests {
         );
     }
 
+    /// Floor 5's UB Hunt, judged at the state level: the
+    /// full assignment repairs Chamber 5; any omission
+    /// leaves it diagnosed-false.
+    #[test]
+    fn floor5_hunt_judged() {
+        let mut expedition = Expedition::new();
+        assert!(!expedition.floor5_diagnosed(4));
+        let work = &mut expedition.floor5.chambers[4].work;
+        work.lensed = [true; 6];
+        work.verdicts = [1, 2, 2, 1, 2, 1];
+        work.cards = [0, 2, 0, 0, 1, 0];
+        assert!(expedition.floor5_diagnosed(4));
+        expedition.floor5.chambers[4].work.cards[2] = 1;
+        assert!(!expedition.floor5_diagnosed(4));
+    }
+
+    /// The Thing's arc at the state level: exhibits refuse
+    /// out of order naming the missing sight; the walk waits
+    /// on the diagnosis; the strike waits on proof, gate,
+    /// and card in turn; the fall records stone and loot.
+    #[test]
+    fn floor5_foe_arc() {
+        let mut expedition = Expedition::new();
+        assert!(expedition.floor5_foe_arm_strike().is_err());
+        let refusal = expedition.floor5_foe_exhibit(1).unwrap_err();
+        assert!(refusal.0.contains("a live shared loan"), "{}", refusal.0);
+        assert!(expedition.floor5_foe_walk_case(0).is_err());
+        expedition.floor5_foe_exhibit(0).expect("loan");
+        assert_eq!(expedition.floor5.foe.state, FoeState::Exposed);
+        expedition.floor5_foe_exhibit(1).expect("growth");
+        expedition.floor5_foe_exhibit(2).expect("verdict");
+        assert!(expedition.floor5_foe_proof_complete());
+        assert!(expedition.floor5_foe_arm_strike().is_err());
+        for case in 0..5 {
+            expedition.floor5_foe_walk_case(case).expect("case");
+        }
+        assert!(expedition.floor5.foe.gate_passed);
+        assert!(expedition.floor5_foe_arm_strike().is_err());
+        expedition.floor5.foe.card = crate::content::FOE5_CARD_KEY;
+        assert!(expedition.floor5_foe_repair_ok());
+        expedition.floor5_foe_arm_strike().expect("arm");
+        expedition
+            .floor5_foe_confirm_strike("2026-11-10")
+            .expect("confirm");
+        assert_eq!(expedition.floor5.foe.state, FoeState::Fallen);
+        assert!(
+            expedition
+                .codex
+                .iter()
+                .any(|stone| stone == crate::content::ICE_STONE)
+        );
+        assert!(
+            expedition
+                .pack
+                .iter()
+                .any(|loot| loot == crate::content::VEILWALKERS_BUFFER)
+        );
+        assert!(expedition.floor5_foe_confirm_strike("2026-11-10").is_err());
+    }
     /// Floor 5 Step 3 state: the cards judge on all twelve
     /// lines checkable, and the beam on a sound seam with the
     /// referee's walk complete — reach refused, halves

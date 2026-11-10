@@ -1027,6 +1027,7 @@ fn rebuild_now(
         }
         Screen::Floor3Foe => build_floor3_foe(commands, game, &pal, fonts, stage),
         Screen::Floor4Foe => build_floor4_foe(commands, game, &pal, fonts, stage),
+        Screen::Floor5Foe => build_floor5_foe(commands, game, &pal, fonts, stage),
         Screen::Chamber(index) => build_chamber(commands, game, &pal, fonts, stage, index),
         Screen::Foe => build_foe(commands, game, &pal, fonts, stage),
         Screen::Floor2Foe => build_foe2(commands, game, &pal, fonts, stage),
@@ -1205,6 +1206,7 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
 
         Screen::Floor3Foe => "Floor 3 · The Gatehouse Release".to_string(),
         Screen::Floor4Foe => "Floor 4 · The Crooked Foundation".to_string(),
+        Screen::Floor5Foe => "Floor 5 · The Thing Behind the Veil".to_string(),
 
         Screen::Title => "Niflheim".to_string(),
     };
@@ -6597,6 +6599,9 @@ fn build_floor5_chamber(
     if index == 3 {
         build_f5c4(commands, game, pal, fonts, stage);
     }
+    if index == 4 {
+        build_f5c5(commands, game, pal, fonts, stage);
+    }
 }
 
 /// Chamber 1's panel: the six steps with their card and
@@ -6929,6 +6934,350 @@ fn build_f5c4(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, st
     );
 }
 
+/// Chamber 5's panel: the six stations placarded on the
+/// room side with their duties (and, for the faulted, the
+/// contract their card currently shows); the lens, the
+/// verdict, and the card's cycling on the panel side.
+fn build_f5c5(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor5.chambers[4].work;
+    for (station, meta) in content::STATIONS.iter().enumerate() {
+        let top = 100.0 + station as f32 * 84.0;
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            top,
+            Some(360.0),
+            &format!(
+                "{}{}",
+                meta.name,
+                if work.lensed[station] {
+                    " · LENSED"
+                } else {
+                    ""
+                }
+            ),
+            12.5,
+            true,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            top + 20.0,
+            Some(350.0),
+            meta.duty,
+            11.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        if meta.fault.is_some() {
+            spawn_text(
+                commands,
+                stage,
+                380.0,
+                top + 52.0,
+                Some(350.0),
+                &format!("Card: {}", meta.contracts[work.cards[station] as usize]),
+                10.5,
+                false,
+                pal.ink_dim,
+                Justify::Left,
+                fonts,
+            );
+        }
+        let verdict_word = match work.verdicts[station] {
+            1 => "SOUND",
+            2 => "FAULT",
+            _ => "—",
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f5_station_row(station),
+            &format!("{} · {}", meta.name, verdict_word),
+            pal,
+            false,
+            fonts,
+        );
+        spawn_button(
+            commands,
+            stage,
+            geom::f5_lens_btn(station),
+            if work.lensed[station] {
+                "LENSED"
+            } else {
+                "LENS"
+            },
+            pal,
+            false,
+            fonts,
+        );
+        if work.verdicts[station] == 2 && meta.fault.is_some() {
+            spawn_button(
+                commands,
+                stage,
+                geom::f5_fix_btn(station),
+                "CYCLE CARD",
+                pal,
+                false,
+                fonts,
+            );
+        }
+    }
+    let lensed = work.lensed.iter().filter(|seen| **seen).count();
+    let entered = work
+        .verdicts
+        .iter()
+        .filter(|verdict| **verdict != 0)
+        .count();
+    let cards_true = content::STATIONS
+        .iter()
+        .enumerate()
+        .filter(|(station, meta)| {
+            meta.fault.is_some() && work.cards[*station] == meta.true_contract
+        })
+        .count();
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        560.0,
+        Some(440.0),
+        &format!(
+            "Lensed {lensed} of 6 · verdicts {entered} of 6 · \
+             cards true {cards_true} of 3."
+        ),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// The Thing Behind the Veil: the trace's three sights and
+/// the referee's five cases on the room side; the beam's
+/// card, rewritten line by line, on the panel side.
+fn build_floor5_foe(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Thing Behind the Veil — the shared beam",
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        Color::srgb_u8(120, 130, 140),
+        "THE BEAM",
+        "lent at both ends, grown in the middle",
+    );
+    let stone = geom::stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text(
+        commands,
+        stage,
+        stone.x + 10.0,
+        stone.y + 8.0,
+        Some(stone.w - 20.0),
+        "THE RULE",
+        12.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        stone.x + 10.0,
+        stone.y + 30.0,
+        Some(stone.w - 20.0),
+        "Addresses are the beam's word.",
+        11.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let foe = &game.expedition.floor5.foe;
+    spawn_text(
+        commands,
+        stage,
+        56.0,
+        100.0,
+        None,
+        "THE TRACE — THREE SIGHTS, IN ORDER",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (exhibit, (name, _)) in content::FOE5_EXHIBITS.iter().enumerate() {
+        let label = if foe.exhibits[exhibit] {
+            format!("EXHIBITED — {name}")
+        } else {
+            format!("EXHIBIT — {name}")
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f5foe_exhibit_btn(exhibit),
+            &label,
+            pal,
+            false,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        56.0,
+        320.0,
+        None,
+        "THE REFEREE'S FIVE CASES",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (case, (name, _)) in content::FOE5_CASES.iter().enumerate() {
+        let label = if foe.walked[case] {
+            format!("WALKED — {name}")
+        } else {
+            format!("WALK — {name}")
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f5foe_case_btn(case),
+            &label,
+            pal,
+            false,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        84.0,
+        None,
+        "The Beam's Card, Rewritten",
+        19.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        116.0,
+        Some(440.0),
+        "Three lines, three checkable truths — as the rack in \
+         Chamber 3 taught.",
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    for (line, phrasings) in content::FOE5_CARD.iter().enumerate() {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            170.0 + line as f32 * 92.0,
+            Some(440.0),
+            phrasings[foe.card[line] as usize],
+            11.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        spawn_button(
+            commands,
+            stage,
+            geom::f5foe_card_btn(line),
+            &format!("REWRITE LINE {}", line + 1),
+            pal,
+            false,
+            fonts,
+        );
+    }
+    let exhibits = foe.exhibits.iter().filter(|seen| **seen).count();
+    let cases = foe.walked.iter().filter(|done| **done).count();
+    let truths = foe
+        .card
+        .iter()
+        .zip(content::FOE5_CARD_KEY.iter())
+        .filter(|(showing, key)| showing == key)
+        .count();
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        480.0,
+        Some(440.0),
+        &format!(
+            "Trace exhibited: {exhibits} of 3.\n\
+             Cases walked: {cases} of 5{}.\n\
+             Card truths: {truths} of 3.",
+            if foe.gate_passed {
+                " — the gate stands"
+            } else {
+                ""
+            }
+        ),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    if foe.state == FoeState::Fallen {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            560.0,
+            Some(440.0),
+            &format!(
+                "FALLEN — {}",
+                foe.fallen_date.as_deref().unwrap_or("an unrecorded day")
+            ),
+            12.0,
+            true,
+            pal.good,
+            Justify::Left,
+            fonts,
+        );
+    }
+}
+
 /// Floor 5's hub: the Veilworks — five chamber doors, the camp
 /// stone, and the panel with the chambers and the FOE's standing.
 fn build_floor5_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
@@ -7030,6 +7379,59 @@ fn build_floor5_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
         pal.ink,
         fonts,
     );
+
+    let foe_door = geom::door_foe5();
+    spawn_box(
+        commands,
+        stage,
+        foe_door,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        foe_door.x,
+        foe_door.y + 10.0,
+        foe_door.w,
+        "THE FOE",
+        11.0,
+        true,
+        pal.ink_dim,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        foe_door.x,
+        foe_door.y + 28.0,
+        foe_door.w - 8.0,
+        "The Thing Behind the Veil",
+        14.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    let foe5_tag = match game.expedition.floor5.foe.state {
+        FoeState::Fallen => "FALLEN",
+        FoeState::Exposed => "EXPOSED",
+        FoeState::Standing => "",
+    };
+    if !foe5_tag.is_empty() {
+        spawn_text_centered(
+            commands,
+            stage,
+            foe_door.x,
+            foe_door.y + 88.0,
+            foe_door.w,
+            foe5_tag,
+            11.0,
+            true,
+            pal.good,
+            fonts,
+        );
+    }
 
     spawn_box(
         commands,

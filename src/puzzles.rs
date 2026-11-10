@@ -1372,6 +1372,152 @@ pub fn tenancy_missed(predictions: &[u8; 8], index: usize) -> bool {
 // judges over the split the player chose.
 // ---------------------------------------------------------------------------
 
+/// One UB Hunt station's verdict read against the station
+/// table: sound stations want 1, faulted stations want 2 —
+/// any other entry (0, unentered, among them) is not right.
+pub fn station_verdict_right(station: usize, verdict: u8) -> bool {
+    match crate::content::STATIONS.get(station) {
+        Some(meta) => verdict == if meta.fault.is_some() { 2 } else { 1 },
+        None => false,
+    }
+}
+
+/// The UB Hunt's proof, whole: every station under the lens,
+/// every verdict the true one, and every faulted station's
+/// card showing its true contract.
+pub fn hunt_complete(lensed: &[bool; 6], verdicts: &[u8; 6], cards: &[u8; 6]) -> bool {
+    lensed.iter().all(|seen| *seen)
+        && crate::content::STATIONS
+            .iter()
+            .enumerate()
+            .all(|(station, meta)| {
+                station_verdict_right(station, verdicts[station])
+                    && match meta.fault {
+                        Some(_) => cards[station] == meta.true_contract,
+                        None => true,
+                    }
+            })
+}
+
+/// The Thing's repair card, judged: the beam's card stands
+/// rewritten when all three lines show their checkable
+/// truths (the key rides with the card's table).
+pub fn foe_card_repaired(card: &[u8; 3]) -> bool {
+    *card == crate::content::FOE5_CARD_KEY
+}
+
+/// A modelled beam under the repair card's discipline: a
+/// length, a stated capacity, loans out, and which cells
+/// stand filled. The referee's five cases are run against
+/// this model, never merely asserted.
+#[derive(Clone, Debug)]
+struct BeamModel {
+    /// Cells the beam currently holds.
+    len: usize,
+    /// The stated capacity.
+    cap: usize,
+    /// Shared loans currently out.
+    loans: usize,
+    /// Which cells stand filled (one entry per cell).
+    filled: Vec<bool>,
+}
+
+impl BeamModel {
+    /// Grow by one cell: refused while any loan is out, and
+    /// refused at the stated capacity.
+    fn grow(&mut self) -> Result<(), ()> {
+        if self.loans > 0 || self.len >= self.cap {
+            return Err(());
+        }
+        self.len += 1;
+        self.filled.push(false);
+        Ok(())
+    }
+
+    /// Read one cell: refused past the end, and refused for
+    /// an unfilled cell.
+    fn access(&self, index: usize) -> Result<(), ()> {
+        if index >= self.len || !self.filled[index] {
+            return Err(());
+        }
+        Ok(())
+    }
+
+    /// Drop every cell, last first; the order it fell in.
+    fn drop_all(&mut self) -> Vec<usize> {
+        let order: Vec<usize> = (0..self.len).rev().collect();
+        self.len = 0;
+        self.filled.clear();
+        order
+    }
+}
+
+/// The referee's five standing-gate cases, run against the
+/// modelled beam: true when the beam behaves exactly as the
+/// repair card promises, per case.
+pub fn beam_case_holds(case: usize) -> bool {
+    match case {
+        // Growth while a loan is out: refused.
+        0 => {
+            let mut beam = BeamModel {
+                len: 6,
+                cap: 8,
+                loans: 1,
+                filled: vec![true; 6],
+            };
+            beam.grow().is_err()
+        }
+        // Access one past the last cell: refused, not UB.
+        1 => {
+            let beam = BeamModel {
+                len: 6,
+                cap: 8,
+                loans: 0,
+                filled: vec![true; 6],
+            };
+            beam.access(6).is_err()
+        }
+        // The drop order: every cell exactly once — none
+        // twice, none leaked.
+        2 => {
+            let mut beam = BeamModel {
+                len: 3,
+                cap: 8,
+                loans: 0,
+                filled: vec![true; 3],
+            };
+            let dropped = beam.drop_all();
+            let mut seen = [false; 3];
+            dropped.iter().all(|&cell| {
+                let fresh = !seen[cell];
+                seen[cell] = true;
+                fresh
+            }) && seen.iter().all(|dropped_cell| *dropped_cell)
+        }
+        // The empty element: access refused, growth still
+        // allowed beside it.
+        3 => {
+            let mut beam = BeamModel {
+                len: 6,
+                cap: 8,
+                loans: 0,
+                filled: vec![true, true, true, true, true, false],
+            };
+            beam.access(5).is_err() && beam.grow().is_ok()
+        }
+        // Overflow at the stated capacity: refused.
+        4 => {
+            let mut beam = BeamModel {
+                len: 8,
+                cap: 8,
+                loans: 0,
+                filled: vec![true; 8],
+            };
+            beam.grow().is_err()
+        }
+        _ => false,
+    }
+}
 /// Whether a chosen card-line phrasing is the checkable one
 /// — the phrasing a sceptic can test before the call.
 pub fn card_line_checkable(tool: usize, line: usize, phrasing: u8) -> bool {
@@ -1537,5 +1683,73 @@ mod floor5_tests {
         assert_eq!(tenancy_correct(&predictions), 7);
         assert!(tenancy_missed(&predictions, 1));
         assert!(!tenancy_missed(&predictions, 0));
+    }
+
+    /// Validation: exactly three stations are faulted, and
+    /// each station's one right verdict agrees with whether
+    /// it carries a fault; the verdict 0 is right nowhere.
+    #[test]
+    fn station_truth_table_is_exact() {
+        let mut faulted = 0;
+        for (station, meta) in crate::content::STATIONS.iter().enumerate() {
+            if meta.fault.is_some() {
+                faulted += 1;
+                assert!(station_verdict_right(station, 2));
+                assert!(!station_verdict_right(station, 1));
+            } else {
+                assert!(station_verdict_right(station, 1));
+                assert!(!station_verdict_right(station, 2));
+            }
+            assert!(!station_verdict_right(station, 0));
+        }
+        assert_eq!(faulted, 3);
+        assert!(!station_verdict_right(6, 1));
+    }
+
+    /// Adversarial: the hunt is unmade by any single omission
+    /// — an unlensed station, one flipped verdict, one false
+    /// contract on a faulted station's card.
+    #[test]
+    fn hunt_unmade_by_any_single_omission() {
+        let lensed = [true; 6];
+        let verdicts = [1, 2, 2, 1, 2, 1];
+        let cards = [0, 2, 0, 0, 1, 0];
+        assert!(hunt_complete(&lensed, &verdicts, &cards));
+        let mut dim = lensed;
+        dim[3] = false;
+        assert!(!hunt_complete(&dim, &verdicts, &cards));
+        let mut wrong = verdicts;
+        wrong[0] = 2;
+        assert!(!hunt_complete(&lensed, &wrong, &cards));
+        let mut unentered = verdicts;
+        unentered[5] = 0;
+        assert!(!hunt_complete(&lensed, &unentered, &cards));
+        for station in [1, 2, 4] {
+            let mut bent = cards;
+            bent[station] = (bent[station] + 1) % 3;
+            assert!(
+                !hunt_complete(&lensed, &verdicts, &bent),
+                "station {station}'s false contract must unmake the hunt"
+            );
+        }
+    }
+
+    /// Validation: the beam's card as found is not its
+    /// repair; the key repairs it.
+    #[test]
+    fn foe_card_found_is_not_repaired() {
+        assert!(!foe_card_repaired(&[0, 0, 0]));
+        assert!(foe_card_repaired(&crate::content::FOE5_CARD_KEY));
+        assert!(!foe_card_repaired(&[1, 2, 0]));
+    }
+
+    /// Validation: all five of the referee's cases hold
+    /// against the modelled beam.
+    #[test]
+    fn referee_cases_all_hold() {
+        for case in 0..5 {
+            assert!(beam_case_holds(case), "case {case} must hold");
+        }
+        assert!(!beam_case_holds(5));
     }
 }

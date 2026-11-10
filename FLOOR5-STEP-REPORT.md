@@ -261,3 +261,93 @@ curatively and re-gated; no lint was allowed or narrowed.
 
 - Chamber 5 and the Thing Behind the Veil land in Step 4;
   the driven whole-floor playthrough in Step 5.
+
+## Step 4 — Chamber 5 (the UB Hunt) and the FOE (the Thing Behind the Veil)
+
+Built Claude-direct by the Part A coordinator lane under
+the completion spec (splice54.py + blocks/, anchors
+asserted exactly once against the tree at 3017a97).
+Evidence: `~/.local/share/pax/niflheim-floor5-step4-build-20261110/`
+on primo.
+
+### What landed
+
+- **Chamber 5, the UB Hunt.** `content::STATIONS` — six
+  stations (a `Station` struct: name, duty, fault,
+  contracts, true contract) with three seeded faults at
+  miniature size: the Twin Pens (two writers fused, true
+  contract 2), the Second Reading (a room read after it
+  was emptied, true 0), the Blank Ledger (a read of an
+  unfilled blank, true 1); `FAULT_KINDS` names the three
+  shapes. Work fields `lensed: [bool; 6]`,
+  `verdicts: [u8; 6]`, `cards: [u8; 6]`, all
+  serde-defaulted. Judges in `puzzles`:
+  `station_verdict_right`, `hunt_complete` (every station
+  lensed, every verdict true, every faulted card on its
+  true contract). The lens press speaks the fault it
+  finds; a faulted station's card button appears once its
+  verdict stands at FAULT.
+- **The FOE, the Thing Behind the Veil** (class #10, the
+  Moving Floor). Full FOE surface in the house pattern:
+  `Screen::Floor5Foe`, `El::DoorFoe5` on the Floor 5 hub
+  (door drawn with its Standing/Exposed/Fallen tag),
+  `ArmedFor::Foe5`, and every shared site wired (verbs,
+  tab-bar match, seal_armed, layout_seal, examine,
+  enumerate, hint branch, reading title/inscription/
+  demonstration/hint). Diagnosis:
+  `floor5_foe_exhibit` takes the trace's three sights IN
+  ORDER — a live shared loan, a growth while it was out,
+  the lens's verdict — and refuses out-of-order exhibits
+  naming the missing prior sight. Gate:
+  `floor5_foe_walk_case` runs the referee's five cases
+  against `puzzles::BeamModel`, a real modelled beam
+  (length, stated capacity, loans out, filled cells) —
+  growth under a loan refused; access past the end
+  refused; the drop order a true permutation; the empty
+  element refusing access while growth beside it is
+  allowed; overflow at capacity refused (DS-13: the
+  cases are computed, not asserted). Repair: the beam's
+  card (`FOE5_CARD`, key [1, 2, 1]) rewritten to its
+  three checkable truths; the strike arms only on proof
+  + gate + card, and the fall records the Ice Stone to
+  the codex and the Veilwalker's Buffer to the pack.
+  Miri becomes the standing instrument from this floor
+  onward — content-level framing only, per the spec; no
+  runtime seam was built. The FOE also forced the
+  layout() tab-bar match and two stranded doc comments
+  to be set right; all fixed curatively.
+
+### Gates (primo, pinned rustc 1.99.0)
+
+- `cargo fmt --check`: clean. `cargo clippy --all-targets
+  -- -D warnings`: exit 0.
+- `cargo test`: **160 passed / 0 failed** (was 153 at
+  Step 3; +7: four puzzles — the station truth table
+  exact, the hunt unmade by any single omission, the
+  found card unrepaired, all five referee cases holding;
+  two state — the hunt judged, the FOE's arc with the
+  out-of-order refusal naming its missing sight; one GUI
+  playthrough of the chamber and the FOE through both
+  seals, ending at `floor5_complete()`).
+- Theodolite (cured route; bacon producer running,
+  `.bacon-locations` present at session start): planted
+  control on puzzles.rs read live E0308 diagnostics in
+  the same session where the other four files read 0;
+  clean session **0 on all five touched files** —
+  verified zeros. puzzles.rs restored byte-identical
+  after the plant (sha256 `7e8bd3dd…` both sides). (The
+  first attempt's harness omitted the plant append and
+  read a clean file in "planted" mode; the re-run above
+  is the evidence.)
+- Determinism: the Step 4 probe (the playthrough extended
+  through the UB Hunt and the Thing's fall, fixed date)
+  run twice; saves byte-identical, sha256
+  `632e975a65c66ca97d2524249b93030dd2555506fff114b41d5ec44834556383`.
+- Android lib under the pin: 1,348,458,576 bytes. Launch
+  smoke under Xvfb: `cold_start_ms=729`, no panics.
+
+### Left open
+
+- Step 5: the driven whole-floor playthrough (all five
+  chambers plus the FOE from the title screen), the full
+  battery, and the floor close-out.

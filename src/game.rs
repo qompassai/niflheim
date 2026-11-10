@@ -198,6 +198,8 @@ pub enum Screen {
     Floor5Hub,
     /// A Floor 5 chamber, by index (0-4).
     Floor5Chamber(usize),
+    /// Floor 5's FOE: the Thing Behind the Veil.
+    Floor5Foe,
 }
 
 /// What a reading overlay is showing.
@@ -354,6 +356,20 @@ pub enum El {
     F5DropLeft,
     /// Floor 5 Chamber 4: drop the right half.
     F5DropRight,
+    /// Chamber 5: pass the lens over one station.
+    F5Lens(u8),
+    /// Chamber 5: cycle one station's verdict.
+    F5Verdict(u8),
+    /// Chamber 5: cycle one faulted station's card.
+    F5FixCard(u8),
+    /// The FOE: exhibit one sight of the trace.
+    F5Exhibit(u8),
+    /// The FOE: walk one of the referee's five cases.
+    F5Case(u8),
+    /// The FOE: cycle one line of the beam's rewritten card.
+    F5FoeCard(u8),
+    /// Floor 5's hub: the FOE's door.
+    DoorFoe5,
     /// Floor 4 Chamber 1: put this stone on the slate.
     F4Stone(u8),
     /// Floor 4 Chamber 1: step the slate's size down.
@@ -647,6 +663,8 @@ enum ArmedFor {
     Foe3,
     /// Floor 4 FOE's strike.
     Foe4,
+    /// Floor 5 FOE's strike.
+    Foe5,
     /// The FOE's strike.
     Foe,
     /// Floor 2 FOE's strike.
@@ -810,6 +828,7 @@ impl Game {
                 | Screen::Floor3Chamber(_)
                 | Screen::Floor3Foe
                 | Screen::Floor4Foe
+                | Screen::Floor5Foe
                 | Screen::Foe
                 | Screen::Floor2Foe
         )
@@ -861,6 +880,7 @@ impl Game {
             Screen::Floor2Foe => self.expedition.floor2.foe.strike == StrikePhase::Armed,
             Screen::Floor3Foe => self.expedition.floor3.foe.strike == StrikePhase::Armed,
             Screen::Floor4Foe => self.expedition.floor4.foe.strike == StrikePhase::Armed,
+            Screen::Floor5Foe => self.expedition.floor5.foe.strike == StrikePhase::Armed,
             _ => false,
         }
     }
@@ -1080,7 +1100,7 @@ impl Game {
                 Verb::Hint,
                 Verb::Map,
             ],
-            Screen::Floor2Foe | Screen::Floor3Foe | Screen::Floor4Foe => vec![
+            Screen::Floor2Foe | Screen::Floor3Foe | Screen::Floor4Foe | Screen::Floor5Foe => vec![
                 Verb::Examine,
                 Verb::Read,
                 Verb::Enumerate,
@@ -1382,6 +1402,42 @@ pub mod geom {
         Rect::new(532.0, 620.0, 144.0, 30.0)
     }
 
+    /// Floor 5's FOE door on Floor 5's hub: the ground the
+    /// Foundation's door proved on the floor below.
+    pub fn door_foe5() -> Rect {
+        Rect::new(600.0, 292.0, 168.0, 124.0)
+    }
+
+    /// Chamber 5: one station's verdict button.
+    pub fn f5_station_row(station: usize) -> Rect {
+        Rect::new(808.0, 176.0 + station as f32 * 56.0, 300.0, 30.0)
+    }
+
+    /// Chamber 5: one station's lens button.
+    pub fn f5_lens_btn(station: usize) -> Rect {
+        Rect::new(1116.0, 176.0 + station as f32 * 56.0, 124.0, 30.0)
+    }
+
+    /// Chamber 5: one faulted station's card button.
+    pub fn f5_fix_btn(station: usize) -> Rect {
+        Rect::new(808.0, 210.0 + station as f32 * 56.0, 432.0, 22.0)
+    }
+
+    /// The FOE: exhibit one sight of the trace.
+    pub fn f5foe_exhibit_btn(exhibit: usize) -> Rect {
+        Rect::new(56.0, 128.0 + exhibit as f32 * 52.0, 300.0, 30.0)
+    }
+
+    /// The FOE: walk one of the referee's cases.
+    pub fn f5foe_case_btn(case: usize) -> Rect {
+        Rect::new(56.0, 348.0 + case as f32 * 44.0, 300.0, 30.0)
+    }
+
+    /// The FOE: cycle one line of the beam's card (the
+    /// line's current phrasing stands as text above it).
+    pub fn f5foe_card_btn(line: usize) -> Rect {
+        Rect::new(808.0, 222.0 + line as f32 * 92.0, 440.0, 26.0)
+    }
     /// A roster group header row on Floor 2's panel.
     pub fn roster_group(index: usize) -> Rect {
         Rect::new(808.0, 176.0 + index as f32 * 104.0, 440.0, 26.0)
@@ -1701,7 +1757,8 @@ impl Game {
             | Screen::Foe
             | Screen::Floor2Foe
             | Screen::Floor3Foe
-            | Screen::Floor4Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
+            | Screen::Floor4Foe
+            | Screen::Floor5Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
             Screen::Title => true,
         }
     }
@@ -1946,6 +2003,12 @@ impl Game {
                          frame, and a plumb line hanging still beside \
                          stones nobody has measured in a generation."
                     }
+                    Screen::Floor5Foe => {
+                        "The shared beam: six cells in a gauze-hung \
+                         frame, borrowed at both ends, chalked with \
+                         addresses — and a fullness in the gauze \
+                         behind it, shaped almost like a seventh cell."
+                    }
                     Screen::Floor3Foe => {
                         "The Gatehouse Release: a great door, a lantern \
                          burning before its keeper came, and a slate that \
@@ -1982,6 +2045,21 @@ impl Game {
                 self.bump();
             }
             Verb::Enumerate => {
+                if self.screen == Screen::Floor5Foe {
+                    let first = !self.expedition.floor5.foe.exhibits[0];
+                    match self.expedition.floor5_foe_exhibit(0) {
+                        Ok(text) => {
+                            if first {
+                                self.expedition.log_push(
+                                    "The trace's first sight was exhibited: a live shared loan.",
+                                );
+                            }
+                            self.say(StatusKind::Good, text);
+                        }
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
                 if self.screen == Screen::Floor4Foe {
                     let first = !self.expedition.floor4.foe.book_taken;
                     self.expedition.floor4_foe_take_book();
@@ -2140,6 +2218,13 @@ impl Game {
                         self.expedition.floor2_foe_view_hint();
                     }
                     self.hint_showing = self.expedition.floor2_foe_hints_used().max(1);
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                } else if self.screen == Screen::Floor5Foe {
+                    if self.expedition.floor5_foe_hints_used() == 0 {
+                        self.expedition.floor5_foe_view_hint();
+                    }
+                    self.hint_showing = self.expedition.floor5_foe_hints_used().max(1);
                     self.overlay = Overlay::Reading(ReadingKind::Hint);
                     self.changed();
                 } else if self.screen == Screen::Floor4Foe {
@@ -2763,6 +2848,135 @@ impl Game {
                                  ({catches} so far). Fill the blank whole."
                             ),
                         );
+                    }
+                    self.changed();
+                }
+            }
+            El::F5Lens(station) => {
+                if matches!(self.screen, Screen::Floor5Chamber(4)) {
+                    let station = station as usize;
+                    let work = &mut self.expedition.floor5.chambers[4].work;
+                    if let Some(slot) = work.lensed.get_mut(station) {
+                        *slot = true;
+                    }
+                    match content::STATIONS.get(station) {
+                        Some(meta) => match meta.fault {
+                            Some(fault) => self.say(
+                                StatusKind::Info,
+                                format!(
+                                    "Through the lens at {}: the fault shows \
+                                     plain — {}.",
+                                    meta.name,
+                                    content::FAULT_KINDS[fault]
+                                ),
+                            ),
+                            None => self.say(
+                                StatusKind::Info,
+                                format!(
+                                    "Through the lens at {}: hands and \
+                                     promise agree — nothing hunts here.",
+                                    meta.name
+                                ),
+                            ),
+                        },
+                        None => self.say(StatusKind::Refusal, "No such station."),
+                    }
+                    self.changed();
+                }
+            }
+            El::F5Verdict(station) => {
+                if matches!(self.screen, Screen::Floor5Chamber(4)) {
+                    let station = station as usize;
+                    let work = &mut self.expedition.floor5.chambers[4].work;
+                    let mut entered = None;
+                    if let Some(slot) = work.verdicts.get_mut(station) {
+                        *slot = match *slot {
+                            0 => 1,
+                            1 => 2,
+                            _ => 1,
+                        };
+                        entered = Some(*slot);
+                    }
+                    match (content::STATIONS.get(station), entered) {
+                        (Some(meta), Some(1)) => self.say(
+                            StatusKind::Info,
+                            format!("{} — verdict entered: sound.", meta.name),
+                        ),
+                        (Some(meta), Some(_)) => self.say(
+                            StatusKind::Info,
+                            format!(
+                                "{} — verdict entered: faulted. If the \
+                                 lens agrees, set its card to the one \
+                                 true contract.",
+                                meta.name
+                            ),
+                        ),
+                        _ => self.say(StatusKind::Refusal, "No such station."),
+                    }
+                    self.changed();
+                }
+            }
+            El::F5FixCard(station) => {
+                if matches!(self.screen, Screen::Floor5Chamber(4)) {
+                    let station = station as usize;
+                    match content::STATIONS.get(station) {
+                        Some(meta) if meta.fault.is_some() => {
+                            let work = &mut self.expedition.floor5.chambers[4].work;
+                            let mut showing = 0usize;
+                            if let Some(slot) = work.cards.get_mut(station) {
+                                *slot = (*slot + 1) % 3;
+                                showing = *slot as usize;
+                            }
+                            self.say(
+                                StatusKind::Info,
+                                format!(
+                                    "{}'s card now reads: {}",
+                                    meta.name, meta.contracts[showing]
+                                ),
+                            );
+                        }
+                        Some(meta) => self.say(
+                            StatusKind::Refusal,
+                            format!("{} stands sound: it carries no card to rewrite.", meta.name),
+                        ),
+                        None => self.say(StatusKind::Refusal, "No such station."),
+                    }
+                    self.changed();
+                }
+            }
+            El::F5Exhibit(exhibit) => {
+                if self.screen == Screen::Floor5Foe {
+                    match self.expedition.floor5_foe_exhibit(exhibit as usize) {
+                        Ok(text) => self.say(StatusKind::Good, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+            El::F5Case(case) => {
+                if self.screen == Screen::Floor5Foe {
+                    match self.expedition.floor5_foe_walk_case(case as usize) {
+                        Ok(text) => self.say(StatusKind::Good, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+            El::F5FoeCard(line) => {
+                if self.screen == Screen::Floor5Foe {
+                    let line = line as usize;
+                    let foe = &mut self.expedition.floor5.foe;
+                    let mut showing = None;
+                    if let Some(slot) = foe.card.get_mut(line) {
+                        *slot = (*slot + 1) % 3;
+                        showing = Some(*slot as usize);
+                    }
+                    match (content::FOE5_CARD.get(line), showing) {
+                        (Some(phrasings), Some(index)) => self.say(
+                            StatusKind::Info,
+                            format!("The beam's card, line {}: {}", line + 1, phrasings[index]),
+                        ),
+                        _ => self.say(StatusKind::Refusal, "The card has three lines."),
                     }
                     self.changed();
                 }
@@ -3787,6 +4001,20 @@ impl Game {
                 }
                 self.bump();
             }
+            El::DoorFoe5 => {
+                if self.expedition.floor5.foe.state == FoeState::Fallen {
+                    self.say(
+                        StatusKind::Info,
+                        "The gauze hangs empty: the beam stands \
+                         unborrowed in its frame, and nothing moves \
+                         behind the veil.",
+                    );
+                } else {
+                    self.enter_screen(Screen::Floor5Foe);
+                    self.say(StatusKind::Info, content::FOE5_INTRO);
+                }
+                self.bump();
+            }
             El::DoorFoe4 => {
                 if self.expedition.floor4.foe.state == FoeState::Fallen {
                     self.say(
@@ -4561,6 +4789,18 @@ impl Game {
                 Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
             },
 
+            Screen::Floor5Foe => match self.expedition.floor5_foe_arm_strike() {
+                Ok(()) => {
+                    self.armed = Some(ArmedFor::Foe5);
+                    self.say(
+                        StatusKind::Info,
+                        "The seal is pressed. Confirm to draw the veil \
+                         aside and strike the Thing from the beam's \
+                         frame — or stand down.",
+                    );
+                }
+                Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+            },
             Screen::Floor4Foe => match self.expedition.floor4_foe_arm_strike() {
                 Ok(()) => {
                     self.armed = Some(ArmedFor::Foe4);
@@ -4715,6 +4955,27 @@ impl Game {
                 self.changed();
             }
 
+            Some(ArmedFor::Foe5) => {
+                self.armed = None;
+                let date = if self.today.is_empty() {
+                    "an unrecorded day".to_string()
+                } else {
+                    self.today.clone()
+                };
+                match self.expedition.floor5_foe_confirm_strike(&date) {
+                    Ok(text) => {
+                        self.expedition
+                            .log_push(format!("The Thing Behind the Veil fell on {date}."));
+                        self.expedition.log_push(
+                            "The Ice Stone entered the codex; the Veilwalker's \
+                             Buffer, the pack.",
+                        );
+                        self.say(StatusKind::Good, text);
+                    }
+                    Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                }
+                self.changed();
+            }
             Some(ArmedFor::Foe4) => {
                 self.armed = None;
                 let date = if self.today.is_empty() {
@@ -4996,6 +5257,7 @@ impl Game {
                 Screen::Floor2Foe => "The Menagerie's Inscription".to_string(),
                 Screen::Floor3Foe => "The Release's Inscription".to_string(),
                 Screen::Floor4Foe => "The Foundation's Inscription".to_string(),
+                Screen::Floor5Foe => "The Thing's Inscription".to_string(),
                 _ => "The Inscription".to_string(),
             },
             ReadingKind::Demonstration => "The Demonstration".to_string(),
@@ -5027,6 +5289,7 @@ impl Game {
                 Screen::Floor2Foe => content::FOE2_INSCRIPTION.to_string(),
                 Screen::Floor3Foe => content::FOE3_INSCRIPTION.to_string(),
                 Screen::Floor4Foe => content::FOE4_INSCRIPTION.to_string(),
+                Screen::Floor5Foe => content::FOE5_INSCRIPTION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Demonstration => match self.screen {
@@ -5051,6 +5314,7 @@ impl Game {
                 Screen::Floor2Foe => content::FOE2_DEMONSTRATION.to_string(),
                 Screen::Floor3Foe => content::FOE3_INTRO.to_string(),
                 Screen::Floor4Foe => content::FOE4_DEMONSTRATION.to_string(),
+                Screen::Floor5Foe => content::FOE5_DEMONSTRATION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Hint => {
@@ -5063,6 +5327,7 @@ impl Game {
                     Screen::Floor2Foe => content::floor2_foe_hints()[rung - 1],
                     Screen::Floor3Foe => content::floor3_foe_hints()[rung - 1],
                     Screen::Floor4Foe => content::floor4_foe_hints()[rung - 1],
+                    Screen::Floor5Foe => content::floor5_foe_hints()[rung - 1],
                     _ => {
                         let challenge = self.current_challenge().unwrap_or(0);
                         content::hints(challenge)[rung - 1]
@@ -5271,6 +5536,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor2Foe
         | Screen::Floor3Foe
         | Screen::Floor4Foe
+        | Screen::Floor5Foe
         | Screen::Floor3Hub
         | Screen::Floor4Hub
         | Screen::Floor5Hub => {
@@ -5312,6 +5578,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             for index in 0..5 {
                 els.push((El::Floor5Door(index as u8), geom::door_chamber(index)));
             }
+            els.push((El::DoorFoe5, geom::door_foe5()));
         }
 
         Screen::Floor2Hub => {
@@ -5439,6 +5706,24 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             layout_seal(&mut els, game);
         }
 
+        Screen::Floor5Foe => {
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.push((El::ResetChamber, rects::RESET_BTN));
+            for exhibit in 0..content::FOE5_EXHIBITS.len() {
+                els.push((
+                    El::F5Exhibit(exhibit as u8),
+                    geom::f5foe_exhibit_btn(exhibit),
+                ));
+            }
+            for case in 0..content::FOE5_CASES.len() {
+                els.push((El::F5Case(case as u8), geom::f5foe_case_btn(case)));
+            }
+            for line in 0..content::FOE5_CARD.len() {
+                els.push((El::F5FoeCard(line as u8), geom::f5foe_card_btn(line)));
+            }
+            layout_seal(&mut els, game);
+        }
         Screen::Floor2Foe => {
             els.push((El::Desk, geom::desk()));
             els.push((El::Stone, geom::stone()));
@@ -5519,6 +5804,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         Screen::Floor2Foe => game.expedition.floor2.foe.strike == StrikePhase::Armed,
         Screen::Floor3Foe => game.expedition.floor3.foe.strike == StrikePhase::Armed,
         Screen::Floor4Foe => game.expedition.floor4.foe.strike == StrikePhase::Armed,
+        Screen::Floor5Foe => game.expedition.floor5.foe.strike == StrikePhase::Armed,
         _ => false,
     };
     els.push((El::Seal, rects::SEAL));
@@ -5556,6 +5842,16 @@ fn layout_floor5_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
                     El::F5CardLine(tool as u8, line as u8),
                     geom::f5_cardline_row(tool, line),
                 ));
+            }
+        }
+    }
+    if chamber == 4 {
+        for station in 0..6 {
+            els.push((El::F5Verdict(station as u8), geom::f5_station_row(station)));
+            els.push((El::F5Lens(station as u8), geom::f5_lens_btn(station)));
+            let work = &game.expedition.floor5.chambers[4].work;
+            if work.verdicts[station] == 2 && crate::content::STATIONS[station].fault.is_some() {
+                els.push((El::F5FixCard(station as u8), geom::f5_fix_btn(station)));
             }
         }
     }
@@ -6868,6 +7164,151 @@ mod tests {
         assert_eq!(
             game.expedition.floor5.chambers[1].state,
             ChamberState::Repaired
+        );
+    }
+
+    /// Floor 5 Step 4, driven on the GUI surface: the UB
+    /// Hunt is lensed, judged, and carded through the seal,
+    /// and the Thing Behind the Veil is diagnosed in order,
+    /// walked through the referee's five cases, given a
+    /// rewritten card, and struck — completing the floor.
+    /// (Chambers 1–4 are set up at the state level; their
+    /// own steps' playthroughs covered their GUI.)
+    #[test]
+    fn floor5_chamber_5_and_the_thing_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.foe.gate_passed = true;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        game.expedition.floor3.foe.gate_passed = true;
+        for chamber in game.expedition.floor2.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        for chamber in game.expedition.floor3.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        game.expedition.floor3.foe.state = FoeState::Fallen;
+        for chamber in game.expedition.floor4.chambers.iter_mut() {
+            chamber.state = ChamberState::Repaired;
+        }
+        game.expedition.floor4.foe.state = FoeState::Fallen;
+        // Chambers 1–4 of this floor, worked at state level.
+        {
+            let work = &mut game.expedition.floor5.chambers[0].work;
+            work.watched = true;
+            work.cards_read = [true; 6];
+            work.walked = 6;
+            work.refused = true;
+        }
+        {
+            let work = &mut game.expedition.floor5.chambers[1].work;
+            work.watched = true;
+            for (index, (_, sound, _)) in content::TENANCIES.iter().enumerate() {
+                work.predictions[index] = if *sound { 1 } else { 2 };
+            }
+            work.judged = true;
+        }
+        {
+            let work = &mut game.expedition.floor5.chambers[2].work;
+            work.watched = true;
+            work.card_lines = [[1, 0, 1], [0, 2, 1], [2, 0, 1], [0, 1, 2]];
+        }
+        {
+            let work = &mut game.expedition.floor5.chambers[3].work;
+            work.watched = true;
+            work.split = 2;
+            work.seamed = true;
+            work.access_refused = true;
+            work.worked = [true, true];
+            work.dropped = [true, true];
+        }
+        for index in 0..4 {
+            game.expedition.floor5_file_proof(index).expect("filed");
+            game.expedition
+                .floor5_repair_chamber(index)
+                .expect("repaired");
+        }
+        game.screen = Screen::Floor5Hub;
+        // Chamber 5 — the UB Hunt.
+        click(&mut game, El::Floor5Door(4));
+        assert_eq!(game.screen, Screen::Floor5Chamber(4));
+        click(&mut game, El::F5Watch);
+        for station in 0..6u8 {
+            click(&mut game, El::F5Lens(station));
+        }
+        for station in [0u8, 3, 5] {
+            click(&mut game, El::F5Verdict(station));
+        }
+        for station in [1u8, 2, 4] {
+            click(&mut game, El::F5Verdict(station));
+            click(&mut game, El::F5Verdict(station));
+        }
+        click(&mut game, El::F5FixCard(1));
+        click(&mut game, El::F5FixCard(1));
+        click(&mut game, El::F5FixCard(4));
+        assert!(game.expedition.floor5_diagnosed(4));
+        click(&mut game, El::Chip(Verb::Prove));
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_some());
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor5.chambers[4].state,
+            ChamberState::Repaired
+        );
+        // The FOE — the Thing Behind the Veil.
+        click(&mut game, El::TabFloor);
+        click(&mut game, El::DoorFloor4);
+        click(&mut game, El::DoorFloor5);
+        click(&mut game, El::DoorFoe5);
+        assert_eq!(game.screen, Screen::Floor5Foe);
+        // Out of order: the growth cannot precede the loan.
+        click(&mut game, El::F5Exhibit(1));
+        assert!(!game.expedition.floor5.foe.exhibits[1]);
+        assert_eq!(game.status_kind, StatusKind::Refusal);
+        click(&mut game, El::F5Exhibit(0));
+        assert_eq!(game.expedition.floor5.foe.state, FoeState::Exposed);
+        click(&mut game, El::F5Exhibit(1));
+        click(&mut game, El::F5Exhibit(2));
+        assert!(game.expedition.floor5_foe_proof_complete());
+        for case in 0..5u8 {
+            click(&mut game, El::F5Case(case));
+        }
+        assert!(game.expedition.floor5.foe.gate_passed);
+        // The seal refuses until the card stands rewritten.
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_none());
+        click(&mut game, El::F5FoeCard(0));
+        click(&mut game, El::F5FoeCard(1));
+        click(&mut game, El::F5FoeCard(1));
+        click(&mut game, El::F5FoeCard(2));
+        assert!(game.expedition.floor5_foe_repair_ok());
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_some());
+        click(&mut game, El::SealConfirm);
+        assert_eq!(game.expedition.floor5.foe.state, FoeState::Fallen);
+        assert!(game.expedition.floor5_complete());
+        assert!(
+            game.expedition
+                .codex
+                .iter()
+                .any(|stone| stone == content::ICE_STONE)
+        );
+        assert!(
+            game.expedition
+                .pack
+                .iter()
+                .any(|loot| loot == content::VEILWALKERS_BUFFER)
         );
     }
 
