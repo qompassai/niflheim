@@ -772,17 +772,16 @@ pub const FLOOR2_DOMAIN: &str = "Traits & the type system";
 pub const FLOOR2_KEEPER: &str = "the Sigilwright";
 
 /// The floor inscription, read at the camp stone.
-pub const FLOOR2_INTRO: &str = "Floor 2 — The Menagerie Grounds. The Sigilwright keeps a menagerie where every beast is described by what it can do. Five chambers teach the description's five faces — traits and impls, generics and bounds, associated types, trait objects and the Wide Door, and coherence. At the grounds' heart the Menagerie, a beast with every sigil and none, admits all and answers to nothing.";
+pub const FLOOR2_INTRO: &str = "Floor 2 — The Menagerie Grounds. The Sigilwright keeps a menagerie where every beast is described by what it can do. Five chambers teach the description's five faces — traits and impls, generics and bounds, associated types, trait objects and the Wide Door, and coherence. At the grounds' heart stands the admission desk of the Menagerie — and the desk has begun admitting beasts by resemblance, not by sigil.";
 
 /// The Lens Stone's principle (the Principle Codex entry).
 pub const LENS_STONE: &str = "The Lens Stone";
 /// The Lens Stone's text.
-pub const LENS_STONE_TEXT: &str =
-    "Traits: a bound is an admission — say what a thing must do, and only what answers may enter.";
+pub const LENS_STONE_TEXT: &str = "Bounds are admissions.";
 /// The floor's loot artifact.
-pub const PLUGIN_MENAGERIE: &str = "The Sigilwright's Lens";
+pub const PLUGIN_MENAGERIE: &str = "The Plugin Menagerie";
 /// The loot's codex text.
-pub const PLUGIN_MENAGERIE_TEXT: &str = "A lens that reads any beast's sigils at a glance. The inventory of capabilities for the descent — wielded wherever a thing must be known by what it can do.";
+pub const PLUGIN_MENAGERIE_TEXT: &str = "The two-door host: a travelling menagerie that can field a beast by its kind, through the Narrow Door, or by its sigils, through the Wide Door — carried in the pack, and wielded wherever a service must be staffed by kind or by sigil.";
 
 /// One beast on the Menagerie roster.
 pub struct Beast {
@@ -915,9 +914,9 @@ pub const MENAGERIE_CHAMBERS: [ChamberMeta; 5] = [
 /// The FOE's name.
 pub const FOE2_NAME: &str = "The Menagerie";
 /// The FOE's inscription: the rule it breaks, carved.
-pub const FOE2_INSCRIPTION: &str = "The Menagerie wears every sigil and is bound by none. A thing that claims every trait answers to no bound, and the grounds cannot chart it.";
+pub const FOE2_INSCRIPTION: &str = "The desk admits by resemblance. A grey coat is not a fire sigil, yet the slip is stamped all the same. Audit every admission against its charter: exhibit each working beast's sigils against the bound of the post it serves. What can be found by audit need never be guessed.";
 /// The FOE demonstrated: the mechanism at its worst.
-pub const FOE2_DEMONSTRATION: &str = "The Menagerie crosses every post unchallenged, wearing the hearth's warmth, the mist's silence, the valley's speed, until no keeper can say what it is.";
+pub const FOE2_DEMONSTRATION: &str = "The mist-hound stands its fire-watch in a grey coat the colour of the ash-hounds. Set before a lit brazier — the valley's one known landmark — it lowers its nose, breathes deep, and reports fog. It is not lying. It was never sigilled for the post.";
 
 // ---------------------------------------------------------------------------
 // Floor 2, Chamber 1 — Traits and impls: the Anvil Call.

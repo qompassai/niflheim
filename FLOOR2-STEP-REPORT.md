@@ -175,3 +175,101 @@ chamber spec and governed.
   1's are; Chamber 1's door stands open and doors 2–5 arrive
   with their steps.
 - No HTTP 500 was seen in this step (no model runs were made).
+
+## Errata — FULL-DESIGN.md reconciliation (2026-11-10, completion programme)
+
+The Step 1B report above records that FULL-DESIGN.md, the brief's
+named design of record, "is present in neither the repo, the packet,
+nor the workspace." That is corrected here: the document exists at
+`~/workspace/goals/rust-all-the-way-down-to-the-kernel/files/FULL-DESIGN.md`
+in the sandbox (the goal's files, outside the primo packet the lane
+searched). It is now landed in this repo as `FULL-DESIGN.md`
+(sha256 54bda4c4bc0a077e32d165cc5253b924c855b3bf1010d376be7d48b4847f39bd,
+1144 lines, byte-identical to the sandbox copy), and its Floor 2
+section (§4) has been diffed against the brief and the landed
+Steps 1A/1B.
+
+### What the diff found — agreement
+
+The brief is a faithful compression of the design's Floor 2 spec.
+Floor name, domain, keeper, theme, and learning objective match.
+The five chambers match in name, order, and core mechanic
+(chartered trick identified by behaviour; the Generic Stable's
+bound-tightening with unjustified sigils refused with the reason;
+the Two Kennels; the Wide Door registry with three placarded
+barred beasts; Foreign Marks and the guild collar). The Herald
+beat (#2, secondary) matches and is Step 3's, per the brief. The
+FOE's seam, diagnosis, proof, and repair strike in the brief are
+the design's: admission by resemblance; the audit plus the lit-
+brazier calibration; the admission audit as proof; re-post the
+fire-watch bound, reassign the mist-hound, refuse domain-less
+admissions. The Lens Stone's name, the stairs relevance, and the
+platform notes (grouped collapsible rosters, no hover-only
+information) all match. The brief's two elaborations are
+consistent with the design and stand: the three barred beasts'
+reasons are named per Rust's object-safety rules, and the FOE
+repair is expressed as real Rust checked by the bounded cargo
+gate (Floor 1's standing pattern).
+
+### What the diff found — conflicts in the landed 1A content, fixed here
+
+The brief was faithful; the content landed under it was not, in
+three places. All three are corrected in this errata commit, in
+`src/content.rs`, following the design:
+
+1. **The FOE was reframed as a beast.** The 1A texts described the
+   Menagerie as "a beast with every sigil and none" that "crosses
+   every post unchallenged" (FLOOR2_INTRO, FOE2_INSCRIPTION,
+   FOE2_DEMONSTRATION). The design's FOE is the house itself as
+   one mechanism: an admission desk that checks appearance where
+   the charter demands a sigil. The three texts now carry the
+   design's framing — the desk admitting by resemblance, the
+   audit instruction, and the mist-hound reporting fog at the
+   lit brazier.
+2. **The loot was misnamed and misconceived.** PLUGIN_MENAGERIE
+   held "The Sigilwright's Lens", a lens that reads sigils. The
+   design's loot is **The Plugin Menagerie**, the two-door host
+   that fields beasts by kind (Narrow Door) or by sigil (Wide
+   Door). Name and text corrected. (The constant was not yet
+   consumed anywhere — the loot lands with Step 4 — so nothing
+   persisted the wrong string.)
+3. **The Lens Stone's text drifted.** It read "Traits: a bound is
+   an admission — say what a thing must do..." The design's
+   codex entry is "**Bounds are admissions.**", and the
+   design's consistency gate (§8.5) makes stone-text drift a
+   defect; Floor 1's landed pattern (the Plank Stone's text is
+   its principle sentence alone) agrees. Text corrected to
+   "Bounds are admissions."
+
+### Recorded for the later steps (no action in this commit)
+
+- **The failure class was never named.** The design assigns
+  Floor 2 the primary failure class **#6, The Cartographer's
+  Blind Eye** (§3.2, §4) — a fine instrument used outside the
+  domain it was made for; the resemblance desk is that class
+  wearing this floor's clothes. Neither the brief nor the landed
+  content names it. Step 4 must weave it explicitly, as Floor
+  1's build names #12.
+- **The FOE's cast is not in the 1A roster.** The design's audit
+  turns on the ash-hounds (the fire-watch's legitimate kind) and
+  the mist-hound admitted among them; the landed roster has
+  neither (its watches are Ember/Cinder/Soot and
+  Mistveil/Drizzle/Vapor). Step 4 should carry the FOE's audit
+  as its own admission table rather than resizing BEASTS, so
+  the 1A roster and the save shape built on it stay untouched;
+  if Step 4 instead extends the roster, it must version the
+  save consequence honestly.
+- **Chamber doors are not yet sequentially gated** (already
+  recorded in Step 1B's left-open list; the design's §5.2 makes
+  chambers strictly ordered). The step that opens Chamber 2
+  (Step 2) should gate Chamber 1's door on Chamber 1 repaired,
+  and so on down the floor.
+
+### Gates (this errata commit)
+
+- FULL-DESIGN.md landed byte-identical (sha256 above).
+- Six exact-match content replacements, each verified to occur
+  exactly once before substitution.
+- cargo gates and counts recorded in the programme report; the
+  test count must hold at 55/0 (the changed strings are display
+  content; no test asserts them).
