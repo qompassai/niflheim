@@ -204,6 +204,8 @@ pub enum Screen {
     Floor6Hub,
     /// A Floor 6 chamber, by index (0-4).
     Floor6Chamber(usize),
+    /// Floor 6's FOE: the Heart Locked Twice.
+    Floor6Foe,
 }
 
 /// What a reading overlay is showing.
@@ -354,6 +356,18 @@ pub enum El {
     F6CensusCycle(u8),
     /// Floor 6 Chamber 4: submit the census to the slate.
     F6CensusSubmit,
+    /// Floor 6 Chamber 5: house one datum in the next kind.
+    F6Choose(u8),
+    /// Floor 6 Chamber 5: write one datum's door sentence.
+    F6Invariant(u8),
+    /// Floor 6's hub: the FOE's door.
+    DoorFoe6,
+    /// The FOE: exhibit one sight of the staff.
+    F6Exhibit(u8),
+    /// The FOE: walk one of the loom's four cases.
+    F6Loom(u8),
+    /// The FOE: cycle one line of the staff's card.
+    F6FoeCard(u8),
     /// Floor 5 Chamber 1: read one step's card.
     F5Card(u8),
     /// Floor 5 Chamber 1: walk the next step.
@@ -693,6 +707,8 @@ enum ArmedFor {
     Foe4,
     /// Floor 5 FOE's strike.
     Foe5,
+    /// Floor 6 FOE's strike.
+    Foe6,
     /// The FOE's strike.
     Foe,
     /// Floor 2 FOE's strike.
@@ -859,6 +875,7 @@ impl Game {
                 | Screen::Floor3Foe
                 | Screen::Floor4Foe
                 | Screen::Floor5Foe
+                | Screen::Floor6Foe
                 | Screen::Foe
                 | Screen::Floor2Foe
         )
@@ -912,6 +929,7 @@ impl Game {
             Screen::Floor3Foe => self.expedition.floor3.foe.strike == StrikePhase::Armed,
             Screen::Floor4Foe => self.expedition.floor4.foe.strike == StrikePhase::Armed,
             Screen::Floor5Foe => self.expedition.floor5.foe.strike == StrikePhase::Armed,
+            Screen::Floor6Foe => self.expedition.floor6.foe.strike == StrikePhase::Armed,
             _ => false,
         }
     }
@@ -1136,7 +1154,11 @@ impl Game {
                 Verb::Hint,
                 Verb::Map,
             ],
-            Screen::Floor2Foe | Screen::Floor3Foe | Screen::Floor4Foe | Screen::Floor5Foe => vec![
+            Screen::Floor2Foe
+            | Screen::Floor3Foe
+            | Screen::Floor4Foe
+            | Screen::Floor5Foe
+            | Screen::Floor6Foe => vec![
                 Verb::Examine,
                 Verb::Read,
                 Verb::Enumerate,
@@ -1233,6 +1255,38 @@ pub mod geom {
     /// Floor 6 chambers 1-4: one operation/call row.
     pub fn f6_op_row(index: usize) -> Rect {
         Rect::new(380.0, 100.0 + index as f32 * 56.0, 300.0, 30.0)
+    }
+
+    /// Floor 6's FOE door, on Floor 6's hub: the same ground
+    /// the earlier floors proved for theirs.
+    pub fn door_foe6() -> Rect {
+        Rect::new(600.0, 292.0, 168.0, 124.0)
+    }
+
+    /// Floor 6 Chamber 5: one datum's housing row.
+    pub fn f6_datum_row(index: usize) -> Rect {
+        Rect::new(380.0, 96.0 + index as f32 * 150.0, 300.0, 30.0)
+    }
+
+    /// Floor 6 Chamber 5: one datum's door-sentence button.
+    pub fn f6_sentence_btn(index: usize) -> Rect {
+        Rect::new(380.0, 184.0 + index as f32 * 150.0, 300.0, 26.0)
+    }
+
+    /// The FOE: exhibit one sight of the staff.
+    pub fn f6foe_exhibit_btn(exhibit: usize) -> Rect {
+        Rect::new(56.0, 128.0 + exhibit as f32 * 52.0, 300.0, 30.0)
+    }
+
+    /// The FOE: walk one of the loom's cases.
+    pub fn f6foe_case_btn(case: usize) -> Rect {
+        Rect::new(56.0, 348.0 + case as f32 * 44.0, 300.0, 30.0)
+    }
+
+    /// The FOE: cycle one line of the staff's card (the
+    /// line's current phrasing stands as text above it).
+    pub fn f6foe_card_btn(line: usize) -> Rect {
+        Rect::new(808.0, 222.0 + line as f32 * 92.0, 440.0, 26.0)
     }
 
     /// Floor 5 Chamber 1: one step's card row.
@@ -1809,7 +1863,8 @@ impl Game {
             | Screen::Floor2Foe
             | Screen::Floor3Foe
             | Screen::Floor4Foe
-            | Screen::Floor5Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
+            | Screen::Floor5Foe
+            | Screen::Floor6Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
             Screen::Title => true,
         }
     }
@@ -2061,6 +2116,12 @@ impl Game {
                          addresses — and a fullness in the gauze \
                          behind it, shaped almost like a seventh cell."
                     }
+                    Screen::Floor6Foe => {
+                        "The broken staff: three lawful states enamelled \
+                         on its shaft, a fourth mark budding between \
+                         shared and exclusive, and a counter beside it \
+                         reading a number the state does not hold."
+                    }
                     Screen::Floor3Foe => {
                         "The Gatehouse Release: a great door, a lantern \
                          burning before its keeper came, and a slate that \
@@ -2102,6 +2163,21 @@ impl Game {
                 self.bump();
             }
             Verb::Enumerate => {
+                if self.screen == Screen::Floor6Foe {
+                    let first = !self.expedition.floor6.foe.exhibits[0];
+                    match self.expedition.floor6_foe_exhibit(0) {
+                        Ok(text) => {
+                            if first {
+                                self.expedition.log_push(
+                                    "The staff's first sight was exhibited: the staff's own census.",
+                                );
+                            }
+                            self.say(StatusKind::Good, text);
+                        }
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
                 if self.screen == Screen::Floor5Foe {
                     let first = !self.expedition.floor5.foe.exhibits[0];
                     match self.expedition.floor5_foe_exhibit(0) {
@@ -2295,6 +2371,13 @@ impl Game {
                         self.expedition.floor2_foe_view_hint();
                     }
                     self.hint_showing = self.expedition.floor2_foe_hints_used().max(1);
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                } else if self.screen == Screen::Floor6Foe {
+                    if self.expedition.floor6_foe_hints_used() == 0 {
+                        self.expedition.floor6_foe_view_hint();
+                    }
+                    self.hint_showing = self.expedition.floor6_foe_hints_used().max(1);
                     self.overlay = Overlay::Reading(ReadingKind::Hint);
                     self.changed();
                 } else if self.screen == Screen::Floor5Foe {
@@ -3935,6 +4018,103 @@ impl Game {
                 }
             }
 
+            El::F6Choose(datum) => {
+                if let Screen::Floor6Chamber(4) = self.screen {
+                    let datum = datum as usize;
+                    if let Some(slot) = self.expedition.floor6.chambers[4]
+                        .work
+                        .choices
+                        .get_mut(datum)
+                    {
+                        *slot = (*slot + 1) % 4;
+                        let choice = *slot;
+                        self.say(
+                            StatusKind::Info,
+                            if choice == 0 {
+                                format!("{} stands unhoused.", content::CELL_DATA[datum].name)
+                            } else {
+                                format!(
+                                    "{} is housed in {}.",
+                                    content::CELL_DATA[datum].name,
+                                    content::CELL_KINDS[choice as usize - 1]
+                                )
+                            },
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F6Invariant(datum) => {
+                if let Screen::Floor6Chamber(4) = self.screen {
+                    let datum = datum as usize;
+                    if let Some(slot) = self.expedition.floor6.chambers[4]
+                        .work
+                        .invariants
+                        .get_mut(datum)
+                    {
+                        *slot = (*slot + 1) % 4;
+                        let choice = *slot;
+                        self.say(
+                            StatusKind::Info,
+                            if choice == 0 {
+                                format!(
+                                    "{}'s door stands unwritten.",
+                                    content::CELL_DATA[datum].name
+                                )
+                            } else {
+                                format!(
+                                    "{}'s door now reads: {}",
+                                    content::CELL_DATA[datum].name,
+                                    content::CELL_DATA[datum].sentences[choice as usize - 1]
+                                )
+                            },
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F6Exhibit(exhibit) => {
+                if self.screen == Screen::Floor6Foe {
+                    match self.expedition.floor6_foe_exhibit(exhibit as usize) {
+                        Ok(text) => self.say(StatusKind::Good, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F6Loom(case) => {
+                if self.screen == Screen::Floor6Foe {
+                    match self.expedition.floor6_foe_walk_case(case as usize) {
+                        Ok(text) => self.say(StatusKind::Good, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F6FoeCard(line) => {
+                if self.screen == Screen::Floor6Foe {
+                    let line = line as usize;
+                    let foe = &mut self.expedition.floor6.foe;
+                    let mut showing = None;
+                    if let Some(slot) = foe.card_lines.get_mut(line) {
+                        *slot = (*slot + 1) % 3;
+                        showing = Some(*slot as usize);
+                    }
+                    match (content::FOE6_CARD.get(line), showing) {
+                        (Some(phrasings), Some(index)) => self.say(
+                            StatusKind::Info,
+                            format!("The staff's card, line {}: {}", line + 1, phrasings[index]),
+                        ),
+                        _ => self.say(StatusKind::Refusal, "The card has three lines."),
+                    }
+                    self.changed();
+                }
+            }
+
             El::F6Watch => {
                 if let Screen::Floor6Chamber(index) = self.screen {
                     if let Some(progress) = self.expedition.floor6.chambers.get_mut(index) {
@@ -4344,6 +4524,21 @@ impl Game {
                 }
                 self.bump();
             }
+            El::DoorFoe6 => {
+                if self.expedition.floor6.foe.state == FoeState::Fallen {
+                    self.say(
+                        StatusKind::Info,
+                        "The curtain hangs still: the staff stands \
+                         re-forged in its cradle, and the heart is \
+                         locked once, and truly.",
+                    );
+                } else {
+                    self.enter_screen(Screen::Floor6Foe);
+                    self.say(StatusKind::Info, content::FOE6_INTRO);
+                }
+                self.bump();
+            }
+
             El::DoorFoe5 => {
                 if self.expedition.floor5.foe.state == FoeState::Fallen {
                     self.say(
@@ -5161,6 +5356,19 @@ impl Game {
                 Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
             },
 
+            Screen::Floor6Foe => match self.expedition.floor6_foe_arm_strike() {
+                Ok(()) => {
+                    self.armed = Some(ArmedFor::Foe6);
+                    self.say(
+                        StatusKind::Info,
+                        "The seal is pressed. Confirm to re-forge the \
+                         staff and lock the Heart once, and truly — \
+                         or stand down.",
+                    );
+                }
+                Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+            },
+
             Screen::Floor5Foe => match self.expedition.floor5_foe_arm_strike() {
                 Ok(()) => {
                     self.armed = Some(ArmedFor::Foe5);
@@ -5332,6 +5540,28 @@ impl Game {
                         self.expedition.log_push(
                             "The Lantern Stone entered the codex; the Gatehouse \
                              Key, the pack.",
+                        );
+                        self.say(StatusKind::Good, text);
+                    }
+                    Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                }
+                self.changed();
+            }
+
+            Some(ArmedFor::Foe6) => {
+                self.armed = None;
+                let date = if self.today.is_empty() {
+                    "an unrecorded day".to_string()
+                } else {
+                    self.today.clone()
+                };
+                match self.expedition.floor6_foe_confirm_strike(&date) {
+                    Ok(text) => {
+                        self.expedition
+                            .log_push(format!("The Heart Locked Twice fell on {date}."));
+                        self.expedition.log_push(
+                            "The Lockheart Stone entered the codex; the \
+                             Lockheart Pair, the pack.",
                         );
                         self.say(StatusKind::Good, text);
                     }
@@ -5648,6 +5878,7 @@ impl Game {
                 Screen::Floor3Foe => "The Release's Inscription".to_string(),
                 Screen::Floor4Foe => "The Foundation's Inscription".to_string(),
                 Screen::Floor5Foe => "The Thing's Inscription".to_string(),
+                Screen::Floor6Foe => "The Heart's Inscription".to_string(),
                 _ => "The Inscription".to_string(),
             },
             ReadingKind::Demonstration => "The Demonstration".to_string(),
@@ -5682,6 +5913,7 @@ impl Game {
                 Screen::Floor3Foe => content::FOE3_INSCRIPTION.to_string(),
                 Screen::Floor4Foe => content::FOE4_INSCRIPTION.to_string(),
                 Screen::Floor5Foe => content::FOE5_INSCRIPTION.to_string(),
+                Screen::Floor6Foe => content::FOE6_INSCRIPTION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Demonstration => match self.screen {
@@ -5710,6 +5942,7 @@ impl Game {
                 Screen::Floor3Foe => content::FOE3_INTRO.to_string(),
                 Screen::Floor4Foe => content::FOE4_DEMONSTRATION.to_string(),
                 Screen::Floor5Foe => content::FOE5_DEMONSTRATION.to_string(),
+                Screen::Floor6Foe => content::FOE6_DEMONSTRATION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Hint => {
@@ -5724,6 +5957,7 @@ impl Game {
                     Screen::Floor3Foe => content::floor3_foe_hints()[rung - 1],
                     Screen::Floor4Foe => content::floor4_foe_hints()[rung - 1],
                     Screen::Floor5Foe => content::floor5_foe_hints()[rung - 1],
+                    Screen::Floor6Foe => content::floor6_foe_hints()[rung - 1],
                     _ => {
                         let challenge = self.current_challenge().unwrap_or(0);
                         content::hints(challenge)[rung - 1]
@@ -5935,6 +6169,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor3Foe
         | Screen::Floor4Foe
         | Screen::Floor5Foe
+        | Screen::Floor6Foe
         | Screen::Floor3Hub
         | Screen::Floor4Hub
         | Screen::Floor5Hub
@@ -5985,6 +6220,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             for index in 0..5 {
                 els.push((El::Floor6Door(index as u8), geom::door_chamber(index)));
             }
+            els.push((El::DoorFoe6, geom::door_foe6()));
         }
 
         Screen::Floor2Hub => {
@@ -6138,6 +6374,25 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             }
             layout_seal(&mut els, game);
         }
+        Screen::Floor6Foe => {
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.push((El::ResetChamber, rects::RESET_BTN));
+            for exhibit in 0..content::FOE6_EXHIBIT_NAMES.len() {
+                els.push((
+                    El::F6Exhibit(exhibit as u8),
+                    geom::f6foe_exhibit_btn(exhibit),
+                ));
+            }
+            for case in 0..content::FOE6_CASES.len() {
+                els.push((El::F6Loom(case as u8), geom::f6foe_case_btn(case)));
+            }
+            for line in 0..content::FOE6_CARD.len() {
+                els.push((El::F6FoeCard(line as u8), geom::f6foe_card_btn(line)));
+            }
+            layout_seal(&mut els, game);
+        }
+
         Screen::Floor2Foe => {
             els.push((El::Desk, geom::desk()));
             els.push((El::Stone, geom::stone()));
@@ -6220,6 +6475,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         Screen::Floor3Foe => game.expedition.floor3.foe.strike == StrikePhase::Armed,
         Screen::Floor4Foe => game.expedition.floor4.foe.strike == StrikePhase::Armed,
         Screen::Floor5Foe => game.expedition.floor5.foe.strike == StrikePhase::Armed,
+        Screen::Floor6Foe => game.expedition.floor6.foe.strike == StrikePhase::Armed,
         _ => false,
     };
     els.push((El::Seal, rects::SEAL));
@@ -6258,6 +6514,12 @@ fn layout_floor6_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
                 els.push((El::F6CensusCycle(class as u8), geom::f6_op_row(class)));
             }
             els.push((El::F6CensusSubmit, geom::f6_op_row(3)));
+        }
+        4 => {
+            for datum in 0..3 {
+                els.push((El::F6Choose(datum as u8), geom::f6_datum_row(datum)));
+                els.push((El::F6Invariant(datum as u8), geom::f6_sentence_btn(datum)));
+            }
         }
         _ => {}
     }
@@ -7528,6 +7790,107 @@ mod tests {
         assert_eq!(game.screen, Screen::Floor5Hub);
     }
 
+    /// Floor 6 Step 4, driven on the GUI surface: Choosing
+    /// the Cell houses the three data and writes their
+    /// doors; the Heart Locked Twice is exhibited in order,
+    /// walked on the loom, rewritten, and struck — the
+    /// stone and the pair change hands.
+    #[test]
+    fn floor6_chamber_five_and_foe_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn to_floor6_hub(game: &mut Game) {
+            game.screen = Screen::Hub;
+            game.expedition.foe.state = FoeState::Fallen;
+            game.expedition.foe.gate_passed = true;
+            game.expedition.floor2.foe.state = FoeState::Fallen;
+            game.expedition.floor3.foe.gate_passed = true;
+            for chamber in game.expedition.floor2.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            for chamber in game.expedition.floor4.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor4.foe.state = FoeState::Fallen;
+            for chamber in game.expedition.floor5.chambers.iter_mut().take(3) {
+                chamber.state = ChamberState::Repaired;
+            }
+            click(game, El::DoorFloor4);
+            click(game, El::DoorFloor5);
+            click(game, El::DoorFloor6);
+            assert_eq!(game.screen, Screen::Floor6Hub);
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        to_floor6_hub(&mut game);
+        // Chamber 5 — Choosing the Cell.
+        click(&mut game, El::Floor6Door(4));
+        click(&mut game, El::F6Watch);
+        // House each datum: presses cycle unhoused → plain →
+        // many-readers → borrow-flag, so the press count is
+        // the true kind + 1.
+        for (datum, datum_meta) in content::CELL_DATA.iter().enumerate() {
+            for _ in 0..=datum_meta.true_kind {
+                click(&mut game, El::F6Choose(datum as u8));
+            }
+            for _ in 0..=datum_meta.true_sentence {
+                click(&mut game, El::F6Invariant(datum as u8));
+            }
+        }
+        assert!(game.expedition.floor6_diagnosed(4));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor6.chambers[4].state,
+            ChamberState::Repaired
+        );
+        // The FOE — the Heart Locked Twice.
+        click(&mut game, El::TabFloor);
+        to_floor6_hub(&mut game);
+        click(&mut game, El::DoorFoe6);
+        assert_eq!(game.screen, Screen::Floor6Foe);
+        // Out of order: the worked day cannot precede the
+        // census.
+        click(&mut game, El::F6Exhibit(1));
+        assert!(!game.expedition.floor6.foe.exhibits[1]);
+        for exhibit in 0..3u8 {
+            click(&mut game, El::F6Exhibit(exhibit));
+        }
+        assert!(game.expedition.floor6_foe_proof_complete());
+        for case in 0..4u8 {
+            click(&mut game, El::F6Loom(case));
+        }
+        assert!(game.expedition.floor6.foe.gate_passed);
+        // The card: line 1 once, line 2 twice, line 3 never.
+        click(&mut game, El::F6FoeCard(0));
+        click(&mut game, El::F6FoeCard(1));
+        click(&mut game, El::F6FoeCard(1));
+        assert!(game.expedition.floor6_foe_repair_ok());
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(game.expedition.floor6.foe.state, FoeState::Fallen);
+        assert!(
+            game.expedition
+                .codex
+                .iter()
+                .any(|stone| stone == content::LOCKHEART_STONE)
+        );
+        assert!(
+            game.expedition
+                .pack
+                .iter()
+                .any(|loot| loot == content::LOCKHEART_PAIR)
+        );
+    }
     /// Floor 6 Step 3, driven on the GUI surface: the Spin
     /// Heart's bound is set, the heart gives up honestly,
     /// four claims are recorded provisional; the Day Census

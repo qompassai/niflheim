@@ -157,4 +157,58 @@ Gates, all on primo under pinned rustc 1.99.0 (evidence:
 - Xvfb smoke: `cold_start_ms=801`, zero panics.
   `#![forbid(unsafe_code)]` intact.
 
-Commit: recorded at Step 4.
+Commit: `5e5194c` on `pax/floor2-build-20261109`.
+
+## Step 4 — Choosing the Cell and the Heart Locked Twice
+
+The floor completes. Choosing the Cell houses three data
+by their lives: the House Charter (read by all, rewritten
+rarely) in the many-readers lock heart, the Tally Stone
+(two porters incrementing, no addition losable) in the
+borrow-flag heart, the Day Log (one appending hand, none
+reading) in the plain cell — each under the one true
+sentence of three offered, judged by the chooser's key in
+puzzles. The FOE runs on the broken staff, a real model
+in puzzles: a flag machine whose exclusive opens over
+standing readers, admitting the fused state. Its census
+is enumerated (eight states: one free, three shared, one
+exclusive, three fused — a lawful staff's census has no
+fourth class), its worked day replayed into Fused(2), its
+torn read computed word by word as (day 2, day 1). The
+gate is the model-loom: four named interleavings run on
+the loom and judged by computation, each checked against
+its recorded verdict fail-closed. The repair rewrites the
+staff's issue-rule card to its three truths — the staff
+is an enum with the count inside the shared state; the
+writer issues only from free; the count is part of the
+state. The strike re-forges the staff and records the
+Lockheart Stone in the codex and the Lockheart Pair in
+the pack. `floor6_complete()` stands reachable end to
+end, and the invariants already hold it honest: every
+chamber's Diagnosed state is proof-checked at load.
+
+Gates, all on primo under pinned rustc 1.99.0 (evidence:
+`~/.local/share/pax/niflheim-floor6-step4-build-20261110/`):
+
+- `cargo fmt --check`: clean.
+- `cargo test`: **190 passed, 0 failed** (180 at Step 3 +
+  seven puzzles tests, two state tests, one GUI test; no
+  test deleted, skipped, or weakened).
+- `cargo clippy --all-targets -- -D warnings`: exit 0.
+- Theodolite (cured protocol): planted run — puzzles.rs
+  count=9, all E0308 from the planted control at line 2440,
+  the other four touched files 0 in the same session;
+  restore sha256-verified (7c1634ce…); clean run — all
+  five files count=0; PASS both modes.
+- Determinism: the playthrough probe extended through
+  chamber 5 and the FOE's fall (floor6_complete asserted,
+  load-back at five chambers repaired and the floor
+  complete), run twice: byte-identical, sha256
+  6386a8b71efc90fba5a20c441a3b3d9f6597f55438a29a987239fa4e8abb9d6b.
+  Probe removed after the runs.
+- Android: lib builds, exit 0 (libniflheim.so
+  1,349,326,080 bytes).
+- Xvfb smoke: `cold_start_ms=997`, zero panics.
+  `#![forbid(unsafe_code)]` intact.
+
+Commit: recorded at Step 5.

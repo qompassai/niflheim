@@ -3752,3 +3752,217 @@ pub const CENSUS_EVENTS: [(u8, &str, u8); 8] = [
 
 /// The census's three classes, in slate order.
 pub const CENSUS_CLASSES: [&str; 3] = ["FREE", "SHARED", "EXCLUSIVE"];
+
+/// One of Chamber 5's three data: the story the room tells
+/// about it, the cell kind that truly houses it (an index
+/// into `CELL_KINDS`), the three sentences offered for its
+/// door, and the true sentence's index.
+pub struct CellDatum {
+    /// The datum's name.
+    pub name: &'static str,
+    /// The story placarded in the room.
+    pub story: &'static str,
+    /// The cell kind that truly houses it.
+    pub true_kind: u8,
+    /// The three sentences offered for its door.
+    pub sentences: [&'static str; 3],
+    /// The true sentence's index.
+    pub true_sentence: u8,
+}
+
+/// The three cell kinds a datum may be housed in.
+pub const CELL_KINDS: [&str; 3] = [
+    "a plain cell",
+    "a many-readers lock heart",
+    "a borrow-flag heart",
+];
+
+/// Chamber 5's three data (the Lockheart's miniature of
+/// secondary #12, the chooser's table). The configuration
+/// is read by all and rewritten rarely — the many-readers
+/// heart. The tally is incremented by two porters and must
+/// never lose an addition — the borrow-flag heart. The log
+/// is appended by one hand and read by none until the
+/// season turns — the plain cell, guarded by the roster
+/// alone.
+pub const CELL_DATA: [CellDatum; 3] = [
+    CellDatum {
+        name: "The House Charter",
+        story: "The house's configuration: read at every bell by \
+                every porter in the warren, rewritten once a \
+                season when the house changes its mind.",
+        true_kind: 1,
+        sentences: [
+            "It is lent to exactly one porter, who must fill it \
+             before it comes back.",
+            "Readers and the rewriter may stand inside together \
+             whenever they please.",
+            "Many read at once; the one rewrite waits until \
+             every reader has left.",
+        ],
+        true_sentence: 2,
+    },
+    CellDatum {
+        name: "The Tally Stone",
+        story: "The porters' counter: two porters each add their \
+                count at shift's end, and the house pays wages by \
+                it — an addition lost is a wage stolen.",
+        true_kind: 2,
+        sentences: [
+            "Both porters may add at the same moment; the stone \
+             keeps what it can.",
+            "One hand holds it at a time, and each addition \
+             lands whole before the next hand takes it.",
+            "It is read often and written rarely, so its readers \
+             never wait.",
+        ],
+        true_sentence: 1,
+    },
+    CellDatum {
+        name: "The Day Log",
+        story: "The house's log: one hand appends the day's \
+                entries, in order, and no one reads it until the \
+                season turns and the accounts are closed.",
+        true_kind: 0,
+        sentences: [
+            "Its entries are lent to many readers at once, all \
+             season long.",
+            "No lock at all: a single appending hand, kept \
+             single by the roster — the cell promises nothing \
+             and needs nothing.",
+            "A flag guards it, and every porter must take the \
+             flag alone before appending.",
+        ],
+        true_sentence: 1,
+    },
+];
+
+/// The FOE's name: the eleventh failure class with a face.
+pub const FOE6_NAME: &str = "The Heart Locked Twice";
+
+/// The FOE's door speaks this on entry.
+pub const FOE6_INTRO: &str = "At the warren's heart one chest stands locked twice \
+    over — and both locks are open.";
+
+/// The FOE chamber's inscription.
+pub const FOE6_INSCRIPTION: &str = "Here is kept the record of the eleventh failure \
+    class: THE TORN HEART — a heart that stands shared and \
+    exclusive at once, because its keeper's staff let a writer \
+    in over standing readers and called the result a state. \
+    The Heart Locked Twice is that class with a face: a staff \
+    whose issue-counter drifted off the state, until exclusive \
+    could be granted over shares, and a heart could be read \
+    mid-write, torn between two days.";
+
+/// The FOE's demonstration.
+pub const FOE6_DEMONSTRATION: &str = "Lockheart draws the curtain. The staff stands \
+    in its cradle, its three lawful states enamelled on the \
+    shaft — and while you watch, the enamel crawls: a fourth \
+    mark buds between shared and exclusive, neither and both, \
+    and the counter beside the staff reads a number the state \
+    does not hold.";
+
+/// The codex stone the Heart's fall records.
+pub const LOCKHEART_STONE: &str = "The Lockheart Stone";
+
+/// The pack loot the Heart's fall records — the pair, two
+/// charms, wielded on Floor 7.
+pub const LOCKHEART_PAIR: &str = "The Lockheart Pair";
+
+/// The exhibits' names, in the staff's order. The accounts
+/// are spoken from the models at the exhibiting (the census
+/// counted, the day replayed, the torn value read), so only
+/// the names live here — an out-of-order refusal cites the
+/// missing prior sight by name.
+pub const FOE6_EXHIBIT_NAMES: [&str; 3] = [
+    "the staff's own census",
+    "a worked day on the staff",
+    "the torn reading",
+];
+
+/// The model-loom's four cases: a (name, whether the true
+/// loom computes it torn, walked outcome) triple each. The
+/// verdict is computed on the loom in `puzzles` and checked
+/// against the middle field — a case whose computation
+/// disagrees is refused, fail-closed.
+pub const FOE6_CASES: [(&str, bool, &str); 4] = [
+    (
+        "The Courteous Pair",
+        false,
+        "Case one walked: the writer's two words land whole, \
+         then the reader reads — one day, entire. Sound.",
+    ),
+    (
+        "The Torn Letter",
+        true,
+        "Case two walked: the reader reads between the \
+         writer's two words — the first word of the new day, \
+         the second of the old. Torn, and the loom shows the \
+         tear.",
+    ),
+    (
+        "The Patient Porter",
+        false,
+        "Case three walked: the reader reads the old day \
+         whole before the writer begins. Sound — a day read \
+         entire is never torn, whichever day it is.",
+    ),
+    (
+        "The Second Reader",
+        true,
+        "Case four walked: the writer turns the heart's \
+         second word first; the second reader reads across \
+         the turn — old first word, new second. Torn.",
+    ),
+];
+
+/// The staff's issue-rule card, as the repair rewrites it:
+/// three lines, three phrasings each, exactly one checkable
+/// truth per line.
+pub const FOE6_CARD: [[&str; 3]; 3] = [
+    [
+        "The staff keeps its readers in a side tally, apart \
+         from the state.",
+        "The staff is an enum — free, shared with its count \
+         inside, exclusive — and there is no fourth state.",
+        "The staff is whatever the last porter left it as.",
+    ],
+    [
+        "A writer may take the heart whenever the readers \
+         are few.",
+        "The heart is the writer's whenever she knocks twice.",
+        "Exclusive is issued only from free: while any share \
+         stands, the writer waits.",
+    ],
+    [
+        "The count is part of the state: a state without its \
+         count is not a state the staff can stand in.",
+        "The count is kept on a slate beside the staff, near \
+         enough.",
+        "Counts are for the census; the heart need not carry \
+         one.",
+    ],
+];
+
+/// The checkable phrasing per line of the staff's card.
+pub const FOE6_CARD_KEY: [u8; 3] = [1, 2, 0];
+
+/// The FOE's hint ladder: exhibits in order, the loom
+/// walked, the card rewritten — and the seam the fourth
+/// rung names.
+pub fn floor6_foe_hints() -> [&'static str; 4] {
+    [
+        "Three sights, in the staff's order: the census, the \
+         worked day, the torn reading. The curtain opens one \
+         layer at a time.",
+        "Then the model-loom: four interleavings of two \
+         porters, each judged by the loom's own computation — \
+         sound or torn, as the words land.",
+        "The strike also wants the staff's card rewritten: \
+         three lines, each with exactly one checkable truth.",
+        "The seam: the fused state was never a state — it was \
+         a count that had drifted off the state and a writer \
+         let in over it. Put the count back inside the state, \
+         and exclusive can only ever be issued from free.",
+    ]
+}

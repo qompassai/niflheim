@@ -20,8 +20,8 @@ use serde::{Deserialize, Serialize};
 use crate::content::{
     ADMISSION_SERVICES, BEASTS, BRASS_EYE_STONE, FOE_ADMISSIONS, FOE_CHALLENGE, GATE_SCAFFOLD,
     GATE2_SCAFFOLD, GATEHOUSE_KEY, HERALD_LETTERS, ICE_STONE, INTERNERS_HOARD, LANTERN_STONE,
-    LEASES_INITIAL, LENS_STONE, PACK_ITEMS, PLACARDS, PLANK_STONE, PLUGIN_MENAGERIE, PLUMB_LINE,
-    ROSTER_GROUPS, VEILWALKERS_BUFFER,
+    LEASES_INITIAL, LENS_STONE, LOCKHEART_PAIR, LOCKHEART_STONE, PACK_ITEMS, PLACARDS, PLANK_STONE,
+    PLUGIN_MENAGERIE, PLUMB_LINE, ROSTER_GROUPS, VEILWALKERS_BUFFER,
 };
 use crate::core::{SAVE_FORMAT_VERSION, SAVE_MAGIC, SaveError, Settings, TextScale};
 use crate::puzzles::{
@@ -673,6 +673,14 @@ pub struct LockWork {
     /// Chamber 4: the slate judged the census true.
     #[serde(default)]
     pub census_judged: bool,
+    /// Chamber 5: the cell kind chosen per datum (0 =
+    /// unhoused, else the kind index + 1).
+    #[serde(default)]
+    pub choices: [u8; 3],
+    /// Chamber 5: the sentence written per datum's door
+    /// (0 = unwritten, else the sentence index + 1).
+    #[serde(default)]
+    pub invariants: [u8; 3],
 }
 
 /// Floor 6, one chamber's progress.
@@ -699,6 +707,16 @@ pub struct Floor6FoeProgress {
     pub strike: StrikePhase,
     /// The date inscribed when the FOE fell (`YYYY-MM-DD`).
     pub fallen_date: Option<String>,
+    /// The staff's exhibits, in its order: the census, the
+    /// worked day, the torn reading.
+    #[serde(default)]
+    pub exhibits: [bool; 3],
+    /// The model-loom's four interleavings, walked.
+    #[serde(default)]
+    pub loom_walked: [bool; 4],
+    /// The staff's rewritten issue-rule card, line by line.
+    #[serde(default)]
+    pub card_lines: [u8; 3],
 }
 
 /// The whole of Floor 6: five chambers and the FOE.
@@ -729,6 +747,9 @@ impl Floor6Progress {
                 gate_passed: false,
                 strike: StrikePhase::Idle,
                 fallen_date: None,
+                exhibits: [false; 3],
+                loom_walked: [false; 4],
+                card_lines: [0; 3],
             },
             foe_hints_used: 0,
         }
@@ -3236,6 +3257,7 @@ impl Expedition {
                     && work.spin_annotations.iter().all(|choice| *choice != 0)
             }
             3 => work.watched && work.census_judged && work.census == crate::puzzles::day_census(),
+            4 => work.watched && crate::puzzles::choosing_complete(&work.choices, &work.invariants),
             _ => false,
         }
     }
@@ -3381,6 +3403,196 @@ impl Expedition {
     pub fn floor6_complete(&self) -> bool {
         self.floor6_chambers_repaired() == 5 && self.floor6.foe.state == FoeState::Fallen
     }
+    /// Exhibit one sight of the staff, in its order: the
+    /// census Lockheart counted over the broken staff, the
+    /// worked day that ends fused, the torn reading. A sight
+    /// taken out of order is refused, naming the sight that
+    /// must come first; the first sight taken stands the
+    /// Heart Exposed. The accounts are spoken from the
+    /// models — counted and replayed at the exhibiting.
+    pub fn floor6_foe_exhibit(&mut self, exhibit: usize) -> Result<String, Refusal> {
+        if exhibit >= crate::content::FOE6_EXHIBIT_NAMES.len() {
+            return Err(Refusal("no such sight of the staff".to_string()));
+        }
+        if self.floor6.foe.exhibits[exhibit] {
+            return Ok("That sight already stands exhibited.".to_string());
+        }
+        for prior in 0..exhibit {
+            if !self.floor6.foe.exhibits[prior] {
+                return Err(Refusal(format!(
+                    "the staff is read in order: first, {} — nothing \
+                     stands behind the curtain until each sight \
+                     follows the last",
+                    crate::content::FOE6_EXHIBIT_NAMES[prior]
+                )));
+            }
+        }
+        self.floor6.foe.exhibits[exhibit] = true;
+        if self.floor6.foe.state == FoeState::Standing {
+            self.floor6.foe.state = FoeState::Exposed;
+        }
+        Ok(match exhibit {
+            0 => {
+                let census = crate::puzzles::staff_census();
+                format!(
+                    "Exhibit, first sight: the staff's own census, \
+                     counted over the broken staff — {} free, {} \
+                     shared, {} exclusive, and {} FUSED: a state no \
+                     lawful staff can stand in, counted three times \
+                     over in the staff's own reach.",
+                    census[0], census[1], census[2], census[3]
+                )
+            }
+            1 => {
+                let end = crate::puzzles::staff_worked_day();
+                format!(
+                    "Exhibit, second sight: a worked day on the \
+                     staff — two porters open the heart shared, and \
+                     then the writer comes, and the staff lets her \
+                     in over them both. The day ends {}.",
+                    crate::puzzles::staff_state_name(end)
+                )
+            }
+            _ => {
+                let (first, second) = crate::puzzles::staff_torn_read();
+                format!(
+                    "Exhibit, third sight: the heart read mid-write — \
+                     its first word of day {first}, its second of \
+                     day {second}, in one reading. Verdict: the \
+                     heart was torn between two days, and the \
+                     reader holds the tear."
+                )
+            }
+        })
+    }
+
+    /// The Heart's proof, whole: the staff exhibited in
+    /// order, all three sights.
+    pub fn floor6_foe_proof_complete(&self) -> bool {
+        self.floor6.foe.exhibits.iter().all(|seen| *seen)
+    }
+
+    /// Walk one of the model-loom's four cases: the case is
+    /// run on the loom in `puzzles`, and its computed verdict
+    /// must be the recorded one — a disagreement is refused,
+    /// fail-closed. The walk waits on the diagnosis.
+    pub fn floor6_foe_walk_case(&mut self, case: usize) -> Result<String, Refusal> {
+        if !self.floor6_foe_proof_complete() {
+            return Err(Refusal(
+                "the loom is walked against a diagnosed fault, not \
+                 a rumour: exhibit the staff first"
+                    .to_string(),
+            ));
+        }
+        let Some((name, expected, outcome)) = crate::content::FOE6_CASES.get(case) else {
+            return Err(Refusal("no such case on the loom's table".to_string()));
+        };
+        if self.floor6.foe.loom_walked[case] {
+            return Ok("That case already stands walked.".to_string());
+        }
+        if crate::puzzles::loom_case_torn(case) != Some(*expected) {
+            return Err(Refusal(
+                "the case does not hold — the loom's computation is \
+                 not what its record promises"
+                    .to_string(),
+            ));
+        }
+        let _ = name;
+        self.floor6.foe.loom_walked[case] = true;
+        self.floor6_foe_refresh_gate();
+        Ok(outcome.to_string())
+    }
+
+    /// The gate is the loom's walk: all four cases hold.
+    fn floor6_foe_refresh_gate(&mut self) {
+        let foe = &mut self.floor6.foe;
+        foe.gate_passed = foe.loom_walked.iter().all(|done| *done);
+    }
+
+    /// The repair stands when the staff's card shows its
+    /// three checkable truths.
+    pub fn floor6_foe_repair_ok(&self) -> bool {
+        crate::puzzles::staff_card_repaired(&self.floor6.foe.card_lines)
+    }
+
+    /// Arm the Heart's strike: the staff exhibited in order,
+    /// the loom's walk complete, and the staff's card
+    /// rewritten — as with every FOE.
+    pub fn floor6_foe_arm_strike(&mut self) -> Result<(), Refusal> {
+        if self.floor6.foe.state == FoeState::Fallen {
+            return Err(Refusal(
+                "the Heart has already been locked once, and truly".to_string(),
+            ));
+        }
+        if !self.floor6_foe_proof_complete() {
+            return Err(Refusal(
+                "the strike sleeps until the staff stands exhibited: \
+                 the census, the worked day, the torn reading, in \
+                 order"
+                    .to_string(),
+            ));
+        }
+        if !self.floor6.foe.gate_passed {
+            return Err(Refusal(
+                "the strike sleeps until the loom's walk stands \
+                 complete: four interleavings against the torn heart"
+                    .to_string(),
+            ));
+        }
+        if !self.floor6_foe_repair_ok() {
+            return Err(Refusal(
+                "the strike sleeps until the staff's card stands \
+                 rewritten: three lines, three checkable truths"
+                    .to_string(),
+            ));
+        }
+        self.floor6.foe.strike = StrikePhase::Armed;
+        Ok(())
+    }
+
+    /// Confirm the strike: the staff is re-forged as an enum
+    /// with its count inside, and the Lockheart Stone and
+    /// the Lockheart Pair change hands.
+    pub fn floor6_foe_confirm_strike(&mut self, date: &str) -> Result<String, Refusal> {
+        if self.floor6.foe.state == FoeState::Fallen {
+            return Err(Refusal(
+                "the Heart has already been locked once, and truly".to_string(),
+            ));
+        }
+        if self.floor6.foe.strike != StrikePhase::Armed {
+            return Err(Refusal(
+                "the strike is not armed — press the seal first".to_string(),
+            ));
+        }
+        self.floor6.foe.strike = StrikePhase::Idle;
+        self.floor6.foe.state = FoeState::Fallen;
+        self.floor6.foe.fallen_date = Some(date.to_string());
+        if !self.codex.iter().any(|stone| stone == LOCKHEART_STONE) {
+            self.codex.push(LOCKHEART_STONE.to_string());
+        }
+        if !self.pack.iter().any(|loot| loot == LOCKHEART_PAIR) {
+            self.pack.push(LOCKHEART_PAIR.to_string());
+        }
+        Ok("The strike lands — not a staff smashed, but a state \
+            made honest: the staff is re-forged as an enum of \
+            three, its count inside the shared state where it \
+            lives, and exclusive issues from free alone. Behind \
+            the curtain there is only a heart, locked once, and \
+            truly."
+            .to_string())
+    }
+
+    /// Record that the player read a Heart hint rung.
+    pub fn floor6_foe_view_hint(&mut self) -> u8 {
+        self.floor6.foe_hints_used = (self.floor6.foe_hints_used + 1).min(4);
+        self.floor6.foe_hints_used
+    }
+
+    /// The deepest Heart hint rung recorded.
+    pub fn floor6_foe_hints_used(&self) -> u8 {
+        self.floor6.foe_hints_used
+    }
+
     /// Take the dimension book down: the re-survey may begin,
     /// and the Foundation stands Exposed.
     pub fn floor4_foe_take_book(&mut self) {
@@ -4340,6 +4552,86 @@ mod tests {
         assert!(!expedition.floor5_complete());
     }
 
+    /// Floor 6 Step 4 state: Choosing the Cell judges on
+    /// the housed kinds and the true sentences; the Heart
+    /// Locked Twice falls to exhibits in order, the loom's
+    /// walk, the rewritten card, and the strike — and its
+    /// stone and pair change hands.
+    #[test]
+    fn floor6_choosing_and_heart_fall() {
+        let mut expedition = Expedition::new();
+        // Choosing the Cell.
+        {
+            let work = &mut expedition.floor6.chambers[4].work;
+            work.watched = true;
+            work.choices = [2, 3, 1];
+            work.invariants = [3, 2, 2];
+        }
+        assert!(expedition.floor6_diagnosed(4));
+        assert!(expedition.floor6_file_proof(4).is_ok());
+        assert!(expedition.floor6_repair_chamber(4).is_ok());
+        // The FOE: sights out of order are refused.
+        assert!(expedition.floor6_foe_exhibit(1).is_err());
+        expedition.floor6_foe_exhibit(0).expect("the census");
+        expedition.floor6_foe_exhibit(1).expect("the worked day");
+        expedition.floor6_foe_exhibit(2).expect("the torn reading");
+        assert!(expedition.floor6_foe_proof_complete());
+        // The strike sleeps until the loom and the card.
+        assert!(expedition.floor6_foe_arm_strike().is_err());
+        for case in 0..4 {
+            expedition.floor6_foe_walk_case(case).expect("loom case");
+        }
+        assert!(expedition.floor6.foe.gate_passed);
+        assert!(expedition.floor6_foe_arm_strike().is_err());
+        expedition.floor6.foe.card_lines = crate::content::FOE6_CARD_KEY;
+        assert!(expedition.floor6_foe_repair_ok());
+        expedition.floor6_foe_arm_strike().expect("strike arms");
+        expedition
+            .floor6_foe_confirm_strike("2026-11-10")
+            .expect("the Heart falls");
+        assert_eq!(expedition.floor6.foe.state, FoeState::Fallen);
+        assert_eq!(
+            expedition.floor6.foe.fallen_date.as_deref(),
+            Some("2026-11-10")
+        );
+        assert!(
+            expedition
+                .codex
+                .iter()
+                .any(|stone| stone == crate::content::LOCKHEART_STONE)
+        );
+        assert!(
+            expedition
+                .pack
+                .iter()
+                .any(|loot| loot == crate::content::LOCKHEART_PAIR)
+        );
+    }
+
+    /// Adversarial: the loom refuses to walk before the
+    /// diagnosis, a fourth sight does not exist, and a
+    /// fallen Heart cannot fall again.
+    #[test]
+    fn floor6_heart_adversarial() {
+        let mut expedition = Expedition::new();
+        assert!(expedition.floor6_foe_walk_case(0).is_err());
+        assert!(expedition.floor6_foe_exhibit(3).is_err());
+        assert!(expedition.floor6_foe_confirm_strike("2026-11-10").is_err());
+        for exhibit in 0..3 {
+            expedition.floor6_foe_exhibit(exhibit).expect("exhibit");
+        }
+        for case in 0..4 {
+            expedition.floor6_foe_walk_case(case).expect("case");
+        }
+        assert!(expedition.floor6_foe_walk_case(4).is_err());
+        expedition.floor6.foe.card_lines = crate::content::FOE6_CARD_KEY;
+        expedition.floor6_foe_arm_strike().expect("arm");
+        expedition
+            .floor6_foe_confirm_strike("2026-11-10")
+            .expect("fall");
+        assert!(expedition.floor6_foe_confirm_strike("2026-11-10").is_err());
+        assert!(expedition.floor6_foe_arm_strike().is_err());
+    }
     /// Floor 6 Step 3 state: the Spin Heart judges on the
     /// bound, the honest give-up, and four recorded claims;
     /// the Census on a judged-true tally against the

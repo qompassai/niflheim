@@ -2132,3 +2132,304 @@ mod floor6_census_tests {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Floor 6 — Choosing the Cell and the Heart Locked Twice.
+// The chooser's judge reads content's keys. The FOE runs on
+// the BROKEN staff: a flag machine whose exclusive opens
+// over standing readers and whose reader count drifted off
+// the state — producing the fused state, a heart shared and
+// exclusive at once. The staff's census is enumerated, its
+// worked day replayed, its torn read computed, and the
+// model-loom judges four interleavings by running them.
+// ---------------------------------------------------------------------------
+
+/// Whether the three data stand housed true: each datum in
+/// its true kind, each door carrying its true sentence.
+/// Choices and invariants are recorded as index + 1, with
+/// 0 unrecorded.
+pub fn choosing_complete(choices: &[u8; 3], invariants: &[u8; 3]) -> bool {
+    crate::content::CELL_DATA
+        .iter()
+        .enumerate()
+        .all(|(index, datum)| {
+            choices[index] == datum.true_kind + 1 && invariants[index] == datum.true_sentence + 1
+        })
+}
+
+/// The broken staff's state: the flag machine's three
+/// lawful states, and the fused fourth — exclusive held
+/// while readers stand inside — that the flaw admits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StaffState {
+    /// No hand on the heart.
+    Free,
+    /// This many readers inside.
+    Shared(u8),
+    /// One hand, alone.
+    Exclusive,
+    /// The flaw's child: a writer inside over this many
+    /// readers.
+    Fused(u8),
+}
+
+/// The reader cap the staff's census enumerates to — the
+/// warren fields three porters, and the census counts the
+/// staff's own reach, not an infinity.
+pub const STAFF_READER_CAP: u8 = 3;
+
+/// One transition of the broken staff. The staff never
+/// refuses — that is the flaw's shape: every operation
+/// "succeeds", and exclusive over standing readers lands
+/// in the fused state instead of at the face.
+pub fn staff_step(state: StaffState, op: FlagOp) -> StaffState {
+    match (state, op) {
+        (StaffState::Free, FlagOp::OpenShared) => StaffState::Shared(1),
+        (StaffState::Shared(n), FlagOp::OpenShared) => StaffState::Shared(n + 1),
+        (StaffState::Exclusive, FlagOp::OpenShared) => StaffState::Fused(1),
+        (StaffState::Fused(n), FlagOp::OpenShared) => StaffState::Fused(n + 1),
+        // THE FLAW: exclusive, issued over standing readers.
+        (StaffState::Shared(n), FlagOp::OpenExclusive) => StaffState::Fused(n),
+        (StaffState::Free, FlagOp::OpenExclusive) => StaffState::Exclusive,
+        (StaffState::Exclusive, FlagOp::OpenExclusive) => StaffState::Exclusive,
+        (StaffState::Fused(n), FlagOp::OpenExclusive) => StaffState::Fused(n),
+        (StaffState::Shared(1), FlagOp::CloseShared) => StaffState::Free,
+        (StaffState::Shared(n), FlagOp::CloseShared) => StaffState::Shared(n - 1),
+        (StaffState::Fused(1), FlagOp::CloseShared) => StaffState::Exclusive,
+        (StaffState::Fused(n), FlagOp::CloseShared) => StaffState::Fused(n - 1),
+        (StaffState::Exclusive, FlagOp::CloseExclusive) => StaffState::Free,
+        (StaffState::Fused(n), FlagOp::CloseExclusive) => StaffState::Shared(n),
+        _ => state,
+    }
+}
+
+/// The words for a staff state, for the exhibits' accounts.
+pub fn staff_state_name(state: StaffState) -> String {
+    match state {
+        StaffState::Free => "free".to_string(),
+        StaffState::Shared(n) => format!("shared({n})"),
+        StaffState::Exclusive => "exclusive".to_string(),
+        StaffState::Fused(n) => format!("FUSED({n})"),
+    }
+}
+
+/// The staff's census: every state the broken staff can
+/// reach from Free, breadth-first to the fixpoint, reader
+/// counts capped at the warren's three porters. Counted
+/// [free, shared, exclusive, fused] over distinct states.
+pub fn staff_census() -> [u8; 4] {
+    let ops = [
+        FlagOp::OpenShared,
+        FlagOp::CloseShared,
+        FlagOp::OpenExclusive,
+        FlagOp::CloseExclusive,
+    ];
+    let mut visited = vec![StaffState::Free];
+    let mut frontier = vec![StaffState::Free];
+    while !frontier.is_empty() {
+        let mut next = Vec::new();
+        for state in &frontier {
+            for op in ops {
+                let stepped = staff_step(*state, op);
+                let over_cap = match stepped {
+                    StaffState::Shared(n) | StaffState::Fused(n) => n > STAFF_READER_CAP,
+                    _ => false,
+                };
+                if !over_cap && !visited.contains(&stepped) {
+                    visited.push(stepped);
+                    next.push(stepped);
+                }
+            }
+        }
+        frontier = next;
+    }
+    let mut census = [0u8; 4];
+    for state in &visited {
+        match state {
+            StaffState::Free => census[0] += 1,
+            StaffState::Shared(_) => census[1] += 1,
+            StaffState::Exclusive => census[2] += 1,
+            StaffState::Fused(_) => census[3] += 1,
+        }
+    }
+    census
+}
+
+/// The worked day: two shared openings, then the writer
+/// comes — replayed on the broken staff, which lets her
+/// in. The day ends in the fused state.
+pub fn staff_worked_day() -> StaffState {
+    let mut state = StaffState::Free;
+    for op in [
+        FlagOp::OpenShared,
+        FlagOp::OpenShared,
+        FlagOp::OpenExclusive,
+    ] {
+        state = staff_step(state, op);
+    }
+    state
+}
+
+/// The torn reading, computed word by word: the heart's
+/// value is two words of one generation. The writer lands
+/// the new day's first word; the reader reads both words
+/// before the second lands. Returns the pair the reader
+/// actually saw — two generations in one reading.
+pub fn staff_torn_read() -> (u32, u32) {
+    let mut words = (1u32, 1u32);
+    words.0 = 2;
+    let seen = (words.0, words.1);
+    words.1 = 2;
+    let _finished_too_late = words;
+    seen
+}
+
+/// One step on the model-loom: a porter writes one word of
+/// the heart's two-word value, or reads one word of it.
+#[derive(Clone, Copy, Debug)]
+enum LoomStep {
+    /// The writer lands the value's first word, of a day.
+    WriteFirst(u32),
+    /// The writer lands the value's second word, of a day.
+    WriteSecond(u32),
+    /// The reader takes the value's first word.
+    ReadFirst,
+    /// The reader takes the value's second word.
+    ReadSecond,
+}
+
+/// The loom's four cases, as step tables (the case names
+/// and expected verdicts live in content's FOE6_CASES; the
+/// loom computes, the table is checked against it).
+const LOOM_CASES: [&[LoomStep]; 4] = [
+    // The Courteous Pair: both words land, then the read.
+    &[
+        LoomStep::WriteFirst(2),
+        LoomStep::WriteSecond(2),
+        LoomStep::ReadFirst,
+        LoomStep::ReadSecond,
+    ],
+    // The Torn Letter: the read straddles the two words.
+    &[
+        LoomStep::WriteFirst(2),
+        LoomStep::ReadFirst,
+        LoomStep::ReadSecond,
+        LoomStep::WriteSecond(2),
+    ],
+    // The Patient Porter: the read completes first.
+    &[
+        LoomStep::ReadFirst,
+        LoomStep::ReadSecond,
+        LoomStep::WriteFirst(2),
+        LoomStep::WriteSecond(2),
+    ],
+    // The Second Reader: the second word turns first, and
+    // the read straddles it the other way.
+    &[
+        LoomStep::WriteSecond(2),
+        LoomStep::ReadFirst,
+        LoomStep::WriteFirst(2),
+        LoomStep::ReadSecond,
+    ],
+];
+
+/// Run one loom case: the heart starts at day one, both
+/// words; the steps land in order; the reader's pair is
+/// judged torn (its two words of different days) or sound.
+/// None for no such case.
+pub fn loom_case_torn(case: usize) -> Option<bool> {
+    let steps = LOOM_CASES.get(case)?;
+    let mut words = (1u32, 1u32);
+    let mut read = (0u32, 0u32);
+    for step in *steps {
+        match step {
+            LoomStep::WriteFirst(day) => words.0 = *day,
+            LoomStep::WriteSecond(day) => words.1 = *day,
+            LoomStep::ReadFirst => read.0 = words.0,
+            LoomStep::ReadSecond => read.1 = words.1,
+        }
+    }
+    Some(read.0 != read.1)
+}
+
+/// Whether the staff's rewritten card shows its three
+/// checkable truths.
+pub fn staff_card_repaired(lines: &[u8; 3]) -> bool {
+    *lines == crate::content::FOE6_CARD_KEY
+}
+
+#[cfg(test)]
+mod floor6_foe_tests {
+    use super::*;
+
+    /// Validation: the chooser's key — the charter in the
+    /// many-readers heart, the tally in the borrow-flag
+    /// heart, the log in the plain cell, each under its
+    /// true sentence.
+    #[test]
+    fn choosing_key_completes() {
+        assert!(choosing_complete(&[2, 3, 1], &[3, 2, 2]));
+    }
+
+    /// Adversarial: one wrong housing or one wrong sentence
+    /// fails the whole table — and the tempting swap (the
+    /// charter and the log exchanged) fails twice over.
+    #[test]
+    fn choosing_misses_fail() {
+        assert!(!choosing_complete(&[2, 3, 1], &[3, 2, 1]));
+        assert!(!choosing_complete(&[1, 3, 2], &[3, 2, 2]));
+        assert!(!choosing_complete(&[0, 3, 1], &[3, 2, 2]));
+    }
+
+    /// Validation: the broken staff's census — eight states,
+    /// three of them fused, a state no lawful staff admits.
+    #[test]
+    fn staff_census_counts_the_fused() {
+        assert_eq!(staff_census(), [1, 3, 1, 3]);
+    }
+
+    /// Validation: the worked day ends fused — the writer
+    /// let in over two standing readers.
+    #[test]
+    fn staff_worked_day_ends_fused() {
+        assert_eq!(staff_worked_day(), StaffState::Fused(2));
+        // And the lawful machine refuses the same day at the
+        // same door: the difference is the staff, not the day.
+        let mut state = FlagState::Free;
+        for op in [
+            FlagOp::OpenShared,
+            FlagOp::OpenShared,
+            FlagOp::OpenExclusive,
+        ] {
+            state = flag_step(state, op).unwrap_or(state);
+        }
+        assert_eq!(state, FlagState::Shared(2));
+    }
+
+    /// Validation: the torn reading mixes two days in one
+    /// pair — computed, not asserted into existence.
+    #[test]
+    fn staff_torn_read_mixes_days() {
+        assert_eq!(staff_torn_read(), (2, 1));
+    }
+
+    /// Validation, fail-closed: the loom's computed verdict
+    /// for every case equals the verdict content records —
+    /// if a step table and its record ever part, this fails.
+    #[test]
+    fn loom_verdicts_match_their_records() {
+        for (case, (_, expected, _)) in crate::content::FOE6_CASES.iter().enumerate() {
+            assert_eq!(loom_case_torn(case), Some(*expected), "case {case}");
+        }
+        assert_eq!(loom_case_torn(4), None);
+    }
+
+    /// Validation: the card's key repairs; a near-miss does
+    /// not.
+    #[test]
+    fn foe_card_key_judged() {
+        assert!(staff_card_repaired(&crate::content::FOE6_CARD_KEY));
+        assert!(!staff_card_repaired(&[1, 2, 1]));
+        assert!(!staff_card_repaired(&[0, 0, 0]));
+    }
+}

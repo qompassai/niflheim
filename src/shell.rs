@@ -1032,6 +1032,7 @@ fn rebuild_now(
         Screen::Floor3Foe => build_floor3_foe(commands, game, &pal, fonts, stage),
         Screen::Floor4Foe => build_floor4_foe(commands, game, &pal, fonts, stage),
         Screen::Floor5Foe => build_floor5_foe(commands, game, &pal, fonts, stage),
+        Screen::Floor6Foe => build_floor6_foe(commands, game, &pal, fonts, stage),
         Screen::Chamber(index) => build_chamber(commands, game, &pal, fonts, stage, index),
         Screen::Foe => build_foe(commands, game, &pal, fonts, stage),
         Screen::Floor2Foe => build_foe2(commands, game, &pal, fonts, stage),
@@ -1217,6 +1218,7 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         Screen::Floor3Foe => "Floor 3 · The Gatehouse Release".to_string(),
         Screen::Floor4Foe => "Floor 4 · The Crooked Foundation".to_string(),
         Screen::Floor5Foe => "Floor 5 · The Thing Behind the Veil".to_string(),
+        Screen::Floor6Foe => "Floor 6 · The Heart Locked Twice".to_string(),
 
         Screen::Title => "Niflheim".to_string(),
     };
@@ -7372,6 +7374,7 @@ fn build_floor6_chamber(
         1 => build_f6c2(commands, game, pal, fonts, stage),
         2 => build_f6c3(commands, game, pal, fonts, stage),
         3 => build_f6c4(commands, game, pal, fonts, stage),
+        4 => build_f6c5(commands, game, pal, fonts, stage),
         _ => {}
     }
 }
@@ -7651,6 +7654,267 @@ fn build_f6c4(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, st
     );
 }
 
+/// Chamber 5's panel: the three data with their housed
+/// kinds and door sentences.
+fn build_f6c5(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor6.chambers[4].work;
+    for (index, datum) in content::CELL_DATA.iter().enumerate() {
+        let rect = geom::f6_datum_row(index);
+        let housed = work.choices[index];
+        let label = if housed == 0 {
+            format!("{} — unhoused", datum.name.to_uppercase())
+        } else {
+            format!(
+                "{} — {}",
+                datum.name.to_uppercase(),
+                content::CELL_KINDS[housed as usize - 1]
+            )
+        };
+        spawn_button(commands, stage, rect, &label, pal, housed != 0, fonts);
+        let written = work.invariants[index];
+        let state = if written == 0 {
+            format!("{} · door unwritten", datum.story)
+        } else {
+            format!("door: {}", datum.sentences[written as usize - 1])
+        };
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 34.0,
+            Some(400.0),
+            &state,
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        spawn_button(
+            commands,
+            stage,
+            geom::f6_sentence_btn(index),
+            "WRITE THE DOOR",
+            pal,
+            written != 0,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        "Three data, three cells: house each where its life \
+         truly fits, and write the one true sentence on each \
+         door.",
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// The FOE's chamber: the staff, the three sights, the
+/// loom's four cases, the rewritten card, and the standing.
+fn build_floor6_foe(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Heart Locked Twice — the broken staff",
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        Color::srgb_u8(120, 130, 140),
+        "THE STAFF",
+        "its count drifted off its state",
+    );
+    let stone = geom::stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text(
+        commands,
+        stage,
+        stone.x + 10.0,
+        stone.y + 8.0,
+        Some(stone.w - 20.0),
+        "THE RULE",
+        12.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        stone.x + 10.0,
+        stone.y + 30.0,
+        Some(stone.w - 20.0),
+        "One slot, one occupant — in the type.",
+        11.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let foe = &game.expedition.floor6.foe;
+    spawn_text(
+        commands,
+        stage,
+        56.0,
+        100.0,
+        None,
+        "THE STAFF — THREE SIGHTS, IN ORDER",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (exhibit, name) in content::FOE6_EXHIBIT_NAMES.iter().enumerate() {
+        let label = if foe.exhibits[exhibit] {
+            format!("EXHIBITED — {name}")
+        } else {
+            format!("EXHIBIT — {name}")
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f6foe_exhibit_btn(exhibit),
+            &label,
+            pal,
+            false,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        56.0,
+        320.0,
+        None,
+        "THE MODEL-LOOM — FOUR INTERLEAVINGS",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (case, (name, _, _)) in content::FOE6_CASES.iter().enumerate() {
+        let label = if foe.loom_walked[case] {
+            format!("WALKED — {name}")
+        } else {
+            format!("WALK — {name}")
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f6foe_case_btn(case),
+            &label,
+            pal,
+            false,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        84.0,
+        None,
+        "The Staff's Card, Rewritten",
+        19.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        116.0,
+        Some(440.0),
+        "Three lines, three checkable truths — as the cells \
+         in Chamber 5 taught.",
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    for (line, phrasings) in content::FOE6_CARD.iter().enumerate() {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            170.0 + line as f32 * 92.0,
+            Some(440.0),
+            phrasings[foe.card_lines[line] as usize],
+            11.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        spawn_button(
+            commands,
+            stage,
+            geom::f6foe_card_btn(line),
+            &format!("REWRITE LINE {}", line + 1),
+            pal,
+            false,
+            fonts,
+        );
+    }
+    let exhibits = foe.exhibits.iter().filter(|seen| **seen).count();
+    let cases = foe.loom_walked.iter().filter(|done| **done).count();
+    let truths = foe
+        .card_lines
+        .iter()
+        .zip(content::FOE6_CARD_KEY.iter())
+        .filter(|(showing, key)| showing == key)
+        .count();
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        480.0,
+        Some(440.0),
+        &format!(
+            "Staff exhibited: {exhibits} of 3.\n\
+             Cases walked: {cases} of 4{}.\n\
+             Card truths: {truths} of 3.",
+            if foe.gate_passed {
+                " — the gate stands"
+            } else {
+                ""
+            }
+        ),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
 fn build_floor6_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
     build_header(commands, game, pal, fonts, stage);
     build_room_base(
@@ -7751,6 +8015,58 @@ fn build_floor6_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
         fonts,
     );
 
+    let foe_door = geom::door_foe6();
+    spawn_box(
+        commands,
+        stage,
+        foe_door,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        foe_door.x,
+        foe_door.y + 10.0,
+        foe_door.w,
+        "THE FOE",
+        11.0,
+        true,
+        pal.ink_dim,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        foe_door.x,
+        foe_door.y + 28.0,
+        foe_door.w - 8.0,
+        "The Heart Locked Twice",
+        14.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    let foe6_tag = match game.expedition.floor6.foe.state {
+        FoeState::Fallen => "FALLEN",
+        FoeState::Exposed => "EXPOSED",
+        FoeState::Standing => "",
+    };
+    if !foe6_tag.is_empty() {
+        spawn_text_centered(
+            commands,
+            stage,
+            foe_door.x,
+            foe_door.y + 88.0,
+            foe_door.w,
+            foe6_tag,
+            11.0,
+            true,
+            pal.good,
+            fonts,
+        );
+    }
     spawn_box(
         commands,
         stage,
