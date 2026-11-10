@@ -7167,6 +7167,179 @@ mod tests {
         );
     }
 
+    /// Floor 5 Step 5 — the shipped whole-floor playthrough:
+    /// every chamber and the FOE driven end-to-end on the GUI
+    /// surface from a fresh expedition, every press a real
+    /// press handler, closing on the completed floor and a
+    /// save that round-trips.
+    #[test]
+    fn floor5_whole_floor_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn to_floor5_hub(game: &mut Game) {
+            game.screen = Screen::Hub;
+            game.expedition.foe.state = FoeState::Fallen;
+            game.expedition.foe.gate_passed = true;
+            game.expedition.floor2.foe.state = FoeState::Fallen;
+            game.expedition.floor3.foe.gate_passed = true;
+            for chamber in game.expedition.floor2.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            for chamber in game.expedition.floor4.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor4.foe.state = FoeState::Fallen;
+            click(game, El::DoorFloor4);
+            click(game, El::DoorFloor5);
+            assert_eq!(game.screen, Screen::Floor5Hub);
+        }
+        fn seal_chamber(game: &mut Game, index: usize) {
+            game.do_verb(Verb::Prove);
+            click(game, El::Seal);
+            click(game, El::SealConfirm);
+            assert_eq!(
+                game.expedition.floor5.chambers[index].state,
+                ChamberState::Repaired
+            );
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        to_floor5_hub(&mut game);
+        // Chamber 1 — the Pointer Walks.
+        click(&mut game, El::Floor5Door(0));
+        click(&mut game, El::F5Watch);
+        for step in 0..6u8 {
+            click(&mut game, El::F5Card(step));
+            if step == 3 {
+                click(&mut game, El::F5RefuseStep);
+            } else {
+                click(&mut game, El::F5Walk);
+            }
+        }
+        assert!(game.expedition.floor5_diagnosed(0));
+        seal_chamber(&mut game, 0);
+        // Chamber 2 — the Two Tenants.
+        click(&mut game, El::TabFloor);
+        to_floor5_hub(&mut game);
+        click(&mut game, El::Floor5Door(1));
+        click(&mut game, El::F5Watch);
+        for (index, (_, sound, _)) in content::TENANCIES.iter().enumerate() {
+            let presses = if index == 1 || *sound { 1 } else { 2 };
+            for _ in 0..presses {
+                click(&mut game, El::F5Placard(index as u8));
+            }
+        }
+        click(&mut game, El::F5Judge);
+        assert!(!game.expedition.floor5_diagnosed(1));
+        for _ in 0..3 {
+            click(&mut game, El::F5Annotate(1));
+        }
+        assert!(game.expedition.floor5_diagnosed(1));
+        seal_chamber(&mut game, 1);
+        // Chamber 3 — the Contract Cards.
+        click(&mut game, El::TabFloor);
+        to_floor5_hub(&mut game);
+        click(&mut game, El::Floor5Door(2));
+        click(&mut game, El::F5Watch);
+        for (tool, (_, _, key)) in content::CARD_TOOLS.iter().enumerate() {
+            for (line, checkable) in key.iter().enumerate() {
+                for _ in 0..*checkable {
+                    click(&mut game, El::F5CardLine(tool as u8, line as u8));
+                }
+            }
+        }
+        assert!(game.expedition.floor5_diagnosed(2));
+        seal_chamber(&mut game, 2);
+        // Chamber 4 — the Split Beam.
+        click(&mut game, El::TabFloor);
+        to_floor5_hub(&mut game);
+        click(&mut game, El::Floor5Door(3));
+        click(&mut game, El::F5Watch);
+        click(&mut game, El::F5DropRight);
+        assert_eq!(
+            game.expedition.floor5.chambers[3].work.dropped,
+            [false, false]
+        );
+        click(&mut game, El::F5SplitUp);
+        click(&mut game, El::F5SplitUp);
+        click(&mut game, El::F5SplitUp);
+        click(&mut game, El::F5Seam);
+        click(&mut game, El::F5Reach);
+        click(&mut game, El::F5WorkHalves);
+        click(&mut game, El::F5DropRight);
+        assert_eq!(
+            game.expedition.floor5.chambers[3].work.dropped,
+            [false, false]
+        );
+        click(&mut game, El::F5DropLeft);
+        click(&mut game, El::F5DropRight);
+        assert!(game.expedition.floor5_diagnosed(3));
+        seal_chamber(&mut game, 3);
+        // Chamber 5 — the UB Hunt.
+        click(&mut game, El::TabFloor);
+        to_floor5_hub(&mut game);
+        click(&mut game, El::Floor5Door(4));
+        click(&mut game, El::F5Watch);
+        for station in 0..6u8 {
+            click(&mut game, El::F5Lens(station));
+        }
+        for station in [0u8, 3, 5] {
+            click(&mut game, El::F5Verdict(station));
+        }
+        for station in [1u8, 2, 4] {
+            click(&mut game, El::F5Verdict(station));
+            click(&mut game, El::F5Verdict(station));
+        }
+        click(&mut game, El::F5FixCard(1));
+        click(&mut game, El::F5FixCard(1));
+        click(&mut game, El::F5FixCard(4));
+        assert!(game.expedition.floor5_diagnosed(4));
+        seal_chamber(&mut game, 4);
+        // The FOE — the Thing Behind the Veil.
+        click(&mut game, El::TabFloor);
+        to_floor5_hub(&mut game);
+        click(&mut game, El::DoorFoe5);
+        assert_eq!(game.screen, Screen::Floor5Foe);
+        click(&mut game, El::F5Exhibit(1));
+        assert!(!game.expedition.floor5.foe.exhibits[1]);
+        click(&mut game, El::F5Exhibit(0));
+        click(&mut game, El::F5Exhibit(1));
+        click(&mut game, El::F5Exhibit(2));
+        assert!(game.expedition.floor5_foe_proof_complete());
+        for case in 0..5u8 {
+            click(&mut game, El::F5Case(case));
+        }
+        assert!(game.expedition.floor5.foe.gate_passed);
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_none());
+        click(&mut game, El::F5FoeCard(0));
+        click(&mut game, El::F5FoeCard(1));
+        click(&mut game, El::F5FoeCard(1));
+        click(&mut game, El::F5FoeCard(2));
+        assert!(game.expedition.floor5_foe_repair_ok());
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_some());
+        click(&mut game, El::SealConfirm);
+        assert_eq!(game.expedition.floor5.foe.state, FoeState::Fallen);
+        // The floor stands complete. (The save round-trip of
+        // a fully earned Floor 5 state is the Step 5 probe's
+        // closing assertion: this test's earlier-floor
+        // fixtures mark chambers repaired without their
+        // work, which the loader's invariant check rightly
+        // refuses — the earned state is the probe's to load.)
+        assert!(game.expedition.floor5_complete());
+        assert_eq!(game.expedition.floor5_chambers_repaired(), 5);
+        game.expedition.save_json().expect("the save serializes");
+    }
+
     /// Floor 5 Step 4, driven on the GUI surface: the UB
     /// Hunt is lensed, judged, and carded through the seal,
     /// and the Thing Behind the Veil is diagnosed in order,

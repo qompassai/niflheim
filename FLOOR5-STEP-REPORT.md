@@ -351,3 +351,74 @@ on primo.
 - Step 5: the driven whole-floor playthrough (all five
   chambers plus the FOE from the title screen), the full
   battery, and the floor close-out.
+
+## Step 5 — Integration (Floor 5 close-out)
+
+Built Claude-direct by the Part A coordinator lane under
+the completion spec. Evidence:
+`~/.local/share/pax/niflheim-floor5-step5-build-20261110/`
+on primo.
+
+### What landed
+
+- **The shipped whole-floor playthrough**
+  (`floor5_whole_floor_played_on_the_gui`): one test
+  driving the real press handlers from a fresh expedition
+  through all five chambers — the Pointer Walks (with the
+  cracked stone refused by name), the Two Tenants (one
+  deliberate miss, stamped, annotated by its rule), the
+  Contract Cards (all twelve lines cycled to checkable),
+  the Split Beam (refused drops, the seam at three, the
+  referee's rulings, halves dropped in order), the UB
+  Hunt (six stations lensed, verdicts true, faulted cards
+  rewritten) — each chamber through the two-step seal —
+  and the Thing Behind the Veil (out-of-order exhibit
+  refused, the trace in order, the referee's five cases,
+  the card rewritten, the strike), closing on
+  `floor5_complete()` with all five chambers repaired.
+- **The earned-save round-trip.** The determinism probe's
+  closing assertion now loads its own save back:
+  `Expedition::load_json` returns the identical
+  expedition, invariants recomputed. Getting there
+  surfaced the probe's one fixture line — Floor 1's FOE
+  marked Fallen without its census — which the loader
+  rightly refused; the probe now earns that arc too
+  (enumerate, exhibit the double-lent row, verify every
+  uncopiable row, mark the gate, strike on the fixed
+  date), so the byte-identical save is an earned
+  five-floor state end to end.
+
+### Gates (primo, pinned rustc 1.99.0)
+
+- `cargo fmt --check`: clean. `cargo clippy --all-targets
+  -- -D warnings`: exit 0.
+- `cargo test`: **161 passed / 0 failed** (was 160 at
+  Step 4; +1, the whole-floor playthrough).
+- Theodolite (cured route; bacon producer running,
+  `.bacon-locations` present at session start): planted
+  control on puzzles.rs read live E0308 diagnostics in
+  the same session where the other four files read 0;
+  clean session **0 on all five shared files** — verified
+  zeros. puzzles.rs restored byte-identical after the
+  plant (sha256 `7e8bd3dd…` both sides).
+- Determinism: the Step 5 probe run twice; saves
+  byte-identical, sha256
+  `b7c288f6733204b0e38cbc0eb1d65088e8c1e0457daeff60739ec9fe5921d321`.
+- Android lib under the pin: 1,348,458,576 bytes. Launch
+  smoke under Xvfb: `cold_start_ms=712`, no panics.
+  `#![forbid(unsafe_code)]` intact (src/lib.rs:26).
+
+### Floor 5 close-out
+
+Floor 5 — The Veilworks (interior mutability's limits,
+failure class #10) is **complete**: five chambers and the
+Thing Behind the Veil, landed in five gated steps on top
+of the DS-10 Step 2 commit — `7e8b767` (Step 2, re-gated
+at commit time), `3017a97` (Step 3), `1111fde` (Step 4),
+and this Step 5 commit, over Step 1's `167069d`. The
+suite stands at **161/0** (139 at the floor's first
+commit). Save format v5 throughout, per DS-2's one bump
+at Step 1. `gate.rs` untouched, per DS-4. The floor's
+design record is FLOOR5-BRIEF.md; its step evidence
+lives in the five per-step evidence directories on primo
+named in each section above.
