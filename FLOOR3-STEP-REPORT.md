@@ -355,3 +355,59 @@ gate results through the handlers.
   chambers and the Release on the GUI surface, the gate
   answered through the io slot as the shell delivers it)
   and the floor's close-out. Floor 3 completes there.
+
+## Step 5 — Integration: the whole floor on the GUI surface
+
+### What landed
+
+- **`game.rs` (tests only)** — `floor3_gui_playthrough_fells_the_release`:
+  both prerequisite FOEs felled at the state level (the
+  Gatehouse's §5.2 price), then the doors walked honestly
+  (Floor 1 hub → Floor 2 → Floor 3), all five chambers
+  played through their desks and sealed through the
+  two-step seal, Chamber 5's rite walked between its Prove
+  and its Seal, and the Release played end to end: slate
+  judged and reconciled, the stamp set, the rite entered,
+  the reference typed into the game's own editor, the
+  format and lint lanterns lit by the **real** engines
+  (`run_fmt` / `run_lint`) answered through the io slot
+  exactly as the shell files them, the third gate run for
+  real (`run_gate3`, its own format verdict asserted), and
+  the strike through the seal. The record asserts the
+  Lantern Stone in the codex, the Gatehouse Key in the
+  pack, `floor3_complete()`, clause 3 of the stairs reciting
+  all three Stratum I lanterns lit, and the whole record
+  round-tripping through the save byte-for-byte.
+
+Build note: the first run of the playthrough caught the
+lantern buttons' true place — they are room furniture, and
+the editor overlay owns the layout while it stands open,
+so the honest order is the one a player walks: type the
+draft, close the editor, light the lanterns in the room,
+reopen the editor to file the gate. The test walks that
+order; no game code changed.
+
+### Gates (primo, pinned rustc 1.99.0)
+
+- `cargo fmt --check`: clean. `cargo clippy --all-targets
+  -- -D warnings`: exit 0.
+- `cargo test`: **119 passed / 0 failed** (was 118; +1:
+  the whole-floor playthrough).
+  Log: `~/.local/share/pax/niflheim-floor3-step5-build-20261110/cargo-test.log`.
+- Theodolite: **0 diagnostics** on all six Floor 3 files.
+- Determinism: the Step 4 probe re-run on the final tree;
+  saves byte-identical, sha256
+  `aa4ed6795880c35976adbbb4ebbc5fa139b292724c581d05cec66715691cc236`
+  (unchanged — Step 5 touched test code only).
+- Android lib under the pin: 1,345,769,504 bytes. Launch
+  smoke under Xvfb: `cold_start_ms=1097`, no panics.
+
+### Floor 3 — COMPLETE
+
+The Gatehouse stands finished: five chambers (Named
+Failures, the Conveyor, the Audit of Shouts, the Sealed
+Request, the Inspection), the Gatehouse Release fallen,
+the Lantern Stone in the codex, the Gatehouse Key in the
+pack — the key the descent wields again on Floor 17.
+Stratum I is complete: Floors 1, 2, and 3 all stand, and
+the stairs' third clause reads all three lanterns lit.

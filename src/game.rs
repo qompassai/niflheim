@@ -4499,6 +4499,260 @@ mod tests {
         );
     }
 
+    /// Driven playthrough: the whole of Floor 3 on the GUI
+    /// surface — both prerequisite FOEs felled at the state
+    /// level, the doors walked honestly, all five chambers
+    /// played and sealed through their desks, the Release's
+    /// lanterns lit by the real engines through the io slot,
+    /// the real third gate run on the typed draft, and the
+    /// strike through the seal.
+    #[test]
+    fn floor3_gui_playthrough_fells_the_release() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn back_to_gatehouse(game: &mut Game) {
+            click(game, El::TabFloor);
+            click(game, El::DoorFloor2);
+            click(game, El::DoorFloor3);
+            assert_eq!(game.screen, Screen::Floor3Hub);
+        }
+        fn repair(game: &mut Game, index: usize) {
+            click(game, El::Chip(Verb::Prove));
+            click(game, El::Seal);
+            click(game, El::SealConfirm);
+            assert_eq!(
+                game.expedition.floor3.chambers[index].state,
+                ChamberState::Repaired,
+                "chamber {index} repaired through the seal"
+            );
+            back_to_gatehouse(game);
+        }
+
+        let mut game = Game::new();
+        game.begin();
+        game.io = None; // the shell drains the begin-autosave at once
+        // Fixture: fell both prerequisite FOEs at the state level.
+        {
+            let expedition = &mut game.expedition;
+            expedition.foe_enumerate();
+            let double = crate::puzzles::foe_double_row().expect("double row");
+            expedition.foe_exhibit_row(double).expect("exhibit");
+            for row in crate::puzzles::foe_uncopiable_rows() {
+                expedition.foe_verify_row(row).expect("verify");
+            }
+            expedition.foe_mark_gate_passed();
+            expedition.foe_arm_strike().expect("arm");
+            expedition.foe_confirm_strike("2026-11-10").expect("strike");
+            expedition.floor2_foe_take_audit();
+            for row in 0..content::FOE_ADMISSIONS.len() {
+                expedition.floor2_foe_exhibit(row).expect("exhibit 2");
+            }
+            let seam = crate::puzzles::foe2_disagreement_row().expect("seam row");
+            expedition
+                .floor2_foe_name_disagreement(seam)
+                .expect("name the seam");
+            expedition.floor2_foe_calibrate().expect("calibrate");
+            expedition.floor2_foe_mark_gate_passed();
+            expedition.floor2_foe_arm_strike().expect("arm 2");
+            expedition
+                .floor2_foe_confirm_strike("2026-11-10")
+                .expect("strike 2");
+        }
+        click(&mut game, El::DoorFloor2);
+        click(&mut game, El::DoorFloor3);
+        assert_eq!(game.screen, Screen::Floor3Hub);
+
+        // Chamber 1 — Named Failures: the true sort.
+        click(&mut game, El::Floor3Door(0));
+        click(&mut game, El::F3Watch);
+        for (report, entry) in content::FAILURE_REPORTS.iter().enumerate() {
+            for _ in 0..=entry.pair {
+                click(&mut game, El::F3Pair(report as u8));
+            }
+        }
+        assert!(game.expedition.floor3_diagnosed(0));
+        repair(&mut game, 0);
+
+        // Chamber 2 — the Conveyor at its one true setting.
+        click(&mut game, El::Floor3Door(1));
+        click(&mut game, El::F3Watch);
+        for _ in 0..3 {
+            click(&mut game, El::F3Station(0));
+        }
+        for _ in 0..2 {
+            click(&mut game, El::F3Station(1));
+        }
+        for _ in 0..2 {
+            click(&mut game, El::F3Station(2));
+        }
+        assert!(game.expedition.floor3_diagnosed(1));
+        repair(&mut game, 1);
+
+        // Chamber 3 — the Audit of Shouts: the true sort.
+        click(&mut game, El::Floor3Door(2));
+        click(&mut game, El::F3Watch);
+        click(&mut game, El::F3Shout(0));
+        click(&mut game, El::F3Shout(1));
+        click(&mut game, El::F3Shout(1));
+        click(&mut game, El::F3Shout(2));
+        click(&mut game, El::F3Shout(3));
+        click(&mut game, El::F3Shout(3));
+        click(&mut game, El::F3Invariant(1));
+        click(&mut game, El::F3Invariant(3));
+        click(&mut game, El::F3Invariant(3));
+        assert!(game.expedition.floor3_diagnosed(2));
+        repair(&mut game, 2);
+
+        // Chamber 4 — the Sealed Request, worked in its order.
+        click(&mut game, El::Floor3Door(3));
+        click(&mut game, El::F3Watch);
+        click(&mut game, El::F3Slip(0, 0));
+        click(&mut game, El::F3Slip(0, 0));
+        click(&mut game, El::F3Slip(0, 1));
+        click(&mut game, El::F3Slip(1, 0));
+        click(&mut game, El::F3Slip(1, 1));
+        click(&mut game, El::F3Slip(2, 2));
+        assert!(game.expedition.floor3_diagnosed(3));
+        repair(&mut game, 3);
+
+        // Chamber 5 — the Inspection, its rite before its seal.
+        click(&mut game, El::Floor3Door(4));
+        click(&mut game, El::F3Watch);
+        for (item, presses) in [(0u8, 2), (1, 1), (2, 3), (3, 1), (4, 2)] {
+            for _ in 0..presses {
+                click(&mut game, El::F3Check(item));
+            }
+        }
+        click(&mut game, El::F3NaReason);
+        click(&mut game, El::F3Msrv);
+        assert!(game.expedition.floor3_diagnosed(4));
+        click(&mut game, El::Chip(Verb::Prove));
+        click(&mut game, El::F3Rite);
+        click(&mut game, El::F3Rite);
+        click(&mut game, El::F3Rite);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor3.chambers[4].state,
+            ChamberState::Repaired
+        );
+        assert_eq!(game.expedition.floor3_chambers_repaired(), 5);
+        back_to_gatehouse(&mut game);
+
+        // The Release — slate, stamp, and rite on the GUI.
+        click(&mut game, El::DoorFoe3);
+        assert_eq!(game.screen, Screen::Floor3Foe);
+        click(&mut game, El::F3SlateTake);
+        click(&mut game, El::F3SlateEntry(0));
+        click(&mut game, El::F3SlateEntry(0));
+        click(&mut game, El::F3SlateEntry(1));
+        click(&mut game, El::F3SlateEntry(1));
+        click(&mut game, El::F3SlateEntry(2));
+        click(&mut game, El::F3Reconcile);
+        assert!(game.expedition.floor3.foe.slate_done);
+        click(&mut game, El::F3Stamp);
+        click(&mut game, El::F3Rite);
+        click(&mut game, El::F3Rite);
+        click(&mut game, El::F3Rite);
+        assert!(game.expedition.floor3_foe_proof_complete());
+
+        // The draft, written in the game's own editor.
+        click(&mut game, El::EditorOpen);
+        game.editor_select_all();
+        for ch in content::GATE3_REFERENCE.chars() {
+            let mut buf = [0u8; 4];
+            game.editor_insert(ch.encode_utf8(&mut buf));
+        }
+
+        click(&mut game, El::OverlayClose);
+
+        // The format lantern, lit by the real rustfmt through
+        // the io slot, as the shell runs it.
+        click(&mut game, El::F3Lantern(0));
+        let code = match game.io.take() {
+            Some(IoRequest::RunLantern { kind: 0, code }) => code,
+            other => panic!("expected the format lantern filing, got {other:?}"),
+        };
+        let scratch = std::env::temp_dir().join("niflheim-step5-playthrough-fmt");
+        let report = crate::gate::run_fmt(&scratch, &code, &crate::gate::GateLimits::default());
+        assert!(report.passed, "the format lantern: {}", report.text);
+        game.on_lantern_result(report);
+        assert!(game.expedition.floor3.foe.lanterns[0]);
+
+        // The lint lantern, lit by the real clippy.
+        click(&mut game, El::F3Lantern(1));
+        let code = match game.io.take() {
+            Some(IoRequest::RunLantern { kind: 1, code }) => code,
+            other => panic!("expected the lint lantern filing, got {other:?}"),
+        };
+        let scratch = std::env::temp_dir().join("niflheim-step5-playthrough-lint");
+        let report = crate::gate::run_lint(&scratch, &code, &crate::gate::GateLimits::default());
+        assert!(report.passed, "the lint lantern: {}", report.text);
+        game.on_lantern_result(report);
+        assert!(game.expedition.floor3.foe.lanterns[1]);
+
+        // The Release's own gate, run for real on the draft,
+        // filed from the editor as the Desk's was.
+        click(&mut game, El::EditorOpen);
+        click(&mut game, El::RunGate);
+        let code = match game.io.take() {
+            Some(IoRequest::RunGate { code, floor3, .. }) => {
+                assert!(floor3, "the Release files the third gate");
+                code
+            }
+            other => panic!("expected a gate filing, got {other:?}"),
+        };
+        let scratch = std::env::temp_dir().join("niflheim-step5-playthrough-gate");
+        let report = crate::gate::run_gate3(&scratch, &code, &crate::gate::GateLimits::default());
+        assert!(report.passed(), "the Release gate: {}", report.summary);
+        assert!(report.fmt_passed, "the gate's own format verdict");
+        game.on_gate_result(report);
+        assert_eq!(game.expedition.floor3.foe.lanterns, [true, true, true]);
+        assert!(game.expedition.floor3.foe.gate_record.is_some());
+        click(&mut game, El::OverlayClose);
+
+        // The strike, through the seal.
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(game.expedition.floor3.foe.state, FoeState::Fallen);
+        assert!(
+            game.expedition
+                .codex
+                .iter()
+                .any(|s| s == content::LANTERN_STONE)
+        );
+        assert!(
+            game.expedition
+                .pack
+                .iter()
+                .any(|s| s == content::GATEHOUSE_KEY)
+        );
+        assert!(game.expedition.floor3_complete());
+
+        // The stairs recite the descent's standing: clause 3
+        // reads all three Stratum I lanterns lit.
+        let clauses = game.expedition.stairs_clauses();
+        assert!(
+            clauses[2].1.contains("Floor 1's lantern is lit")
+                && clauses[2].1.contains("Floor 2's lantern is lit")
+                && clauses[2].1.contains("Floor 3's lantern is lit"),
+            "clause 3: {}",
+            clauses[2].1
+        );
+
+        // The whole record round-trips through the save.
+        let save = game.expedition.save_json().expect("save");
+        let loaded = Expedition::load_json(&save).expect("load");
+        assert_eq!(loaded, game.expedition);
+    }
+
     /// The general pointer path still works outside overlays:
     /// a hub door opens its chamber.
     #[test]
