@@ -262,10 +262,14 @@ pub struct Floor2FoeProgress {
     /// sigils disagree. Serde-defaulted.
     #[serde(default)]
     pub disagreement: Option<usize>,
-    /// The player's Admission Desk draft (empty = untouched; the
-    /// scaffold stands in its place). Serde-defaulted.
+    /// The player's Admission Desk draft. Serde-defaulted.
     #[serde(default)]
     pub editor_code: String,
+    /// The Desk draft has been taken up: once true, an empty
+    /// draft is an emptied draft, not an untouched one, and the
+    /// scaffold never stands back up in its place. Serde-defaulted.
+    #[serde(default)]
+    pub editor_started: bool,
     /// The last gate verdict on the Desk, one line, kept for the
     /// gate record. Serde-defaulted.
     #[serde(default)]
@@ -317,6 +321,7 @@ impl Floor2Progress {
                 audit_exhibited: vec![false; FOE_ADMISSIONS.len()],
                 disagreement: None,
                 editor_code: String::new(),
+                editor_started: false,
                 gate_record: None,
             },
             foe_hints_used: 0,
@@ -1344,7 +1349,7 @@ impl Expedition {
     /// The player's Admission Desk draft: the stored text, or the
     /// scaffold while the draft stands untouched.
     pub fn floor2_foe_draft(&self) -> &str {
-        if self.floor2.foe.editor_code.is_empty() {
+        if self.floor2.foe.editor_code.is_empty() && !self.floor2.foe.editor_started {
             GATE2_SCAFFOLD
         } else {
             &self.floor2.foe.editor_code
@@ -1354,8 +1359,11 @@ impl Expedition {
     /// The player's Admission Desk draft, writable: an untouched
     /// draft first takes the scaffold's shape.
     pub fn floor2_foe_draft_mut(&mut self) -> &mut String {
-        if self.floor2.foe.editor_code.is_empty() {
-            self.floor2.foe.editor_code = GATE2_SCAFFOLD.to_string();
+        if !self.floor2.foe.editor_started {
+            self.floor2.foe.editor_started = true;
+            if self.floor2.foe.editor_code.is_empty() {
+                self.floor2.foe.editor_code = GATE2_SCAFFOLD.to_string();
+            }
         }
         &mut self.floor2.foe.editor_code
     }

@@ -10,9 +10,9 @@
 //! Wide Door; Coherence), the Herald's letters at the hub desk,
 //! and the FOE — the Menagerie at its admission desk: the audit
 //! on its own table, the brazier calibration, and the Admission
-//! Desk judged by the second cargo gate. Floor 2's integration
-//! pass and driven playthrough evidence land in the Floor 2
-//! build's final step.
+//! Desk judged by the second cargo gate. Floor 2 is complete:
+//! its integration pass and driven playthrough evidence landed
+//! as the build's final step, and the descent continues below.
 //!
 //! The crate is layered so the game logic never depends on the
 //! engine: `core` (bounded text machinery), `content` (authored

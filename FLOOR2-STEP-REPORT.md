@@ -695,3 +695,127 @@ provenance is recorded here rather than smoothed over.
   ladder shows the same line; left as parity rather than
   quietly forked, and named here for the record.
 
+## Step 5 — Integration and the driven playthrough (coordinator lane 4)
+
+Floor 2's final rung: the whole floor driven end to end, and
+the three defects the driving found, fixed curatively. The
+floor is complete with this step.
+
+### The playthrough
+
+A permanent integration test in game.rs
+(floor2_gui_playthrough_fells_the_menagerie) drives the GUI
+surface itself — layout hit-testing and pointer presses,
+never state-API shortcuts: down through the Floor 1 hub's
+Floor 2 door, all five chambers solved through their own
+elements (charters, bound toggles, errands, kennels, bar
+labels, routes, readings) and repaired through the seal, the
+three Herald letters acted from the hub strip, then the FOE:
+audit by the Enumerate verb, seven exhibits, the naming, the
+calibration, the Desk written in the game's own editor
+(select-all and type, char by char) and judged by the REAL
+second gate answered through the io slot exactly as the
+shell answers it, and the strike through the seal — closing
+on the awards, floor2_complete, the stairs clause standing,
+and a save round-trip. Fixture, named in the test: Floor 1's
+FOE is felled at the state level first, because the way down
+is barred until the Hoard falls; everything on Floor 2
+itself is played, not set.
+
+Live evidence under Xvfb (keyboard-driven — see the method
+note): screenshots in
+~/.local/share/pax/niflheim-step5-build-20261110/shots/ —
+the title with Continue offered on a real save; the Floor 1
+hub resumed (Hoard FALLEN, the stairs clauses legible in its
+panel); the Floor 2 hub fresh and, after the door fix below,
+with every Herald line legible; the FOE room standing. The
+determinism probe from Step 4 re-run on this tree produced
+byte-identical saves across two processes (sha256
+75c7a3f53eb8dd45c40ff4f17fd8309e3dec25a8935294e2fdf2481f5e369f63
+both runs — the hash moved from Step 4's because the save
+gained a field, below), and a Step 4 save was verified to
+load on this tree with the FOE fallen and the draft
+untouched.
+
+### What the driving found, and the fixes
+
+1. **The way down was drawn but unreachable.** The shell has
+   drawn the Floor 2 door on Floor 1's hub since Step 1B, and
+   the press arm existed — but layout() never listed
+   El::DoorFloor2, so no pointer press or keyboard focus could
+   ever reach it; Floor 2 opened only because tests assigned
+   the screen directly. Fixed: the door is in the Hub layout.
+   The playthrough's first failure was this door.
+2. **The Desk's scaffold resurrected over an emptied draft**
+   (a Step 4 defect). The draft read "empty" as "untouched",
+   so select-all + delete + type produced the reference with
+   the whole scaffold appended behind it — a player could
+   never have passed the Desk gate after clearing the page.
+   Fixed with an explicit editor_started flag on
+   Floor2FoeProgress (serde-defaulted; Step 4 saves load,
+   verified): once the draft is taken up, empty means
+   emptied. The Desk's own round-trip test and the full
+   Step 4 suite stand green behind the fix.
+3. **The FOE door stood over the Herald's letters.** The
+   door stone chosen in Step 4 (the bottom-centre stone,
+   Floor 1's way-down stone) overlaps the hub's Herald strip:
+   the second and third letters' lines ran behind the door
+   card. Fixed by moving geom::door_foe2 to the open ground
+   on the right of the field, clear of the camp stone and the
+   strip; verified in the post-fix screenshot — all three
+   letters legible, the door standing as "THE FOE / The
+   Menagerie".
+
+### Method note
+
+Pointer input could not be driven into the live app in this
+environment: XTEST clicks were verified delivered to the
+window (pointer location and window geometry read back) and
+the game never stirred — the shell polls winit's cursor
+position, which synthetic motion does not move here. The
+live drive therefore used the game's keyboard channel (Tab
+focus traversal + Return), which is a first-class input path
+of the game's own design; the pointer path itself is covered
+by the in-suite playthrough and the pointer regression tests.
+lib.rs: the crate doc now records Floor 2 complete.
+
+### Gates (coordinator-run, primo, pinned toolchain throughout)
+
+- cargo fmt: applied; cargo fmt --check clean afterwards.
+- cargo clippy --all-targets -- -D warnings: clean (rc 0).
+- cargo test: **90 passed / 0 failed** (89 at Step 4's close
+  intact; +1, the integration playthrough). Log:
+  ~/.local/share/pax/niflheim-step5-build-20261110/cargo-test.log
+- theodolite (MCP, protocol 2026-07-28) over the touched
+  files (game.rs, state.rs, lib.rs): 0 diagnostics each,
+  session quiescent (warm-up call first, not read as
+  evidence). Log:
+  ~/.local/share/pax/niflheim-step5-build-20261110/theodolite-step5.log
+- Determinism and save compatibility: above.
+- Android: cargo build --target aarch64-linux-android --lib:
+  Finished under the pinned toolchain; libniflheim.so
+  1,344,240,568 B (debug profile).
+- Launch smoke: repeated Xvfb launches through the
+  screenshot drive: cold_start_ms=871 on the driven boot, no
+  panics.
+
+### Production axes (D-1151) and aspects, for this step
+
+- Integration is the step's whole substance: one shipped
+  defect of reachability, one of the editor contract, one of
+  layout — each found by playing the floor as a player must,
+  each fixed in code, none documented-and-left.
+- Floor 2 stands complete: five chambers, the Herald, the
+  FOE, two real cargo gates, the stairs clauses reading both
+  lanterns, and a driven record of the whole floor.
+
+### Left open, honestly
+
+- Floor 2 is complete. The descent continues with Floor 3
+  per FULL-DESIGN.md (Stratum II begins: The Warrens of
+  Unsafe), the next rung of the completion programme.
+- The pointer-under-Xvfb limitation above is an environment
+  note, not a game defect: on real hardware the pointer path
+  is the primary one and is test-covered in-suite.
+
+

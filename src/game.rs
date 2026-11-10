@@ -868,10 +868,12 @@ pub mod geom {
         Rect::new(252.0, 518.0, 168.0, 124.0)
     }
 
-    /// The Menagerie's door on Floor 2's hub, bottom row centre —
-    /// the same stone as the way down on Floor 1's hub.
+    /// The Menagerie's door on Floor 2's hub: the open ground to
+    /// the right, clear of the camp stone at the field's heart
+    /// and of the Herald's strip along the bottom (the bottom
+    /// stone, tried first, stood over the letters' lines).
     pub fn door_foe2() -> Rect {
-        Rect::new(252.0, 518.0, 168.0, 124.0)
+        Rect::new(600.0, 292.0, 168.0, 124.0)
     }
 
     /// A roster group header row on Floor 2's panel.
@@ -2763,6 +2765,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             }
             els.push((El::DoorFoe, geom::door_foe()));
             els.push((El::DoorStairs, geom::door_stairs()));
+            els.push((El::DoorFloor2, geom::door_floor2()));
             els.push((El::CampStone, geom::camp_stone()));
         }
         Screen::Floor2Hub => {
@@ -3127,6 +3130,209 @@ mod tests {
         assert_eq!(game.expedition.editor_code, hoard_before);
         assert!(game.expedition.floor2_foe_draft().starts_with('x'));
     }
+
+    /// Step 5 integration: the whole of Floor 2 driven through
+    /// the GUI surface itself — layout hit-testing and pointer
+    /// presses, the game's own editor, and the real Desk gate
+    /// answered through the io slot exactly as the shell answers
+    /// it. Fixture: Floor 1's FOE is felled at the state level
+    /// first (the way down is barred until the Hoard falls);
+    /// everything on Floor 2 itself is played, not set.
+    #[test]
+    fn floor2_gui_playthrough_fells_the_menagerie() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn repair(game: &mut Game, index: usize) {
+            click(game, El::Chip(Verb::Prove));
+            click(game, El::Seal);
+            click(game, El::SealConfirm);
+            assert_eq!(
+                game.expedition.floor2.chambers[index].state,
+                ChamberState::Repaired,
+                "chamber {index} repaired through the seal"
+            );
+            click(game, El::TabFloor);
+            click(game, El::DoorFloor2);
+        }
+
+        let mut game = Game::new();
+        game.begin();
+        game.io = None; // the shell drains the begin-autosave at once
+        // Fixture: fell Floor 1's FOE at the state level.
+        {
+            let expedition = &mut game.expedition;
+            expedition.foe_enumerate();
+            let double = crate::puzzles::foe_double_row().expect("double row");
+            expedition.foe_exhibit_row(double).expect("exhibit");
+            for row in crate::puzzles::foe_uncopiable_rows() {
+                expedition.foe_verify_row(row).expect("verify");
+            }
+            expedition.foe_mark_gate_passed();
+            expedition.foe_arm_strike().expect("arm");
+            expedition.foe_confirm_strike("2026-11-10").expect("strike");
+        }
+        click(&mut game, El::DoorFloor2);
+        assert_eq!(game.screen, Screen::Floor2Hub);
+
+        // Chamber 1 — Traits and impls.
+        click(&mut game, El::Floor2Door(0));
+        click(&mut game, El::F2Watch);
+        let charter = (0..content::CHARTER_CANDIDATES.len())
+            .find(|choice| crate::puzzles::trick_charter_ok(content::CHARTER_CANDIDATES[*choice]))
+            .expect("a true charter");
+        click(&mut game, El::F2Charter(charter as u8));
+        let runner = (0..content::TRICK_PERFORMERS.len())
+            .find(|choice| crate::puzzles::identification_ok(*choice))
+            .expect("the blind run named");
+        click(&mut game, El::F2RunChoice(runner as u8));
+        repair(&mut game, 0);
+
+        // Chamber 2 — Generics and bounds: toggle each service's
+        // bound to exactly the sigils its work requires.
+        click(&mut game, El::Floor2Door(1));
+        for (service, spec) in content::STABLE_SERVICES.iter().enumerate() {
+            let current = game.expedition.floor2.chambers[1]
+                .work
+                .bound_masks
+                .get(service)
+                .copied()
+                .unwrap_or(content::POSTED_BOUND);
+            for sigil in 0..content::STABLE_SIGILS.len() {
+                let want = spec.required & (1 << sigil) != 0;
+                let has = current & (1 << sigil) != 0;
+                if want != has {
+                    click(&mut game, El::F2BoundToggle(service as u8, sigil as u8));
+                }
+            }
+        }
+        repair(&mut game, 1);
+
+        // Chamber 3 — Associated types.
+        click(&mut game, El::Floor2Door(2));
+        click(&mut game, El::F2RunDeliveries);
+        let errand = (0..content::ERRANDS.len())
+            .find(|choice| crate::puzzles::errand_choice_ok(*choice))
+            .expect("the contorted errand");
+        click(&mut game, El::F2Errand(errand as u8));
+        let kennel = (0..content::KENNELS.len())
+            .find(|kennel| crate::puzzles::kennel_choice_ok(*kennel))
+            .expect("the found kennel");
+        click(&mut game, El::F2Kennel(kennel as u8));
+        repair(&mut game, 2);
+
+        // Chamber 4 — Trait objects and the Wide Door.
+        click(&mut game, El::Floor2Door(3));
+        click(&mut game, El::F2DriveRound);
+        for (slot, label) in [(0u8, 0u8), (1, 1), (2, 2)] {
+            click(&mut game, El::F2BarLabel(slot, label));
+        }
+        repair(&mut game, 3);
+
+        // Chamber 5 — Coherence.
+        click(&mut game, El::Floor2Door(4));
+        click(&mut game, El::F2Route(1));
+        click(&mut game, El::F2Reading(2));
+        repair(&mut game, 4);
+
+        // The Herald's letters, acted from the hub strip.
+        for letter in 0..content::HERALD_LETTERS.len() {
+            click(&mut game, El::F2HeraldAct(letter as u8));
+        }
+        assert!(
+            game.expedition
+                .floor2
+                .herald_filed
+                .iter()
+                .all(|filed| *filed)
+        );
+
+        // The FOE: the audit, the exhibits, the naming, the
+        // brazier calibration.
+        click(&mut game, El::DoorFoe2);
+        assert_eq!(game.screen, Screen::Floor2Foe);
+        click(&mut game, El::Chip(Verb::Enumerate));
+        assert!(game.expedition.floor2.foe.audit_taken);
+        for row in 0..content::FOE_ADMISSIONS.len() {
+            click(&mut game, El::F2FoeExhibit(row as u8));
+        }
+        let seam = crate::puzzles::foe2_disagreement_row().expect("the seam");
+        click(&mut game, El::F2FoeName(seam as u8));
+        click(&mut game, El::F2FoeCalibrate);
+        assert_eq!(game.expedition.floor2.foe.state, FoeState::Exposed);
+
+        // The Desk, written in the game's own editor and judged
+        // by the real gate through the io slot.
+        click(&mut game, El::EditorOpen);
+        let reference = content::GATE2_SCAFFOLD
+            .replacen("todo!()", "beast", 1)
+            .replacen("todo!()", "beast", 1)
+            .replacen(
+                "todo!()",
+                "!bound.is_empty() && bound.iter().all(|sigil| sigils.contains(sigil))",
+                1,
+            );
+        game.editor_select_all();
+        for ch in reference.chars() {
+            let mut buf = [0u8; 4];
+            game.editor_insert(ch.encode_utf8(&mut buf));
+        }
+        click(&mut game, El::RunGate);
+        let code = match game.io.take() {
+            Some(IoRequest::RunGate { code, floor2 }) => {
+                assert!(floor2, "the desk files the second gate");
+                code
+            }
+            other => panic!("expected a gate filing, got {other:?}"),
+        };
+        let scratch = std::env::temp_dir().join("niflheim-step5-playthrough-gate");
+        let report = crate::gate::run_gate2(&scratch, &code, &crate::gate::GateLimits::default());
+        assert!(report.passed(), "the Desk gate: {}", report.summary);
+        game.on_gate_result(report);
+        assert!(game.expedition.floor2.foe.gate_record.is_some());
+        click(&mut game, El::OverlayClose);
+
+        // The strike, through the seal.
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(game.expedition.floor2.foe.state, FoeState::Fallen);
+        assert!(
+            game.expedition
+                .codex
+                .iter()
+                .any(|s| s == content::LENS_STONE)
+        );
+        assert!(
+            game.expedition
+                .pack
+                .iter()
+                .any(|s| s == content::PLUGIN_MENAGERIE)
+        );
+        assert!(game.expedition.floor2_complete());
+
+        // The stairs recite the floor's standing: clause 3 reads
+        // both Stratum I lanterns lit.
+        let clauses = game.expedition.stairs_clauses();
+        assert!(
+            clauses[2]
+                .1
+                .contains("Floors 1 and 2 have lit their lanterns"),
+            "clause 3: {}",
+            clauses[2].1
+        );
+
+        // The whole record round-trips through the save.
+        let save = game.expedition.save_json().expect("save");
+        let loaded = Expedition::load_json(&save).expect("load");
+        assert_eq!(loaded, game.expedition);
+    }
+
     /// The general pointer path still works outside overlays:
     /// a hub door opens its chamber.
     #[test]
