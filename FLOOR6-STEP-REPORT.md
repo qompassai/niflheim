@@ -211,4 +211,74 @@ Gates, all on primo under pinned rustc 1.99.0 (evidence:
 - Xvfb smoke: `cold_start_ms=997`, zero panics.
   `#![forbid(unsafe_code)]` intact.
 
-Commit: recorded at Step 5.
+Commit: `4e9e339` on `pax/floor2-build-20261109`.
+
+## Step 5 — Integration: Floor 6 Complete
+
+The floor closes the way Floor 5 did: a whole-floor GUI
+playthrough drives every chamber and the FOE end to end
+on the pointer from a fresh expedition — the day walked
+with its bell, five calls and one light, the bounded
+give-up and its provisional claims, the wrong census
+recounted to true, the three data housed and sentenced,
+the staff exhibited, loomed, rewritten, and struck —
+closing on `floor6_complete()` and all five chambers
+repaired. Integration needed no production change: the
+Lockheart Stone's facet rode Step 1's repair (full
+standard at hint rung ≤ 3, §5.5), the completion
+predicate rode Step 1's accessors, and the save
+invariants already hold every chamber's Diagnosed state
+proof-checked at load. The state-level probe's earned
+save round-trips through the loader with the floor
+complete.
+
+Gates, all on primo under pinned rustc 1.99.0 (evidence:
+`~/.local/share/pax/niflheim-floor6-step5-build-20261110/`):
+
+- `cargo fmt --check`: clean.
+- `cargo test`: **191 passed, 0 failed** (190 at Step 4 +
+  the whole-floor playthrough; no test deleted, skipped,
+  or weakened — 161 at the Floor 5 tip, 191 here, +30
+  across the floor).
+- `cargo clippy --all-targets -- -D warnings`: exit 0.
+- Theodolite (cured protocol): planted run — puzzles.rs
+  count=9, all E0308 from the planted control at line 2440,
+  the other four touched files 0 in the same session;
+  restore sha256-verified (7c1634ce…); clean run — all
+  five files count=0; PASS both modes.
+- Determinism: the full playthrough probe (the earned
+  state, load-back asserted, floor complete), run twice:
+  byte-identical, sha256
+  6386a8b71efc90fba5a20c441a3b3d9f6597f55438a29a987239fa4e8abb9d6b
+  — the same hash as Step 4's, as it must be: Step 5
+  changed no production code. Probe removed after the
+  runs.
+- Android: lib builds, exit 0 (libniflheim.so
+  1,349,326,080 bytes).
+- Xvfb smoke: `cold_start_ms=901`, zero panics.
+  `#![forbid(unsafe_code)]` intact (src/lib.rs:26).
+
+Left open, deliberately: the Spin Heart's four recorded
+orderings ride the save PROVISIONAL — Floor 7's Loom
+Halls own the strongest-correct key and the verdict
+(DS-7), exactly as the spec rules. The Veilwalker's
+Buffer stays a content reference on this floor's C1
+bench; Floor 9's finale spends it. The shell parity note
+from Step 1 stands: hub doors to the next floor (Floors
+3–6) are layout/press/map only, with no drawn door visual
+on their hubs — pre-existing across floors, not a Floor 6
+regression, and out of this floor's scope to retrofit.
+Kept for the next floor's lane, in
+`~/workspace/niflheim-floor6-20261110/`: the brief, this
+report, the blocks, the five splicers (splice61–65 plus
+the 62b/62c/64b remainders), the probes, and the
+theodolite check scripts — the established Part A pattern
+reuses them. The bacon producer session (`niflheim-bacon`,
+inherited from the Floor 5 lane) was stopped at this
+boundary; the next lane starts its own before its first
+theodolite session. The tree is clean except the
+untracked `.bacon-locations` producer artifact, never
+committed.
+
+Floor 6 — the Lockheart — stands complete at this
+boundary for Pax's verification. Floor 7 is not started.

@@ -7790,6 +7790,161 @@ mod tests {
         assert_eq!(game.screen, Screen::Floor5Hub);
     }
 
+    /// Floor 6 Step 5 — the shipped whole-floor playthrough:
+    /// every chamber and the FOE driven end-to-end on the
+    /// GUI surface from a fresh expedition, every press a
+    /// real press handler, closing on the completed floor.
+    #[test]
+    fn floor6_whole_floor_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn to_floor6_hub(game: &mut Game) {
+            game.screen = Screen::Hub;
+            game.expedition.foe.state = FoeState::Fallen;
+            game.expedition.foe.gate_passed = true;
+            game.expedition.floor2.foe.state = FoeState::Fallen;
+            game.expedition.floor3.foe.gate_passed = true;
+            for chamber in game.expedition.floor2.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            for chamber in game.expedition.floor4.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor4.foe.state = FoeState::Fallen;
+            for chamber in game.expedition.floor5.chambers.iter_mut().take(3) {
+                chamber.state = ChamberState::Repaired;
+            }
+            click(game, El::DoorFloor4);
+            click(game, El::DoorFloor5);
+            click(game, El::DoorFloor6);
+            assert_eq!(game.screen, Screen::Floor6Hub);
+        }
+        fn seal_chamber(game: &mut Game, index: usize) {
+            game.do_verb(Verb::Prove);
+            click(game, El::Seal);
+            click(game, El::SealConfirm);
+            assert_eq!(
+                game.expedition.floor6.chambers[index].state,
+                ChamberState::Repaired
+            );
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        to_floor6_hub(&mut game);
+        // Chamber 1 — the Cell Heart.
+        click(&mut game, El::Floor6Door(0));
+        click(&mut game, El::F6Watch);
+        click(&mut game, El::F6DayOp(2));
+        assert_eq!(
+            game.expedition.floor6.chambers[0].work.day_walked,
+            [false; 6]
+        );
+        for op in 0..6u8 {
+            click(&mut game, El::F6DayOp(op));
+        }
+        assert!(game.expedition.floor6.chambers[0].work.bell_struck);
+        assert!(game.expedition.floor6_diagnosed(0));
+        seal_chamber(&mut game, 0);
+        // Chamber 2 — the Borrow-Flag Brazier.
+        click(&mut game, El::TabFloor);
+        to_floor6_hub(&mut game);
+        click(&mut game, El::Floor6Door(1));
+        click(&mut game, El::F6Watch);
+        for call in 0..5u8 {
+            click(&mut game, El::F6BrazierCall(call));
+        }
+        assert!(game.expedition.floor6_diagnosed(1));
+        seal_chamber(&mut game, 1);
+        // Chamber 3 — the Spin Heart.
+        click(&mut game, El::TabFloor);
+        to_floor6_hub(&mut game);
+        click(&mut game, El::Floor6Door(2));
+        click(&mut game, El::F6Watch);
+        click(&mut game, El::F6SpinRun);
+        assert!(!game.expedition.floor6.chambers[2].work.gave_up);
+        click(&mut game, El::F6BoundUp);
+        click(&mut game, El::F6BoundUp);
+        click(&mut game, El::F6BoundUp);
+        click(&mut game, El::F6SpinRun);
+        assert!(game.expedition.floor6.chambers[2].work.gave_up);
+        for claim in 0..4u8 {
+            click(&mut game, El::F6Annotate(claim));
+        }
+        assert!(game.expedition.floor6_diagnosed(2));
+        seal_chamber(&mut game, 2);
+        // Chamber 4 — the Day Census.
+        click(&mut game, El::TabFloor);
+        to_floor6_hub(&mut game);
+        click(&mut game, El::Floor6Door(3));
+        click(&mut game, El::F6Watch);
+        click(&mut game, El::F6CensusSubmit);
+        assert!(!game.expedition.floor6.chambers[3].work.census_judged);
+        click(&mut game, El::F6CensusCycle(0));
+        for _ in 0..3 {
+            click(&mut game, El::F6CensusCycle(1));
+        }
+        click(&mut game, El::F6CensusCycle(2));
+        click(&mut game, El::F6CensusSubmit);
+        assert!(game.expedition.floor6_diagnosed(3));
+        seal_chamber(&mut game, 3);
+        // Chamber 5 — Choosing the Cell.
+        click(&mut game, El::TabFloor);
+        to_floor6_hub(&mut game);
+        click(&mut game, El::Floor6Door(4));
+        click(&mut game, El::F6Watch);
+        for (datum, datum_meta) in content::CELL_DATA.iter().enumerate() {
+            for _ in 0..=datum_meta.true_kind {
+                click(&mut game, El::F6Choose(datum as u8));
+            }
+            for _ in 0..=datum_meta.true_sentence {
+                click(&mut game, El::F6Invariant(datum as u8));
+            }
+        }
+        assert!(game.expedition.floor6_diagnosed(4));
+        seal_chamber(&mut game, 4);
+        // The FOE — the Heart Locked Twice.
+        click(&mut game, El::TabFloor);
+        to_floor6_hub(&mut game);
+        click(&mut game, El::DoorFoe6);
+        assert_eq!(game.screen, Screen::Floor6Foe);
+        click(&mut game, El::F6Exhibit(1));
+        assert!(!game.expedition.floor6.foe.exhibits[1]);
+        for exhibit in 0..3u8 {
+            click(&mut game, El::F6Exhibit(exhibit));
+        }
+        assert!(game.expedition.floor6_foe_proof_complete());
+        for case in 0..4u8 {
+            click(&mut game, El::F6Loom(case));
+        }
+        assert!(game.expedition.floor6.foe.gate_passed);
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_none());
+        click(&mut game, El::F6FoeCard(0));
+        click(&mut game, El::F6FoeCard(1));
+        click(&mut game, El::F6FoeCard(1));
+        assert!(game.expedition.floor6_foe_repair_ok());
+        click(&mut game, El::Seal);
+        assert!(game.armed.is_some());
+        click(&mut game, El::SealConfirm);
+        assert_eq!(game.expedition.floor6.foe.state, FoeState::Fallen);
+        // The floor stands complete. (The save round-trip of
+        // a fully earned Floor 6 state is the Step 5 probe's
+        // closing assertion: this test's earlier-floor
+        // fixtures mark chambers repaired without their
+        // work, which the loader's invariant check rightly
+        // refuses — the earned state is the probe's to load.)
+        assert!(game.expedition.floor6_complete());
+        assert_eq!(game.expedition.floor6_chambers_repaired(), 5);
+        game.expedition.save_json().expect("the save serializes");
+    }
     /// Floor 6 Step 4, driven on the GUI surface: Choosing
     /// the Cell houses the three data and writes their
     /// doors; the Heart Locked Twice is exhibited in order,
