@@ -23,9 +23,10 @@ use crate::content::{
 };
 use crate::core::{SAVE_FORMAT_VERSION, SAVE_MAGIC, SaveError, Settings, TextScale};
 use crate::puzzles::{
-    RecordKind, day_plan_overlap, foe_census, foe_uncopiable_rows, identification_ok,
-    judge_placards, lease_chain_problem, packing_problems, reconciled_toll, record_fits_slot,
-    run_delivery, trick_charter_ok,
+    RecordKind, bound_exact, bound_missing, bound_unjustified, day_plan_overlap, errand_choice_ok,
+    foe_census, foe_uncopiable_rows, identification_ok, judge_placards, kennel_choice_ok,
+    lease_chain_problem, packing_problems, reconciled_toll, record_fits_slot, run_delivery,
+    trick_charter_ok,
 };
 
 /// Most bytes of editor draft a save will carry.
@@ -164,6 +165,32 @@ pub struct Floor2Work {
     pub run_choice: Option<usize>,
     /// C1: the identification slot stands filled.
     pub run_ok: bool,
+    /// C2: the player's revised bounds, per stable service, as
+    /// bitmasks over `STABLE_SIGILS`; a missing entry stands at
+    /// the stable's posted (over-strict) bound.
+    #[serde(default)]
+    pub bound_masks: Vec<u8>,
+    /// C2: every service's bound stands exact.
+    #[serde(default)]
+    pub bounds_ok: bool,
+    /// C3: both kennels' deliveries have been run and read.
+    #[serde(default)]
+    pub ran_deliveries: bool,
+    /// C3: the errand named as the one that runs contorted at the
+    /// kennel that chooses its own kind, as an index into
+    /// `ERRANDS`.
+    #[serde(default)]
+    pub errand_choice: Option<usize>,
+    /// C3: the errand slot stands filled.
+    #[serde(default)]
+    pub errand_ok: bool,
+    /// C3: the kennel named as running that errand naturally, as
+    /// an index into `KENNELS`.
+    #[serde(default)]
+    pub kennel_choice: Option<usize>,
+    /// C3: the kennel slot stands filled.
+    #[serde(default)]
+    pub kennel_ok: bool,
 }
 
 /// One Floor 2 chamber's progress.
@@ -641,10 +668,10 @@ impl Expedition {
         }
     }
 
-    /// File a Floor 2 chamber's proof (the prove action). Chamber 1
-    /// judges both of its slots on every filing, as Floor 1's first
-    /// chamber does: the flags record the last judgement of the
-    /// work as it stands now, never a stale one.
+    /// File a Floor 2 chamber's proof (the prove action). Each
+    /// landed chamber judges all of its slots on every filing, as
+    /// Floor 1's first chamber does: the flags record the last
+    /// judgement of the work as it stands now, never a stale one.
     pub fn floor2_file_proof(&mut self, chamber: usize) -> Result<String, Refusal> {
         let progress = self
             .floor2
@@ -719,6 +746,130 @@ impl Expedition {
                          house body strikes once; a second, softer note is a \
                          variant's signature"
                     )))
+                }
+            }
+            1 => {
+                let (bounds_ok, unjustified, missing) = {
+                    let work = &mut progress.work;
+                    let mut all_exact = true;
+                    let mut unjustified: Option<(usize, &str)> = None;
+                    let mut missing: Option<(usize, &str)> = None;
+                    for service in 0..crate::content::STABLE_SERVICES.len() {
+                        let mask = work
+                            .bound_masks
+                            .get(service)
+                            .copied()
+                            .unwrap_or(crate::content::POSTED_BOUND);
+                        if !bound_exact(service, mask) {
+                            all_exact = false;
+                        }
+                        if unjustified.is_none() {
+                            unjustified = bound_unjustified(service, mask)
+                                .first()
+                                .copied()
+                                .map(|sigil| (service, sigil));
+                        }
+                        if missing.is_none() {
+                            missing = bound_missing(service, mask)
+                                .first()
+                                .copied()
+                                .map(|sigil| (service, sigil));
+                        }
+                    }
+                    work.bounds_ok = all_exact;
+                    (all_exact, unjustified, missing)
+                };
+                if bounds_ok {
+                    progress.state = ChamberState::Diagnosed;
+                    Ok("The bounds stand exact: each post now demands the \
+                         sigils its work names, and no others. The \
+                         Sigilwright walks the stalls, reads every posting, \
+                         and nods — the stable door swings open."
+                        .to_string())
+                } else if let Some((service, sigil)) = unjustified {
+                    let name = crate::content::STABLE_SERVICES[service].name;
+                    Err(Refusal(format!(
+                        "{sigil} is demanded of every beast at {name}, but \
+                         nothing in its work asks for it. A bound may demand \
+                         only what the service needs — no more"
+                    )))
+                } else if let Some((service, sigil)) = missing {
+                    let name = crate::content::STABLE_SERVICES[service].name;
+                    Err(Refusal(format!(
+                        "The bound at {name} no longer asks {sigil}; a beast \
+                         admitted without it cannot do the work the post \
+                         describes"
+                    )))
+                } else {
+                    Err(Refusal(
+                        "the stable's bounds do not yet stand exact".to_string(),
+                    ))
+                }
+            }
+            2 => {
+                let (errand_ok, kennel_ok, ran, errand_choice, kennel_choice) = {
+                    let work = &mut progress.work;
+                    work.errand_ok = work.ran_deliveries
+                        && matches!(
+                            work.errand_choice,
+                            Some(choice) if errand_choice_ok(choice)
+                        );
+                    work.kennel_ok = work.ran_deliveries
+                        && matches!(
+                            work.kennel_choice,
+                            Some(kennel) if kennel_choice_ok(kennel)
+                        );
+                    (
+                        work.errand_ok,
+                        work.kennel_ok,
+                        work.ran_deliveries,
+                        work.errand_choice,
+                        work.kennel_choice,
+                    )
+                };
+                if errand_ok && kennel_ok {
+                    progress.state = ChamberState::Diagnosed;
+                    Ok("The finding stands: one errand runs contorted where \
+                         the kennel chooses, and true where the customer \
+                         does. The Sigilwright chalks both records on the \
+                         kennel wall — the door swings open."
+                        .to_string())
+                } else if !ran {
+                    Err(Refusal(
+                        "The kennels ask nothing unrun: run the deliveries \
+                         from both houses first — the record is the evidence"
+                            .to_string(),
+                    ))
+                } else if errand_choice.is_none() {
+                    Err(Refusal(
+                        "Name the errand that ran contorted at the Hearth \
+                         Kennel — the house that chooses its own kind"
+                            .to_string(),
+                    ))
+                } else if !errand_ok {
+                    let named = errand_choice
+                        .and_then(|choice| crate::content::ERRANDS.get(choice))
+                        .map(|errand| errand.name)
+                        .unwrap_or("That errand");
+                    Err(Refusal(format!(
+                        "{named} did not run contorted from the Hearth \
+                         Kennel — the ash-hound's kind carried it. Read the \
+                         kennel's records again"
+                    )))
+                } else if kennel_choice.is_none() {
+                    Err(Refusal(
+                        "Name the kennel from which that errand runs \
+                         naturally"
+                            .to_string(),
+                    ))
+                } else {
+                    Err(Refusal(
+                        "From the Hearth Kennel that errand still runs on \
+                         the ash-hound, and the ford still stops it. Name \
+                         the kennel where the kind is the customer's to \
+                         choose"
+                            .to_string(),
+                    ))
                 }
             }
             _ => Err(Refusal(
@@ -1144,6 +1295,15 @@ impl Expedition {
                 ));
             }
         }
+        // Floor 2 chambers answer to the same law: no state beyond
+        // Unworked without a proof that recomputes.
+        for (index, chamber) in self.floor2.chambers.iter().enumerate() {
+            if chamber.state != ChamberState::Unworked && !floor2_proof_complete(self, index) {
+                return Err(corrupt(
+                    "a Floor 2 chamber stands diagnosed without its proof",
+                ));
+            }
+        }
         for (index, chamber) in self.chambers.iter().enumerate() {
             let work = &chamber.work;
             let lengths_ok = match index {
@@ -1224,6 +1384,38 @@ fn proof_complete(expedition: &Expedition, chamber: usize) -> bool {
         4 => {
             let (unjudged, wrong) = judge_placards(&work.judgements);
             unjudged == 0 && wrong.is_empty()
+        }
+        _ => false,
+    }
+}
+
+/// Whether a Floor 2 chamber's proof currently holds, recomputed
+/// from its work — used by the load invariants, as `proof_complete`
+/// is for Floor 1. Chambers whose builds have not landed never
+/// hold a proof, so a forged save cannot stand them diagnosed.
+fn floor2_proof_complete(expedition: &Expedition, chamber: usize) -> bool {
+    let Some(progress) = expedition.floor2.chambers.get(chamber) else {
+        return false;
+    };
+    let work = &progress.work;
+    match chamber {
+        0 => {
+            matches!(work.charter_choice, Some(choice) if crate::content::CHARTER_CANDIDATES.get(choice).is_some_and(|sigil| trick_charter_ok(sigil)))
+                && work.watched
+                && matches!(work.run_choice, Some(choice) if identification_ok(choice))
+        }
+        1 => (0..crate::content::STABLE_SERVICES.len()).all(|service| {
+            let mask = work
+                .bound_masks
+                .get(service)
+                .copied()
+                .unwrap_or(crate::content::POSTED_BOUND);
+            bound_exact(service, mask)
+        }),
+        2 => {
+            work.ran_deliveries
+                && matches!(work.errand_choice, Some(choice) if errand_choice_ok(choice))
+                && matches!(work.kennel_choice, Some(kennel) if kennel_choice_ok(kennel))
         }
         _ => false,
     }
@@ -1566,5 +1758,184 @@ mod tests {
             .remove("work");
         let loaded = Expedition::load_json(&value.to_string()).expect("load without work");
         assert_eq!(loaded.floor2.chambers[0].work, Floor2Work::default());
+    }
+
+    /// Floor 2 Chamber 2 solved as designed: every service's bound
+    /// revised to exactly the sigils its work requires.
+    fn solve_f2c2(expedition: &mut Expedition) {
+        expedition.floor2.chambers[1].work.bound_masks = crate::content::STABLE_SERVICES
+            .iter()
+            .map(|service| service.required)
+            .collect();
+    }
+
+    /// Validation: Chamber 2's proof diagnoses, and the repair
+    /// lands at full standard with its facet.
+    #[test]
+    fn floor2_chamber2_proof_diagnoses_and_repairs() {
+        let mut expedition = Expedition::new();
+        solve_f2c2(&mut expedition);
+        expedition.floor2_file_proof(1).expect("proof");
+        assert_eq!(expedition.floor2.chambers[1].state, ChamberState::Diagnosed);
+        assert!(expedition.floor2.chambers[1].work.bounds_ok);
+        expedition.floor2_repair_chamber(1).expect("repair");
+        assert_eq!(expedition.floor2.chambers[1].state, ChamberState::Repaired);
+        assert!(expedition.floor2.chambers[1].facet);
+    }
+
+    /// Adversarial: the posted bound, untouched, is refused with
+    /// the first unjustified sigil named; a bound that drops a
+    /// required sigil is refused with the missing one named; a
+    /// forged all-bits mask is refused without panic.
+    #[test]
+    fn floor2_chamber2_posted_and_loose_bounds_are_refused() {
+        let mut expedition = Expedition::new();
+        let refusal = expedition.floor2_file_proof(1).expect_err("refused");
+        assert!(refusal.message().contains("MistSense is demanded"));
+        assert_eq!(expedition.floor2.chambers[1].state, ChamberState::Unworked);
+        assert!(!expedition.floor2.chambers[1].work.bounds_ok);
+        solve_f2c2(&mut expedition);
+        expedition.floor2.chambers[1].work.bound_masks[0] = 0;
+        let refusal = expedition.floor2_file_proof(1).expect_err("refused");
+        assert!(refusal.message().contains("no longer asks FireWard"));
+        expedition.floor2.chambers[1].work.bound_masks = vec![u8::MAX; 3];
+        assert!(expedition.floor2_file_proof(1).is_err());
+        assert_eq!(expedition.floor2.chambers[1].state, ChamberState::Unworked);
+    }
+
+    /// Floor 2 Chamber 3 solved as designed: the deliveries run,
+    /// the River Parcel named (errand 1), the Open Kennel named
+    /// (kennel 1).
+    fn solve_f2c3(expedition: &mut Expedition) {
+        let work = &mut expedition.floor2.chambers[2].work;
+        work.ran_deliveries = true;
+        work.errand_choice = Some(1);
+        work.kennel_choice = Some(1);
+    }
+
+    /// Validation: Chamber 3's proof diagnoses, and the repair
+    /// lands at full standard with its facet.
+    #[test]
+    fn floor2_chamber3_proof_diagnoses_and_repairs() {
+        let mut expedition = Expedition::new();
+        solve_f2c3(&mut expedition);
+        expedition.floor2_file_proof(2).expect("proof");
+        assert_eq!(expedition.floor2.chambers[2].state, ChamberState::Diagnosed);
+        assert!(expedition.floor2.chambers[2].work.errand_ok);
+        assert!(expedition.floor2.chambers[2].work.kennel_ok);
+        expedition.floor2_repair_chamber(2).expect("repair");
+        assert_eq!(expedition.floor2.chambers[2].state, ChamberState::Repaired);
+        assert!(expedition.floor2.chambers[2].facet);
+    }
+
+    /// Adversarial: filing before the deliveries run is refused
+    /// even with the finding set; a smooth errand and the choosing
+    /// kennel are each refused with their reasons; a forged
+    /// out-of-range errand is refused without panic.
+    #[test]
+    fn floor2_chamber3_unrun_and_wrong_finding_are_refused() {
+        let mut expedition = Expedition::new();
+        solve_f2c3(&mut expedition);
+        expedition.floor2.chambers[2].work.ran_deliveries = false;
+        let refusal = expedition.floor2_file_proof(2).expect_err("refused");
+        assert!(refusal.message().contains("nothing unrun"));
+        assert!(!expedition.floor2.chambers[2].work.errand_ok);
+        expedition.floor2.chambers[2].work.ran_deliveries = true;
+        expedition.floor2.chambers[2].work.errand_choice = Some(0);
+        let refusal = expedition.floor2_file_proof(2).expect_err("refused");
+        assert!(refusal.message().contains("did not run contorted"));
+        expedition.floor2.chambers[2].work.errand_choice = Some(1);
+        expedition.floor2.chambers[2].work.kennel_choice = Some(0);
+        let refusal = expedition.floor2_file_proof(2).expect_err("refused");
+        assert!(refusal.message().contains("the ford still stops it"));
+        expedition.floor2.chambers[2].work.errand_choice = Some(usize::MAX);
+        assert!(expedition.floor2_file_proof(2).is_err());
+        assert_eq!(expedition.floor2.chambers[2].state, ChamberState::Unworked);
+    }
+
+    /// Validation: the Step 2 work fields round-trip, and a save
+    /// written before they existed (a Step 1B save) loads with
+    /// them defaulted.
+    #[test]
+    fn floor2_step2_work_round_trips_and_defaults() {
+        let mut expedition = Expedition::new();
+        solve_f2c2(&mut expedition);
+        solve_f2c3(&mut expedition);
+        let text = expedition.save_json().expect("save");
+        let loaded = Expedition::load_json(&text).expect("load");
+        assert_eq!(
+            loaded.floor2.chambers[1].work,
+            expedition.floor2.chambers[1].work
+        );
+        assert_eq!(
+            loaded.floor2.chambers[2].work,
+            expedition.floor2.chambers[2].work
+        );
+        let mut value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        for chamber in [1, 2] {
+            let work = value["floor2"]["chambers"][chamber]
+                .as_object_mut()
+                .expect("chamber object")
+                .get_mut("work")
+                .and_then(|w| w.as_object_mut())
+                .expect("work object");
+            for key in [
+                "bound_masks",
+                "bounds_ok",
+                "ran_deliveries",
+                "errand_choice",
+                "errand_ok",
+                "kennel_choice",
+                "kennel_ok",
+            ] {
+                work.remove(key);
+            }
+        }
+        let loaded = Expedition::load_json(&value.to_string()).expect("load old save");
+        assert_eq!(loaded.floor2.chambers[1].work, Floor2Work::default());
+        assert_eq!(loaded.floor2.chambers[2].work, Floor2Work::default());
+    }
+    /// Validation: Floor 2 chambers repaired through their proofs survive a
+    /// save/load round-trip with states and facets intact — the load invariants
+    /// recompute the proofs and hold them.
+    #[test]
+    fn floor2_repaired_chambers_survive_a_load() {
+        let mut expedition = Expedition::new();
+        solve_f2c2(&mut expedition);
+        expedition.floor2_file_proof(1).expect("proof c2");
+        expedition.floor2_repair_chamber(1).expect("repair c2");
+        solve_f2c3(&mut expedition);
+        expedition.floor2_file_proof(2).expect("proof c3");
+        expedition.floor2_repair_chamber(2).expect("repair c3");
+
+        let text = expedition.save_json().expect("save");
+        let loaded = Expedition::load_json(&text).expect("load");
+        assert_eq!(loaded.floor2.chambers[1].state, ChamberState::Repaired);
+        assert!(loaded.floor2.chambers[1].facet);
+        assert_eq!(loaded.floor2.chambers[2].state, ChamberState::Repaired);
+        assert!(loaded.floor2.chambers[2].facet);
+    }
+
+    /// Adversarial: a forged save that stands Floor 2 chambers repaired or
+    /// diagnosed on empty work is refused as corrupt — the load invariants
+    /// recompute every landed chamber's proof.
+    #[test]
+    fn load_refuses_forged_floor2_repairs() {
+        let expedition = Expedition::new();
+        let original_text = expedition.save_json().expect("save");
+
+        for (chamber, state_str) in [(1, "Repaired"), (2, "Diagnosed"), (3, "Repaired")] {
+            let mut value: serde_json::Value =
+                serde_json::from_str(&original_text).expect("parse json");
+            value["floor2"]["chambers"][chamber]["state"] = state_str.into();
+            if state_str == "Repaired" {
+                value["floor2"]["chambers"][chamber]["facet"] = true.into();
+            }
+
+            match Expedition::load_json(&value.to_string()) {
+                Err(SaveError::Corrupt { .. }) => {}
+                other => panic!("expected corrupt error, got: {:?}", other),
+            }
+        }
     }
 }

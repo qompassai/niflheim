@@ -273,3 +273,123 @@ three places. All three are corrected in this errata commit, in
 - cargo gates and counts recorded in the programme report; the
   test count must hold at 55/0 (the changed strings are display
   content; no test asserts them).
+
+## Step 2 — Chambers 2 and 3 (2026-11-10, completion programme)
+
+Recorded by the coordinator of the completion programme. Honest
+provenance: the chamber code below was authored by the prior lane,
+which ended without filing its final report; Pax verified the
+dirty tree from disk (cargo test 64 passed / 0 failed) before this
+programme took over. The coordinator audited the uncommitted diff
+against the brief and the errata's forward notes, closed one gap
+the audit found (below), ran every gate, and made the commit.
+
+### What landed
+
+- `src/content.rs`: Chamber 2, the Generic Stable — STABLE_SIGILS
+  (FireWard / MistSense / Swift / KeenNose), POSTED_BOUND (every
+  sigil demanded), STABLE_SERVICES (the Hearth Post, the Letter
+  Run, the Stores Audit, each with its work stated and the sigils
+  that work requires). Chamber 3, the Two Kennels — KENNELS (the
+  Hearth Kennel chooses its kind; the Open Kennel's customer
+  chooses), ERRANDS, and DELIVERIES, the records of both houses,
+  holding exactly one contorted run: the River Parcel from the
+  Hearth Kennel, whose ash-hound cannot swim. Hint ladders for
+  both chambers, carved in the house form.
+- `src/puzzles.rs`: the pure judges — bound_unjustified /
+  bound_missing / bound_exact for the stable (a bound is exact
+  when it demands exactly what the work names; stray bits beyond
+  the four sigils make any bound inexact), and for the kennels
+  contorted_errand / errand_choice_ok / kennel_choice_ok, judged
+  from the delivery records alone. Four tests: two validation,
+  two adversarial.
+- `src/state.rs`: Floor2Work gains the chambers' fields, every
+  one serde-defaulted so Step 1B saves load whole; floor2_file_proof
+  judges Chamber 2's three bounds and Chamber 3's two finding
+  slots on every filing, refusals naming the unjustified or
+  missing sigil, the unrun deliveries, or the wrong body of the
+  finding, in the floor's own words. Five tests: diagnosis +
+  repair with facet for both chambers (validation), the posted
+  bound and wrong findings refused with reasons (adversarial),
+  and the work round-trip / old-save defaults (validation).
+- `src/game.rs`: the chambers' elements and handlers (per-service
+  sigil toggles, the run-deliveries verb, the two finding chips),
+  and — discharging the errata's forward note — the floor's doors
+  are now sequentially gated: Chamber N's door (N = 2, 3) stands
+  barred until Chamber N−1 is REPAIRED, the refusal naming both
+  chambers; doors 4–5 keep the scaffolding narration until
+  Step 3.
+- `src/shell.rs`: build_f2c2 (each service's posted work beside
+  its bound toggles, the posted bound's story told in text) and
+  build_f2c3 (both kennels' delivery records in full text, then
+  the finding's chips). No information lives only in hover text.
+
+### The audit gap, closed in this step
+
+The load invariants recomputed Floor 1 chambers' proofs
+(`proof_complete`) but never Floor 2's: a forged save could stand
+a Floor 2 chamber Repaired — facet and all — on empty work and
+load clean. The fix, authored by the local model stack (phlow,
+two runs; the first run's fragments carried a shadowed binding
+and wrong API shapes and were rejected at review, the second
+run's were spliced verbatim) and spliced by the coordinator:
+`floor2_proof_complete` recomputes each landed chamber's proof
+from its work, chambers not yet landed never hold a proof, and
+`validate_invariants` now refuses any Floor 2 chamber standing
+beyond Unworked without a recomputed proof, Floor 1's law on
+Floor 2's side. Two tests: repaired chambers survive a load
+(validation); forged Repaired/Diagnosed states on empty work
+are refused as corrupt (adversarial).
+
+### Gates (coordinator-run, primo)
+
+- cargo fmt --check: clean (rc 0)
+- cargo clippy --all-targets -- -D warnings: clean (rc 0)
+- cargo test: **66 passed / 0 failed** (Floor 1's 44 and Steps 1A/1B's 11 intact;
+  +4 puzzles, +5 state from the chambers, +2 from the audit fix).
+- theodolite (MCP, protocol 2026-07-28) over the five touched
+  .rs files: 0 diagnostics, 0 errors, 0 warnings. Transcript: ~/.local/share/pax/niflheim-step2-fix-20261110/evidence/theodolite-step2.jsonl
+- Toolchain note, honestly: this session's first gate pass ran
+  under primo's Arch system rustc 1.99.1 (primo-ssh's PATH lacks
+  ~/.cargo/bin, and the system cargo ignores rust-toolchain.toml).
+  Every gate was re-run with ~/.cargo/bin first on PATH so the
+  pin governs (rustc 1.99.0, b940084d7): identical results —
+  fmt clean, clippy clean, 66/0, the same save hash. The Android
+  build exists only under the pin (the system sysroot carries
+  no aarch64-linux-android std; its attempt failed E0463 and is
+  recorded in the lane evidence, not hidden).
+- Determinism: a scripted state-level playthrough solving
+  Floor 2 Chambers 1–3 through the state API, run twice, produced
+  byte-identical saves (sha256 a3370b31f97b7446e053da248b21a1f6a8f42ed06809e2209ce46af3525e5286 both runs). The driven GUI
+  playthrough of the floor remains Step 5's evidence, as on
+  Floor 1's programme.
+- Android: cargo build --target aarch64-linux-android --lib:
+  Finished in 1m 16s under the pinned toolchain; libniflheim.so 1,343,771,952 B (debug profile)
+- Launch smoke: Xvfb :97, BEVY_ASSET_ROOT at the repo root: cold_start_ms=1089, no panics, still running at the 20 s bound (Vulkan loader validation noise under Xvfb only)
+
+### Production axes (D-1151) and aspects, for this step
+
+- Characters: the stable's and kennels' casts are the 1A roster
+  and the authored kennel kinds; no new character work.
+- Levels: Chambers 2 and 3 of 5 fully playable; the floor now
+  teaches in strict order end to end for the landed chambers.
+- Objects: no new loot; the facet paths for Chambers 2 and 3 are
+  live.
+- Music: none — the design's platform note is "No audio".
+- UI-UX: both chambers delivered in Floor 1's idiom on the shared
+  machinery; the stable's long postings and the kennels' records
+  are full text on the panel, touch parity by construction.
+- Aspects: mechanics delivered in full for both chambers (bound
+  revision judged sigil-by-sigil; associated-type finding judged
+  from records). Animation/economy: none in the design.
+
+### Left open, honestly
+
+- Steps 3 (Chambers 4–5 + Herald), 4 (the FOE with the real
+  cargo gate; failure class #6 to be named; the FOE's own
+  admission table), and 5 (integration + GUI playthrough
+  evidence) remain.
+- One residual from the audit: the stable panel's toggles read
+  the mask live, so a mid-revision bound is visible state, not
+  yet judged — by design; judgement happens at filing, as on
+  Floor 1.

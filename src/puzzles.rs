@@ -9,9 +9,9 @@
 
 use crate::content::MASTER_PLAN;
 use crate::content::{
-    BLIND_RUN_PERFORMANCE, CHARTER, PACK_ITEMS, PLACARDS, PORTERS, READERS, RECORD_KEPT,
-    RECORD_KEPT_SECOND, RECORD_RESTORED, TOLL_KEEPER_A, TOLL_KEEPER_B, TRICK_CHARTER,
-    TRICK_PERFORMERS,
+    BLIND_RUN_PERFORMANCE, CHARTER, DELIVERIES, PACK_ITEMS, PLACARDS, PORTERS, READERS,
+    RECORD_KEPT, RECORD_KEPT_SECOND, RECORD_RESTORED, STABLE_SERVICES, STABLE_SIGILS,
+    TOLL_KEEPER_A, TOLL_KEEPER_B, TRICK_CHARTER, TRICK_PERFORMERS,
 };
 use crate::core::{Census, census_of, parse_plan};
 
@@ -334,6 +334,82 @@ pub fn identification_ok(choice: usize) -> bool {
     blind_run_performer() == Some(choice)
 }
 
+// ---------------------------------------------------------------------------
+// Floor 2, Chamber 2 — Generics and bounds.
+// ---------------------------------------------------------------------------
+
+/// The sigils a bound demands that the service's work never asks
+/// for, in board order — the Sigilwright's refusal grounds. An
+/// out-of-range service has no work to judge against and yields
+/// silence, never a pass.
+pub fn bound_unjustified(service: usize, mask: u8) -> Vec<&'static str> {
+    let Some(stable) = STABLE_SERVICES.get(service) else {
+        return Vec::new();
+    };
+    STABLE_SIGILS
+        .iter()
+        .enumerate()
+        .filter(|(bit, _)| mask & (1 << bit) != 0 && stable.required & (1 << bit) == 0)
+        .map(|(_, sigil)| *sigil)
+        .collect()
+}
+
+/// The sigils the service's work requires that the bound fails to
+/// demand, in board order.
+pub fn bound_missing(service: usize, mask: u8) -> Vec<&'static str> {
+    let Some(stable) = STABLE_SERVICES.get(service) else {
+        return Vec::new();
+    };
+    STABLE_SIGILS
+        .iter()
+        .enumerate()
+        .filter(|(bit, _)| stable.required & (1 << bit) != 0 && mask & (1 << bit) == 0)
+        .map(|(_, sigil)| *sigil)
+        .collect()
+}
+
+/// Whether the bound demands exactly what the service's work
+/// requires — nothing unjustified, nothing missing. Bits beyond
+/// the stable's four sigils make any bound inexact.
+pub fn bound_exact(service: usize, mask: u8) -> bool {
+    let Some(stable) = STABLE_SERVICES.get(service) else {
+        return false;
+    };
+    mask & !0b1111 == 0
+        && bound_unjustified(service, mask).is_empty()
+        && bound_missing(service, mask).is_empty()
+        && mask == stable.required
+}
+
+// ---------------------------------------------------------------------------
+// Floor 2, Chamber 3 — Associated types.
+// ---------------------------------------------------------------------------
+
+/// The errand that runs contorted from the kennel that chooses
+/// its own kind, judged from the delivery records alone.
+pub fn contorted_errand() -> Option<usize> {
+    DELIVERIES.first()?.iter().position(|run| run.contorted)
+}
+
+/// Whether the player's finding names the contorted errand.
+pub fn errand_choice_ok(choice: usize) -> bool {
+    contorted_errand() == Some(choice)
+}
+
+/// Whether `kennel` is a kennel from which the contorted errand
+/// runs naturally: not the choosing kennel itself, and its record
+/// for that errand is not a contorted run.
+pub fn kennel_choice_ok(kennel: usize) -> bool {
+    let Some(errand) = contorted_errand() else {
+        return false;
+    };
+    kennel != 0
+        && DELIVERIES
+            .get(kennel)
+            .and_then(|runs| runs.get(errand))
+            .is_some_and(|run| !run.contorted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -482,5 +558,54 @@ mod tests {
         assert!(!trick_charter_ok(""));
         assert!(!identification_ok(0));
         assert!(!identification_ok(usize::MAX));
+    }
+
+    /// Validation: each stable service's own required bound is
+    /// exact, and the posted bound — every sigil demanded — is
+    /// exact nowhere.
+    #[test]
+    fn stable_bounds_judge_exactness() {
+        use crate::content::POSTED_BOUND;
+        for (service, stable) in STABLE_SERVICES.iter().enumerate() {
+            assert!(bound_exact(service, stable.required));
+            assert!(bound_unjustified(service, stable.required).is_empty());
+            assert!(bound_missing(service, stable.required).is_empty());
+            assert!(!bound_exact(service, POSTED_BOUND));
+        }
+    }
+
+    /// Adversarial: an unjustified sigil and a missing sigil are
+    /// named separately, a bound of nothing staffs nothing, and
+    /// out-of-range services and stray bits never judge exact.
+    #[test]
+    fn stable_bounds_name_unjustified_and_missing() {
+        assert_eq!(bound_unjustified(0, 0b0011), ["MistSense"]);
+        assert_eq!(bound_missing(0, 0b0010), ["FireWard"]);
+        assert_eq!(bound_missing(2, 0), ["KeenNose"]);
+        assert!(!bound_exact(0, u8::MAX));
+        assert!(!bound_exact(usize::MAX, 0));
+        assert!(bound_unjustified(usize::MAX, u8::MAX).is_empty());
+    }
+
+    /// Validation: the delivery records hold exactly one contorted
+    /// run — the River Parcel from the Hearth Kennel — and the
+    /// finding that names it and the Open Kennel holds.
+    #[test]
+    fn kennel_records_hold_one_contorted_run() {
+        assert_eq!(contorted_errand(), Some(1));
+        assert!(errand_choice_ok(1));
+        assert!(kennel_choice_ok(1));
+    }
+
+    /// Adversarial: the smooth errands are not the finding, the
+    /// choosing kennel cannot be its own remedy, and out-of-range
+    /// choices never hold.
+    #[test]
+    fn kennel_finding_refuses_smooth_errands_and_the_choosing_kennel() {
+        assert!(!errand_choice_ok(0));
+        assert!(!errand_choice_ok(2));
+        assert!(!kennel_choice_ok(0));
+        assert!(!errand_choice_ok(usize::MAX));
+        assert!(!kennel_choice_ok(usize::MAX));
     }
 }

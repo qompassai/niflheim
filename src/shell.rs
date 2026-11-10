@@ -2348,7 +2348,11 @@ fn build_floor2_chamber(
         stage,
         geom::desk(),
         Color::srgb_u8(166, 124, 58),
-        "THE FORGE",
+        match index {
+            1 => "THE STABLE",
+            2 => "THE KENNELS",
+            _ => "THE FORGE",
+        },
         "the demonstration",
     );
     let stone = geom::stone();
@@ -2397,6 +2401,12 @@ fn build_floor2_chamber(
     );
     if index == 0 {
         build_f2c1(commands, game, pal, fonts, stage);
+    }
+    if index == 1 {
+        build_f2c2(commands, game, pal, fonts, stage);
+    }
+    if index == 2 {
+        build_f2c3(commands, game, pal, fonts, stage);
     }
     let (active, caption) = match progress.state {
         ChamberState::Diagnosed => (true, "The seal wakes — press it to repair."),
@@ -2529,6 +2539,200 @@ fn build_f2c1(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, st
             content::BEASTS[performer.beast].name,
             pal,
             work.run_choice == Some(choice),
+            fonts,
+        );
+    }
+}
+
+/// Floor 2 C2 — the Generic Stable: three services, each with its
+/// posted work and a row of sigil toggles for its bound. A toggle
+/// stands pressed while its sigil is in the bound.
+fn build_f2c2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor2.chambers[1].work;
+    for (service, stable) in content::STABLE_SERVICES.iter().enumerate() {
+        let y = 196.0 + service as f32 * 84.0;
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            y,
+            Some(424.0),
+            stable.name,
+            13.0,
+            true,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            y + 16.0,
+            Some(424.0),
+            stable.work,
+            12.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        let mask = work
+            .bound_masks
+            .get(service)
+            .copied()
+            .unwrap_or(content::POSTED_BOUND);
+        for (bit, sigil) in content::STABLE_SIGILS.iter().enumerate() {
+            spawn_button(
+                commands,
+                stage,
+                geom::f2_bound(service, bit),
+                sigil,
+                pal,
+                mask & (1 << bit) != 0,
+                fonts,
+            );
+        }
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        452.0,
+        Some(424.0),
+        "The stable's posted bound demands every sigil of every beast. \
+         Loosen it, service by service — a sigil the work never asks for \
+         is refused by the Sigilwright, with the reason shown.",
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// Floor 2 C3 — the Two Kennels: the delivery records of both
+/// houses, then the finding — the contorted errand, and the kennel
+/// from which it runs true.
+fn build_f2c3(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor2.chambers[2].work;
+    if !work.ran_deliveries {
+        spawn_button(
+            commands,
+            stage,
+            geom::f2_run_deliveries(),
+            "Run the deliveries",
+            pal,
+            false,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            196.0,
+            Some(424.0),
+            "One courier service, two houses. At the Hearth Kennel the \
+             kennel chooses the kind; at the Open Kennel the customer \
+             does. Run the same three errands from both, and read the \
+             records.",
+            12.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        return;
+    }
+    for (kennel, house) in content::KENNELS.iter().enumerate() {
+        let y = 196.0 + kennel as f32 * 134.0;
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            y,
+            Some(424.0),
+            house.name,
+            13.0,
+            true,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            y + 16.0,
+            Some(424.0),
+            house.rule,
+            12.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+        for (errand, run) in content::DELIVERIES[kennel].iter().enumerate() {
+            spawn_text(
+                commands,
+                stage,
+                808.0,
+                y + 38.0 + errand as f32 * 28.0,
+                Some(424.0),
+                &format!("{} — {}", content::ERRANDS[errand].name, run.text),
+                12.0,
+                false,
+                pal.ink,
+                Justify::Left,
+                fonts,
+            );
+        }
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        460.0,
+        Some(424.0),
+        "Name the errand that ran contorted at the Hearth Kennel:",
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (errand, errand_meta) in content::ERRANDS.iter().enumerate() {
+        spawn_button(
+            commands,
+            stage,
+            geom::f2_errand(errand),
+            errand_meta.name,
+            pal,
+            work.errand_choice == Some(errand),
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        512.0,
+        Some(200.0),
+        "It runs true from:",
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (kennel, house) in content::KENNELS.iter().enumerate() {
+        spawn_button(
+            commands,
+            stage,
+            geom::f2_kennel(kennel),
+            house.name,
+            pal,
+            work.kennel_choice == Some(kennel),
             fonts,
         );
     }

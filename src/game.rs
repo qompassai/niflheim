@@ -292,6 +292,15 @@ pub enum El {
     F2Charter(u8),
     /// Floor 2 Chamber 1: name the blind run's body, by performer index.
     F2RunChoice(u8),
+    /// Floor 2 Chamber 2: toggle one sigil in one service's bound
+    /// (service index, sigil bit index).
+    F2BoundToggle(u8, u8),
+    /// Floor 2 Chamber 3: run both kennels' deliveries.
+    F2RunDeliveries,
+    /// Floor 2 Chamber 3: name the contorted errand, by index.
+    F2Errand(u8),
+    /// Floor 2 Chamber 3: name the kennel that runs it naturally.
+    F2Kennel(u8),
     /// Hub: the camp stone.
     CampStone,
     /// The room's subject (desk / engine / chart).
@@ -838,6 +847,31 @@ pub mod geom {
     /// Floor 2 C1: the watch-performances button.
     pub fn f2_watch() -> Rect {
         Rect::new(808.0, 500.0, 220.0, 30.0)
+    }
+
+    /// Floor 2 C2: a sigil toggle in a service's bound row.
+    pub fn f2_bound(service: usize, sigil: usize) -> Rect {
+        Rect::new(
+            808.0 + sigil as f32 * 110.0,
+            244.0 + service as f32 * 84.0,
+            102.0,
+            28.0,
+        )
+    }
+
+    /// Floor 2 C3: the run-deliveries button.
+    pub fn f2_run_deliveries() -> Rect {
+        Rect::new(808.0, 500.0, 240.0, 30.0)
+    }
+
+    /// Floor 2 C3: an errand chip in the finding row.
+    pub fn f2_errand(errand: usize) -> Rect {
+        Rect::new(808.0 + errand as f32 * 148.0, 478.0, 140.0, 28.0)
+    }
+
+    /// Floor 2 C3: a kennel chip in the finding column.
+    pub fn f2_kennel(kennel: usize) -> Rect {
+        Rect::new(808.0, 528.0 + kennel as f32 * 30.0, 200.0, 26.0)
     }
 
     pub fn panel_tab(view: usize) -> Rect {
@@ -1401,13 +1435,24 @@ impl Game {
             }
             El::Floor2Door(index) => {
                 let index = index as usize;
-                if index == 0 {
-                    self.enter_screen(Screen::Floor2Chamber(0));
+                if index <= 2
+                    && (index == 0
+                        || self.expedition.floor2.chambers[index - 1].state
+                            == ChamberState::Repaired)
+                {
+                    self.enter_screen(Screen::Floor2Chamber(index));
+                    self.say(StatusKind::Info, F2_DOOR_TEXTS[index]);
+                } else if index <= 2 {
                     self.say(
-                        StatusKind::Info,
-                        "Chamber 1 — Traits and impls. The forge where every \
-                         beast is marked: watch the call, strike the sigil, \
-                         name the body.",
+                        StatusKind::Refusal,
+                        format!(
+                            "Chamber {} — {} stands barred until Chamber {} \
+                             — {} is repaired: the grounds teach in order.",
+                            index + 1,
+                            content::MENAGERIE_CHAMBERS[index].name,
+                            index,
+                            content::MENAGERIE_CHAMBERS[index - 1].name
+                        ),
                     );
                 } else {
                     self.say(
@@ -1451,6 +1496,54 @@ impl Game {
                 if let Screen::Floor2Chamber(index) = self.screen {
                     if let Some(progress) = self.expedition.floor2.chambers.get_mut(index) {
                         progress.work.run_choice = Some(choice as usize);
+                    }
+                    self.floor2_unfile(index);
+                    self.changed();
+                }
+            }
+            El::F2BoundToggle(service, sigil) => {
+                if let Screen::Floor2Chamber(index) = self.screen {
+                    if let Some(progress) = self.expedition.floor2.chambers.get_mut(index) {
+                        let work = &mut progress.work;
+                        if work.bound_masks.len() < content::STABLE_SERVICES.len() {
+                            work.bound_masks
+                                .resize(content::STABLE_SERVICES.len(), content::POSTED_BOUND);
+                        }
+                        if let Some(mask) = work.bound_masks.get_mut(service as usize) {
+                            *mask ^= 1 << sigil;
+                        }
+                    }
+                    self.floor2_unfile(index);
+                    self.changed();
+                }
+            }
+            El::F2RunDeliveries => {
+                if let Screen::Floor2Chamber(index) = self.screen {
+                    if let Some(progress) = self.expedition.floor2.chambers.get_mut(index) {
+                        progress.work.ran_deliveries = true;
+                    }
+                    self.say(
+                        StatusKind::Info,
+                        "Both kennels run their errands. Their records stand \
+                         in the panel — read how each errand actually ran \
+                         from each house.",
+                    );
+                    self.changed();
+                }
+            }
+            El::F2Errand(choice) => {
+                if let Screen::Floor2Chamber(index) = self.screen {
+                    if let Some(progress) = self.expedition.floor2.chambers.get_mut(index) {
+                        progress.work.errand_choice = Some(choice as usize);
+                    }
+                    self.floor2_unfile(index);
+                    self.changed();
+                }
+            }
+            El::F2Kennel(choice) => {
+                if let Screen::Floor2Chamber(index) = self.screen {
+                    if let Some(progress) = self.expedition.floor2.chambers.get_mut(index) {
+                        progress.work.kennel_choice = Some(choice as usize);
                     }
                     self.floor2_unfile(index);
                     self.changed();
@@ -2100,13 +2193,29 @@ impl Game {
     }
 }
 
+/// Per-chamber door narrations, Floor 2, for the chambers whose
+/// builds have landed.
+const F2_DOOR_TEXTS: [&str; 3] = [
+    "Chamber 1 — Traits and impls. The forge where every beast is \
+     marked: watch the call, strike the sigil, name the body.",
+    "Chamber 2 — Generics and bounds. The Generic Stable: loosen the \
+     posted bound, service by service, until it demands exactly what \
+     each service's work asks — no more, no less.",
+    "Chamber 3 — Associated types. The Two Kennels: run the same \
+     errands from both houses, and find the one that runs contorted \
+     where the kennel chooses.",
+];
+
 /// Per-chamber Examine narrations, Floor 2. Chambers beyond the
-/// first are described by their own steps when they land.
+/// third are described by their own steps when they land.
 const F2_EXAMINE_TEXTS: [&str; 5] = [
     "The forge: an anvil, a screen of hammered copper, and the sigil-book \
      open at the Anvil Call.",
-    "The Sigilwright is still building this chamber.",
-    "The Sigilwright is still building this chamber.",
+    "The Generic Stable: three postings, one posted bound demanding \
+     every sigil of every beast, and the Sigilwright waiting with her \
+     reasons.",
+    "The Two Kennels: two courier houses, one service, and a wall of \
+     delivery records waiting to be read.",
     "The Sigilwright is still building this chamber.",
     "The Sigilwright is still building this chamber.",
 ];
@@ -2358,7 +2467,9 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
 
 /// The Floor 2 chamber panels' elements. Chamber 1: the watch
 /// button, the three charter candidates, and the two bodies the
-/// blind run may be named as.
+/// blind run may be named as. Chamber 2: one sigil toggle per
+/// sigil per stable service. Chamber 3: the run button, the three
+/// errands, and the two kennels of the finding.
 fn layout_floor2_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: usize) {
     let _ = game;
     if chamber == 0 {
@@ -2368,6 +2479,25 @@ fn layout_floor2_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
         }
         for choice in 0..content::TRICK_PERFORMERS.len() {
             els.push((El::F2RunChoice(choice as u8), geom::f2_run(choice)));
+        }
+    }
+    if chamber == 1 {
+        for service in 0..content::STABLE_SERVICES.len() {
+            for sigil in 0..content::STABLE_SIGILS.len() {
+                els.push((
+                    El::F2BoundToggle(service as u8, sigil as u8),
+                    geom::f2_bound(service, sigil),
+                ));
+            }
+        }
+    }
+    if chamber == 2 {
+        els.push((El::F2RunDeliveries, geom::f2_run_deliveries()));
+        for errand in 0..content::ERRANDS.len() {
+            els.push((El::F2Errand(errand as u8), geom::f2_errand(errand)));
+        }
+        for kennel in 0..content::KENNELS.len() {
+            els.push((El::F2Kennel(kennel as u8), geom::f2_kennel(kennel)));
         }
     }
 }

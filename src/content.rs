@@ -971,6 +971,164 @@ pub const TRICK_PERFORMERS: [TrickPerformer; 2] = [
 /// more, unlabelled. Which body ran is knowable only by behaviour.
 pub const BLIND_RUN_PERFORMANCE: &str = TRICK_VARIANT_PERFORMANCE;
 
+// ---------------------------------------------------------------------------
+// Floor 2, Chamber 2 — Generics and bounds: the Generic Stable.
+// ---------------------------------------------------------------------------
+
+/// The sigils the stable's bounds may name, in board order.
+pub const STABLE_SIGILS: [&str; 4] = ["FireWard", "MistSense", "Swift", "KeenNose"];
+
+/// The bound the stable posts before the player revises it: every
+/// sigil demanded of every beast, over-strict by the house's own
+/// admission. A bitmask over `STABLE_SIGILS`.
+pub const POSTED_BOUND: u8 = 0b1111;
+
+/// One service the stable staffs, and the sigils its work — stated
+/// plainly in its posting — actually requires of a beast.
+pub struct StableService {
+    /// The service's name.
+    pub name: &'static str,
+    /// The work, as the stable posts it; the required sigils are
+    /// readable from it, never guessed.
+    pub work: &'static str,
+    /// The sigils the work requires, as a bitmask over
+    /// `STABLE_SIGILS`.
+    pub required: u8,
+}
+
+/// The three stable services, in board order.
+pub const STABLE_SERVICES: [StableService; 3] = [
+    StableService {
+        name: "The Hearth Post",
+        work: "Stand the hearth through the night and feel heat through \
+               stone, raising the alarm before any flame shows.",
+        required: 0b0001,
+    },
+    StableService {
+        name: "The Letter Run",
+        work: "Carry the sealed letters through the morning mist to the \
+               far houses: the road is fog-blind, and the run is won on \
+               speed, and on sensing the way when eyes fail.",
+        required: 0b0110,
+    },
+    StableService {
+        name: "The Stores Audit",
+        work: "Walk the stores and find by scent alone which casks have \
+               turned — no mark, no label, only the nose.",
+        required: 0b1000,
+    },
+];
+
+// ---------------------------------------------------------------------------
+// Floor 2, Chamber 3 — Associated types: the Two Kennels.
+// ---------------------------------------------------------------------------
+
+/// One kennel of the courier service, and who chooses the kind
+/// that runs its errands.
+pub struct Kennel {
+    /// The kennel's name.
+    pub name: &'static str,
+    /// The house rule: who chooses the beast-kind.
+    pub rule: &'static str,
+}
+
+/// The two kennels, in board order: the kennel that chooses its
+/// own kind (an associated type, fixed by the house), and the
+/// kennel where the customer chooses (a generic kind, fixed at
+/// each call).
+pub const KENNELS: [Kennel; 2] = [
+    Kennel {
+        name: "The Hearth Kennel",
+        rule: "the kennel chooses the kind — every errand runs on the \
+               ash-hound, sure-footed and deep-chested, and no swimmer.",
+    },
+    Kennel {
+        name: "The Open Kennel",
+        rule: "the customer chooses the kind, named at the desk for \
+               each errand, from any beast on the roster.",
+    },
+];
+
+/// One courier errand the kennels run.
+pub struct Errand {
+    /// The errand's name.
+    pub name: &'static str,
+    /// What the errand needs, posted at the desk.
+    pub need: &'static str,
+}
+
+/// The three errands, in board order.
+pub const ERRANDS: [Errand; 3] = [
+    Errand {
+        name: "The Valley Letters",
+        need: "Sealed letters for the valley post, by the high road. \
+               Any sound beast delivers them.",
+    },
+    Errand {
+        name: "The River Parcel",
+        need: "A parcel for the far bank. The road crosses the river \
+               at the deep ford — the carrier must swim.",
+    },
+    Errand {
+        name: "The Night Medicines",
+        need: "Medicines for the night post, wanted before dawn along \
+               the long ridge road. Any sound beast delivers them.",
+    },
+];
+
+/// The record of one delivery: how an errand ran from a kennel,
+/// and whether the running was contorted — the errand fighting
+/// the house's choosing rule.
+pub struct Delivery {
+    /// How the run went, as the kennel's record states it.
+    pub text: &'static str,
+    /// Whether the errand ran contorted from this kennel.
+    pub contorted: bool,
+}
+
+/// The delivery records, `DELIVERIES[kennel][errand]`. One errand
+/// runs contorted from the kennel that chooses its own kind: the
+/// River Parcel, whose crossing the ash-hound cannot make.
+pub const DELIVERIES: [[Delivery; 3]; 2] = [
+    [
+        Delivery {
+            text: "the ash-hound trots the high road; the letters are \
+                   at the valley post by noon, the kind suiting the \
+                   errand exactly.",
+            contorted: false,
+        },
+        Delivery {
+            text: "the ash-hound paws at the deep ford and can go no \
+                   further; the parcel comes back on its own collar, \
+                   and crosses at last by boat, a day late.",
+            contorted: true,
+        },
+        Delivery {
+            text: "the ash-hound takes the ridge road at its steady \
+                   pace; the medicines arrive before dawn.",
+            contorted: false,
+        },
+    ],
+    [
+        Delivery {
+            text: "the customer names a kind at the desk for an errand \
+                   any beast could run; the letters go, after the \
+                   choosing is done.",
+            contorted: false,
+        },
+        Delivery {
+            text: "the customer names the otter-kind; the parcel \
+                   crosses the deep ford dry, straight over.",
+            contorted: false,
+        },
+        Delivery {
+            text: "the customer names a swift beast for the ridge \
+                   road; the medicines arrive before dawn.",
+            contorted: false,
+        },
+    ],
+];
+
 /// The Floor 2 hint ladders, one per chamber, four rungs each —
 /// the same law as Floor 1's: viewing is free, rung 4 names the
 /// seam and forfeits the facet. Chambers beyond the first are
@@ -989,6 +1147,37 @@ pub fn floor2_hints(chamber: usize) -> [&'static str; 4] {
             "The seam is plain: the Anvil Call is chartered by Forgehand, and the \
              blind run struck twice, feather-soft at the end — Soot, performing \
              its own variant of the house trick.",
+        ],
+        1 => [
+            "The stable posts its bound the way a nervous house posts rules: \
+             everything, against everyone. Read each service's work again — \
+             the bound should ask only for what the work names.",
+            "A bound is the full price of admission. Every sigil it demands \
+             excludes every beast that lacks it — whether the service needs \
+             that sigil or not.",
+            "Consider the Hearth Post: its work is feeling heat through \
+             stone. Which single sigil does that work name? The other three \
+             are the nervous house talking.",
+            "The seam is plain: the Hearth Post wants FireWard alone; the \
+             Letter Run wants MistSense and Swift; the Stores Audit wants \
+             KeenNose alone. Every other sigil in the posted bound is \
+             unjustified.",
+        ],
+        2 => [
+            "Two kennels, one service. In one house the kennel's own kind \
+             runs every errand; in the other, the customer names the kind \
+             at the desk. Run the deliveries and read what actually \
+             happened.",
+            "An associated type is a choice made once, by the house. A \
+             generic kind is a choice made at every call, by the customer. \
+             Each errand feels the difference in a different place.",
+            "Watch the parcel that must cross the river. From one kennel \
+             it comes back on its own collar, a day late; from the other \
+             it crosses dry. That errand is the finding.",
+            "The seam is plain: the River Parcel runs contorted from the \
+             Hearth Kennel, whose ash-hound cannot swim — and naturally \
+             from the Open Kennel, where the customer names the \
+             otter-kind.",
         ],
         _ => [
             "The Sigilwright has not carved this ladder yet.",
