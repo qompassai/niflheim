@@ -954,6 +954,7 @@ fn rebuild_now(
         Screen::Title => build_title(commands, game, &pal, fonts, stage),
         Screen::Hub => build_hub(commands, game, &pal, fonts, stage),
         Screen::Floor2Hub => build_floor2_hub(commands, game, &pal, fonts, stage),
+        Screen::Floor3Hub => build_floor3_hub(commands, game, &pal, fonts, stage),
         Screen::Floor2Chamber(index) => {
             build_floor2_chamber(commands, game, &pal, fonts, stage, index)
         }
@@ -1109,6 +1110,7 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         Screen::Foe => "Floor 1 · The Borrowed Hoard".to_string(),
         Screen::Floor2Foe => "Floor 2 · The Menagerie".to_string(),
         Screen::Floor2Hub => "Niflheim — Floor 2 · The Menagerie Grounds".to_string(),
+        Screen::Floor3Hub => "Niflheim — Floor 3 · The Gatehouse".to_string(),
         Screen::Floor2Chamber(index) => format!(
             "Floor 2 · Chamber {} — {}",
             index + 1,
@@ -2079,6 +2081,60 @@ fn build_floor2_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
             fonts,
         );
     }
+
+    // The Gatehouse's door, drawn on the grounds: the way down
+    // to the release office, its standing written on the stone.
+    let floor3_door = geom::door_floor3();
+    spawn_box(
+        commands,
+        stage,
+        floor3_door,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        floor3_door.cx(),
+        floor3_door.y + 22.0,
+        floor3_door.w,
+        "FLOOR 3",
+        14.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        floor3_door.cx(),
+        floor3_door.y + 46.0,
+        floor3_door.w - 8.0,
+        "The Gatehouse",
+        11.0,
+        false,
+        pal.ink,
+        fonts,
+    );
+    let (door3_tag, door3_color) = if game.expedition.floor3_reachable() {
+        ("OPEN", pal.good)
+    } else {
+        ("BARRED", pal.ink_dim)
+    };
+    spawn_text_centered(
+        commands,
+        stage,
+        floor3_door.cx(),
+        floor3_door.y + 76.0,
+        floor3_door.w,
+        door3_tag,
+        11.0,
+        true,
+        door3_color,
+        fonts,
+    );
+
     spawn_text(
         commands,
         stage,
@@ -4007,6 +4063,223 @@ fn build_foe(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, sta
 // Overlays.
 // ---------------------------------------------------------------------------
 
+fn build_floor3_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Gatehouse — five chambers and the great release",
+    );
+
+    for (index, meta) in content::GATEHOUSE_CHAMBERS.iter().enumerate() {
+        let rect = geom::door_chamber(index);
+        let state = game.expedition.floor3.chambers[index].state;
+        spawn_box(
+            commands,
+            stage,
+            rect,
+            Some(pal.card),
+            Some((2.0, pal.edge)),
+            0.0,
+        );
+        spawn_text_centered(
+            commands,
+            stage,
+            rect.cx(),
+            rect.y + 6.0,
+            rect.w,
+            &format!("CHAMBER {}", index + 1),
+            10.5,
+            true,
+            pal.ink,
+            fonts,
+        );
+        spawn_text_centered(
+            commands,
+            stage,
+            rect.cx(),
+            rect.y + 24.0,
+            rect.w - 8.0,
+            meta.name,
+            10.5,
+            false,
+            pal.ink,
+            fonts,
+        );
+        let (tag, color) = match state {
+            ChamberState::Repaired => ("REPAIRED", pal.good),
+            ChamberState::Diagnosed => ("PROOF FILED", pal.accent),
+            ChamberState::Unworked => ("", pal.ink_dim),
+        };
+        if !tag.is_empty() {
+            spawn_text_centered(
+                commands,
+                stage,
+                rect.cx(),
+                rect.y + 64.0,
+                rect.w,
+                tag,
+                10.5,
+                true,
+                color,
+                fonts,
+            );
+        }
+    }
+
+    let stone = geom::camp_stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(Color::srgb_u8(140, 140, 148)),
+        Some((2.0, pal.ink_dim)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 12.0,
+        stone.w,
+        "THE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 26.0,
+        stone.w,
+        "FLOOR",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+
+    spawn_box(
+        commands,
+        stage,
+        rects::PANEL,
+        Some(pal.panel),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        84.0,
+        None,
+        "The Gatehouse",
+        19.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        112.0,
+        None,
+        "Keeper: the Gatewright · Domain 3 — Idiomatic API design",
+        12.5,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        150.0,
+        None,
+        "THE CHAMBERS",
+        12.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let mut y = 176.0;
+    for (index, meta) in content::GATEHOUSE_CHAMBERS.iter().enumerate() {
+        let state = game.expedition.floor3.chambers[index].state;
+        let suffix = match state {
+            ChamberState::Repaired => " · REPAIRED",
+            ChamberState::Diagnosed => " · PROOF FILED",
+            ChamberState::Unworked => "",
+        };
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            y,
+            None,
+            &format!("○ Chamber {} — {}{}", index + 1, meta.name, suffix),
+            12.5,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        y += 24.0;
+    }
+    let foe_word = match game.expedition.floor3.foe.state {
+        FoeState::Fallen => format!(
+            "FALLEN — {}",
+            game.expedition
+                .floor3
+                .foe
+                .fallen_date
+                .clone()
+                .unwrap_or_default()
+        ),
+        FoeState::Exposed => "EXPOSED".to_string(),
+        FoeState::Standing => "standing".to_string(),
+    };
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        y + 12.0,
+        None,
+        &format!("■ The Gatehouse Release — FOE · {foe_word}"),
+        12.5,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    let clauses = game.expedition.stairs_clauses();
+    let stairs_word = if clauses.iter().all(|(lit, _)| *lit) {
+        "[lit] The Stratum I stairs stand open."
+    } else {
+        "[unlit] Stratum I stairs: FOE 1, plus FOE 2 or FOE 3, and every lantern keeper-lit."
+    };
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        y + 48.0,
+        Some(424.0),
+        stairs_word,
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+}
+
 /// Floor 2's FOE chamber: the admission desk — the audit table,
 /// the brazier calibration, and the Desk's gate.
 fn build_foe2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
@@ -4703,6 +4976,43 @@ fn build_map(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, sta
                     floor.class,
                     &floor2_status,
                     game.expedition.floor2.foe.state == FoeState::Fallen,
+                );
+            } else if index == 2 {
+                let repaired3 = game.expedition.floor3_chambers_repaired();
+                let floor3_status = match game.expedition.floor3.foe.state {
+                    FoeState::Fallen => format!(
+                        "FOE FALLEN — {}",
+                        game.expedition
+                            .floor3
+                            .foe
+                            .fallen_date
+                            .clone()
+                            .unwrap_or_default()
+                    ),
+                    _ if !game.expedition.floor3_reachable() => "BARRED".to_string(),
+                    _ if repaired3 > 0
+                        || game
+                            .expedition
+                            .floor3
+                            .chambers
+                            .iter()
+                            .any(|c| c.state == ChamberState::Diagnosed) =>
+                    {
+                        format!("CHARTING ({repaired3}/5)")
+                    }
+                    _ => "UNCHARTED".to_string(),
+                };
+                build_square(
+                    commands,
+                    pal,
+                    fonts,
+                    stage,
+                    rect,
+                    3,
+                    floor.domain,
+                    floor.class,
+                    &floor3_status,
+                    game.expedition.floor3.foe.state == FoeState::Fallen,
                 );
             } else {
                 build_square(

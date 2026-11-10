@@ -1716,3 +1716,75 @@ pub fn floor2_foe_hints() -> [&'static str; 4] {
          the domain it was made for.",
     ]
 }
+
+// ---------------------------------------------------------------------------
+// Floor 3 — The Gatehouse. Domain 3: Idiomatic API design.
+// Keeper: the Gatewright. FOE: The Gatehouse Release.
+
+/// The floor's name.
+pub const FLOOR3_NAME: &str = "The Gatehouse";
+/// The domain this floor teaches.
+pub const FLOOR3_DOMAIN: &str = "Idiomatic API design";
+/// The floor's keeper.
+pub const FLOOR3_KEEPER: &str = "the Gatewright";
+
+/// The floor inscription, read at the camp stone.
+pub const FLOOR3_INTRO: &str = "Floor 3 — The Gatehouse. The Gatewright keeps the valley's release office, where everything the guild sends into the world is inspected, documented, and released. Five chambers teach the promise a public surface makes — failures named by kind, belts that keep their word, shouts reserved for broken walls, paper that cannot be sealed early, and a checklist graded in the open. Above the gate hangs the season's great release, its lantern already green — and the keeper's chair is empty.";
+
+/// The Lantern Stone's principle (the Principle Codex entry).
+pub const LANTERN_STONE: &str = "The Lantern Stone";
+/// The Lantern Stone's text.
+pub const LANTERN_STONE_TEXT: &str = "A result unexamined is a gate unrun.";
+/// The floor's loot artifact.
+pub const GATEHOUSE_KEY: &str = "The Gatehouse Key";
+/// The Gatehouse Key's card text.
+pub const GATEHOUSE_KEY_TEXT: &str = "The Hoard raised to release grade: documented, checklisted, stamped with its oldest road — the standing example of done for a public surface, and the subject of the publication rite at the descent's end.";
+
+/// The five Gatehouse chambers' carved furniture.
+pub const GATEHOUSE_CHAMBERS: [ChamberMeta; 5] = [
+    ChamberMeta {
+        name: "Error taxonomy",
+        room: "The Named Failures desk",
+        inscription_title: "The Naming",
+        inscription: "A failure unnamed is a failure unowned. The desk names every broken charter by its kind, and the kind prescribes the remedy.",
+        demonstration: "A traveller's charter snaps at the seal; the desk names the break, and the remedy already stands written beside the name.",
+        slot_wants: "a failure named by its kind",
+        prove_label: "Name the failure",
+    },
+    ChamberMeta {
+        name: "Iterator internals",
+        room: "The Conveyor",
+        inscription_title: "The Belt's Contract",
+        inscription: "The belt promises one portion at a time — and, once empty, empty forever. A belt that changes its answer is a liar with a motor.",
+        demonstration: "Crates ride one pull at a time; past the last crate the belt answers empty, and empty again.",
+        slot_wants: "a chain that stays lazy and stays fused",
+        prove_label: "Run the belt",
+    },
+    ChamberMeta {
+        name: "Panic discipline",
+        room: "The Audit of Shouts",
+        inscription_title: "The Wall of Invariants",
+        inscription: "A shout is for the wall that cannot hold, never for the traveller at the desk. Every failure a traveller can reach gets a name and a refusal.",
+        demonstration: "The clerk shouts at a torn form; the audit re-trains the office, and the same form earns a named refusal instead.",
+        slot_wants: "refusals for travellers, invariants for shouts",
+        prove_label: "Hush the clerk",
+    },
+    ChamberMeta {
+        name: "Typestate builders",
+        room: "The Sealed Request",
+        inscription_title: "The Stamped Paper",
+        inscription: "Paper is addressed, then bodied, then sealed — in that order, and the press knows it. A seal on unstamped paper is not early; it is impossible.",
+        demonstration: "An unaddressed petition meets the press; the press does not close.",
+        slot_wants: "a request built through its states",
+        prove_label: "Work the press",
+    },
+    ChamberMeta {
+        name: "The Guidelines audit",
+        room: "The Inspection",
+        inscription_title: "The Public Checklist",
+        inscription: "A surface is a promise read by strangers. The checklist is the promise, item by item — and the oldest road is stamped where travellers can read it.",
+        demonstration: "The Hoard's papers are read against the wall, item by item; one line is missing, and the seal waits.",
+        slot_wants: "a checklist honestly graded",
+        prove_label: "Run the checklist",
+    },
+];

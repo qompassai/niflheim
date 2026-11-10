@@ -276,6 +276,81 @@ pub struct Floor2FoeProgress {
     pub gate_record: Option<String>,
 }
 
+/// One chamber of Floor 3: state and work in progress.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor3ChamberProgress {
+    /// Resolution state.
+    pub state: ChamberState,
+    /// The deepest hint rung viewed for this chamber (0 = none).
+    pub hints_used: u8,
+    /// The facet: earned by a repair at full standard (rung ≤ 3).
+    pub facet: bool,
+    /// The work in progress.
+    #[serde(default)]
+    pub work: GatehouseWork,
+}
+
+/// Floor 3's chamber work record. Fields land with their
+/// chambers (FLOOR3-BRIEF steps 2–4), each serde-defaulted so
+/// saves written by earlier steps load whole.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct GatehouseWork {}
+
+/// The Floor 3 FOE's progress: the release arc. The slate, the
+/// rite, the three lanterns, and the draft land with the FOE
+/// step; the gate record stands from the scaffolding.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor3FoeProgress {
+    /// Resolution state.
+    pub state: FoeState,
+    /// The release crate has passed the third cargo gate.
+    pub gate_passed: bool,
+    /// The strike's phase.
+    pub strike: StrikePhase,
+    /// The date inscribed when the FOE fell (`YYYY-MM-DD`).
+    pub fallen_date: Option<String>,
+}
+
+/// Floor 3's whole progress record: five chambers and the FOE.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor3Progress {
+    /// The five chambers, in design order.
+    pub chambers: Vec<Floor3ChamberProgress>,
+    /// The FOE.
+    pub foe: Floor3FoeProgress,
+    /// The deepest hint rung viewed for the FOE.
+    pub foe_hints_used: u8,
+}
+
+impl Floor3Progress {
+    /// A fresh Floor 3: chambers unworked, the FOE standing.
+    pub fn new() -> Self {
+        Self {
+            chambers: (0..5)
+                .map(|_| Floor3ChamberProgress {
+                    state: ChamberState::Unworked,
+                    hints_used: 0,
+                    facet: false,
+                    work: GatehouseWork::default(),
+                })
+                .collect(),
+            foe: Floor3FoeProgress {
+                state: FoeState::Standing,
+                gate_passed: false,
+                strike: StrikePhase::Idle,
+                fallen_date: None,
+            },
+            foe_hints_used: 0,
+        }
+    }
+}
+
+impl Default for Floor3Progress {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Floor 2's whole progress record: five chambers, the FOE, the
 /// admissions ledger, and the roster board's view state.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -396,6 +471,8 @@ struct SaveFile {
     gate_record: Option<String>,
     #[serde(default)]
     floor2: Floor2Progress,
+    #[serde(default)]
+    floor3: Floor3Progress,
 }
 
 /// The whole expedition: the campaign's one source of truth.
@@ -423,6 +500,8 @@ pub struct Expedition {
     pub gate_record: Option<String>,
     /// Floor 2's progress record.
     pub floor2: Floor2Progress,
+    /// Floor 3's progress record.
+    pub floor3: Floor3Progress,
 }
 
 impl Default for Expedition {
@@ -461,6 +540,7 @@ impl Expedition {
             editor_code: GATE_SCAFFOLD.to_string(),
             gate_record: None,
             floor2: Floor2Progress::new(),
+            floor3: Floor3Progress::new(),
         }
     }
 
@@ -1576,42 +1656,74 @@ impl Expedition {
                 .to_string(),
         )
     }
+    /// Floor 3 stands open when both valley FOEs have fallen
+    /// (FULL-DESIGN §5.2: Floor 3 requires Floors 1 and 2).
+    pub fn floor3_reachable(&self) -> bool {
+        self.foe.state == FoeState::Fallen && self.floor2.foe.state == FoeState::Fallen
+    }
+
+    /// How many Floor 3 chambers stand repaired.
+    pub fn floor3_chambers_repaired(&self) -> usize {
+        self.floor3
+            .chambers
+            .iter()
+            .filter(|c| c.state == ChamberState::Repaired)
+            .count()
+    }
+
+    /// Floor 3 is complete when its five chambers stand repaired
+    /// and its FOE has fallen.
+    pub fn floor3_complete(&self) -> bool {
+        self.floor3_chambers_repaired() == 5 && self.floor3.foe.state == FoeState::Fallen
+    }
+
     /// The Stratum I stairs clauses, each with its standing. The
     /// stairs out of Stratum I need more than this floor can give;
     /// the unmet clauses say so plainly.
     pub fn stairs_clauses(&self) -> [(bool, String); 3] {
+        let foe2_fallen = self.floor2.foe.state == FoeState::Fallen;
+        let foe3_fallen = self.floor3.foe.state == FoeState::Fallen;
+        // §5.6: a valley FOE's lantern is keeper-lit when its
+        // crate has passed the standing gate — or, for the FOE
+        // that has not fallen, when its five chambers stand
+        // repaired; the stairs do not demand the fall itself.
+        let lantern1 = self.foe.gate_passed || self.chambers_repaired() == 5;
+        let lantern2 = self.floor2.foe.gate_passed || self.floor2_chambers_repaired() == 5;
+        let lantern3 = self.floor3.foe.gate_passed || self.floor3_chambers_repaired() == 5;
+        let lantern_text = |floor: u8, lit: bool| {
+            if lit {
+                format!("Floor {floor}'s lantern is lit")
+            } else {
+                format!("Floor {floor}'s lantern waits on its gate or its chambers")
+            }
+        };
         [
             (
                 self.foe.state == FoeState::Fallen,
                 "FOE 1, the Borrowed Hoard, has fallen".to_string(),
             ),
             (
-                self.floor2.foe.state == FoeState::Fallen,
-                if self.floor2.foe.state == FoeState::Fallen {
-                    "FOE 2, the Menagerie, has fallen".to_string()
-                } else {
-                    "FOE 2 or FOE 3 has fallen — Floor 3 lies beyond this build".to_string()
+                foe2_fallen || foe3_fallen,
+                match (foe2_fallen, foe3_fallen) {
+                    (true, true) => "FOE 2, the Menagerie, and FOE 3, the Gatehouse \
+                         Release, have fallen"
+                        .to_string(),
+                    (true, false) => "FOE 2, the Menagerie, has fallen".to_string(),
+                    (false, true) => "FOE 3, the Gatehouse Release, has fallen".to_string(),
+                    (false, false) => "FOE 2 or FOE 3 has fallen".to_string(),
                 },
             ),
             (
-                false,
-                if self.foe.gate_passed && self.floor2.foe.gate_passed {
-                    "every Stratum I boss crate clippy-clean — Floors 1 and 2 have \
-                     lit their lanterns; Floor 3 has no crate yet"
-                        .to_string()
-                } else if self.foe.gate_passed {
-                    "every Stratum I boss crate clippy-clean — Floor 1's lantern is \
-                     lit; Floor 2's waits on its gate, and Floor 3 has no crate yet"
-                        .to_string()
-                } else {
-                    "every Stratum I boss crate clippy-clean — Floor 1's lantern waits \
-                     on the gate"
-                        .to_string()
-                },
+                lantern1 && lantern2 && lantern3,
+                format!(
+                    "every Stratum I boss crate clippy-clean — {}; {}; {}",
+                    lantern_text(1, lantern1),
+                    lantern_text(2, lantern2),
+                    lantern_text(3, lantern3)
+                ),
             ),
         ]
     }
-
     // ------------------------------------------------------------------
     // The save.
     // ------------------------------------------------------------------
@@ -1638,6 +1750,7 @@ impl Expedition {
             editor_code: self.editor_code.clone(),
             gate_record: self.gate_record.clone(),
             floor2: self.floor2.clone(),
+            floor3: self.floor3.clone(),
         };
         serde_json::to_string(&file).map_err(|error| SaveError::Corrupt {
             reason: error.to_string(),
@@ -1702,6 +1815,7 @@ impl Expedition {
             editor_code: file.editor_code,
             gate_record: file.gate_record,
             floor2: file.floor2,
+            floor3: file.floor3,
         };
         expedition.validate_invariants()?;
         Ok(expedition)
@@ -1727,6 +1841,9 @@ impl Expedition {
         }
         if self.floor2.chambers.len() != 5 {
             return Err(corrupt("the save does not hold five Floor 2 chambers"));
+        }
+        if self.floor3.chambers.len() != 5 {
+            return Err(corrupt("the save does not hold five Floor 3 chambers"));
         }
         if self.floor2.foe.audited.len() != ADMISSION_SERVICES.len() {
             return Err(corrupt("the audit record is the wrong size"));
@@ -2052,7 +2169,7 @@ mod tests {
     fn load_refuses_future_versions() {
         let expedition = Expedition::new();
         let text = expedition.save_json().expect("save");
-        let future = text.replace("\"version\":2", "\"version\":99");
+        let future = text.replace("\"version\":3", "\"version\":99");
         assert_eq!(
             Expedition::load_json(&future),
             Err(SaveError::FutureVersion { found: 99 })
@@ -2122,7 +2239,7 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).expect("v1 loads");
         assert_eq!(loaded.floor2, Floor2Progress::new());
         let resaved = loaded.save_json().expect("re-save");
-        assert!(resaved.contains("\"version\":2"));
+        assert!(resaved.contains("\"version\":3"));
     }
 
     /// Validation: Floor 2 opens only when the Hoard has fallen.
@@ -2141,6 +2258,72 @@ mod tests {
         expedition.foe_confirm_strike("2026-11-09").expect("strike");
         assert!(expedition.floor2_reachable());
         assert!(!expedition.floor2_complete());
+    }
+
+    /// Validation: a version-2 save (no floor3 field at all)
+    /// loads with a fresh Floor 3, and re-saves as version 3.
+    #[test]
+    fn version_two_saves_load_with_default_floor3() {
+        let expedition = Expedition::new();
+        let text = expedition.save_json().expect("save");
+        let mut value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        value.as_object_mut().expect("object").remove("floor3");
+        value["version"] = serde_json::json!(2);
+        let loaded = Expedition::load_json(&value.to_string()).expect("v2 loads");
+        assert_eq!(loaded.floor3, Floor3Progress::new());
+        let resaved = loaded.save_json().expect("re-save");
+        assert!(resaved.contains("\"version\":3"));
+    }
+
+    /// Validation: Floor 3 opens only when both valley FOEs
+    /// have fallen (§5.2).
+    #[test]
+    fn floor3_reachable_needs_both_valley_foes() {
+        let mut expedition = Expedition::new();
+        assert!(!expedition.floor3_reachable());
+        expedition.foe.state = FoeState::Fallen;
+        assert!(!expedition.floor3_reachable(), "Floor 2 still stands");
+        expedition.floor2.foe.state = FoeState::Fallen;
+        assert!(expedition.floor3_reachable());
+    }
+
+    /// Validation: the stairs read Floor 3 — clause 2 lights on
+    /// FOE 3 alone, and clause 3's third lantern can be lit by
+    /// chambers without the fall (§5.6).
+    #[test]
+    fn stairs_clauses_read_floor3() {
+        let mut expedition = Expedition::new();
+        expedition.floor3.foe.state = FoeState::Fallen;
+        let clauses = expedition.stairs_clauses();
+        assert!(clauses[1].0, "clause 2 lit by FOE 3 alone");
+        assert!(clauses[1].1.contains("Gatehouse Release"));
+        assert!(!clauses[2].0);
+        // Light every lantern: gates for 1 and 3, chambers for 2.
+        expedition.foe.gate_passed = true;
+        expedition.floor3.foe.gate_passed = true;
+        for chamber in &mut expedition.floor2.chambers {
+            chamber.state = ChamberState::Repaired;
+        }
+        let clauses = expedition.stairs_clauses();
+        assert!(clauses[2].0, "all three lanterns lit: {}", clauses[2].1);
+        assert!(clauses[2].1.contains("Floor 3's lantern is lit"));
+    }
+
+    /// Adversarial: a forged Floor 3 record of the wrong size is
+    /// refused as corrupt.
+    #[test]
+    fn load_refuses_forged_floor3_lengths() {
+        let expedition = Expedition::new();
+        let text = expedition.save_json().expect("save");
+        let mut value: serde_json::Value = serde_json::from_str(&text).expect("json");
+        value["floor3"]["chambers"]
+            .as_array_mut()
+            .expect("chambers array")
+            .pop();
+        match Expedition::load_json(&value.to_string()) {
+            Err(SaveError::Corrupt { .. }) => {}
+            other => panic!("expected corrupt refusal, got {other:?}"),
+        }
     }
 
     /// Adversarial: a forged Floor 2 record of the wrong size is

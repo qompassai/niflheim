@@ -182,6 +182,8 @@ pub enum Screen {
     Floor2Hub,
     /// A Floor 2 chamber, by index (0–4).
     Floor2Chamber(usize),
+    /// Floor 3's hub: the release office.
+    Floor3Hub,
 }
 
 /// What a reading overlay is showing.
@@ -286,6 +288,10 @@ pub enum El {
     DoorStairs,
     /// Hub: the Floor 2 door.
     DoorFloor2,
+    /// Floor 2 hub: the Floor 3 door.
+    DoorFloor3,
+    /// Floor 3 hub: a chamber door, by index.
+    Floor3Door(u8),
     /// Floor 2 hub: a chamber door, by index.
     Floor2Door(u8),
     /// Floor 2 hub: collapse or expand a roster group, by index.
@@ -616,6 +622,7 @@ impl Game {
             self.screen,
             Screen::Hub
                 | Screen::Floor2Hub
+                | Screen::Floor3Hub
                 | Screen::Chamber(_)
                 | Screen::Floor2Chamber(_)
                 | Screen::Foe
@@ -807,7 +814,7 @@ impl Game {
         match self.screen {
             Screen::Title => Vec::new(),
             Screen::Hub => vec![Verb::Read, Verb::Map],
-            Screen::Floor2Hub => vec![Verb::Read, Verb::Map],
+            Screen::Floor2Hub | Screen::Floor3Hub => vec![Verb::Read, Verb::Map],
             Screen::Chamber(_) | Screen::Floor2Chamber(_) => vec![
                 Verb::Examine,
                 Verb::Read,
@@ -874,6 +881,12 @@ pub mod geom {
     /// stone, tried first, stood over the letters' lines).
     pub fn door_foe2() -> Rect {
         Rect::new(600.0, 292.0, 168.0, 124.0)
+    }
+
+    /// Floor 3's door on Floor 2's hub: the upper-right field,
+    /// stairs-stone size, clear of the roster and the strip.
+    pub fn door_floor3() -> Rect {
+        Rect::new(640.0, 150.0, 124.0, 124.0)
     }
 
     /// A roster group header row on Floor 2's panel.
@@ -1098,7 +1111,7 @@ impl Game {
             return true;
         }
         match self.screen {
-            Screen::Hub | Screen::Floor2Hub => cy == 0 || cell == (5, 4),
+            Screen::Hub | Screen::Floor2Hub | Screen::Floor3Hub => cy == 0 || cell == (5, 4),
             Screen::Chamber(_) | Screen::Floor2Chamber(_) | Screen::Foe | Screen::Floor2Foe => {
                 (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7)
             }
@@ -1344,6 +1357,10 @@ impl Game {
                     Screen::Floor2Hub => {
                         "The Menagerie Grounds: five chamber doors, the roster \
                          board, and the Menagerie watching from its wide door."
+                    }
+                    Screen::Floor3Hub => {
+                        "The Gatehouse: five desks, a checklist on the wall, \
+                         and a green lantern over a release nobody inspected."
                     }
                     Screen::Title => return,
                 };
@@ -1652,6 +1669,24 @@ impl Game {
                 self.overlay = Overlay::Reading(ReadingKind::Stairs);
                 self.bump();
             }
+            El::DoorFloor3 => {
+                if self.expedition.floor3_reachable() {
+                    self.enter_screen(Screen::Floor3Hub);
+                    self.say(
+                        StatusKind::Info,
+                        "Floor 3 — The Gatehouse. The Gatewright keeps the \
+                         release office; every surface the guild sends out is \
+                         inspected here.",
+                    );
+                } else {
+                    self.say(
+                        StatusKind::Refusal,
+                        "The Gatehouse opens when both valley FOEs have fallen",
+                    );
+                }
+                self.bump();
+            }
+
             El::DoorFloor2 => {
                 if self.expedition.floor2_reachable() {
                     self.enter_screen(Screen::Floor2Hub);
@@ -1667,6 +1702,15 @@ impl Game {
                     );
                 }
             }
+            El::Floor3Door(_index) => {
+                self.say(
+                    StatusKind::Info,
+                    "The Gatewright holds up a hand: this desk is not open \
+                     yet — the office is still being laid out.",
+                );
+                self.bump();
+            }
+
             El::Floor2Door(index) => {
                 let index = index as usize;
                 if index <= 4
@@ -2519,6 +2563,7 @@ impl Game {
             ReadingKind::Stairs => "The Stairs Gate — Stratum I to Stratum II".to_string(),
             ReadingKind::FloorIntro => match self.screen {
                 Screen::Floor2Hub => format!("Floor 2 — {}", content::FLOOR2_NAME),
+                Screen::Floor3Hub => format!("Floor 3 — {}", content::FLOOR3_NAME),
                 _ => format!("Floor 1 — {}", content::FLOOR_NAME),
             },
             ReadingKind::MasterPlan => "The Master Plan".to_string(),
@@ -2584,6 +2629,7 @@ impl Game {
             }
             ReadingKind::FloorIntro => match self.screen {
                 Screen::Floor2Hub => content::FLOOR2_INTRO.to_string(),
+                Screen::Floor3Hub => content::FLOOR3_INTRO.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::MasterPlan => content::MASTER_PLAN.to_string(),
@@ -2750,7 +2796,8 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Chamber(_)
         | Screen::Floor2Chamber(_)
         | Screen::Foe
-        | Screen::Floor2Foe => {
+        | Screen::Floor2Foe
+        | Screen::Floor3Hub => {
             els.push((El::TabFloor, rects::TAB_FLOOR));
             els.push((El::TabMap, rects::TAB_MAP));
             els.push((El::TabLog, rects::TAB_LOG));
@@ -2768,12 +2815,19 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             els.push((El::DoorFloor2, geom::door_floor2()));
             els.push((El::CampStone, geom::camp_stone()));
         }
+        Screen::Floor3Hub => {
+            els.push((El::CampStone, geom::camp_stone()));
+            for index in 0..5 {
+                els.push((El::Floor3Door(index as u8), geom::door_chamber(index)));
+            }
+        }
         Screen::Floor2Hub => {
             els.push((El::CampStone, geom::camp_stone()));
             for index in 0..5 {
                 els.push((El::Floor2Door(index as u8), geom::door_chamber(index)));
             }
             els.push((El::DoorFoe2, geom::door_foe2()));
+            els.push((El::DoorFloor3, geom::door_floor3()));
             for group in 0..content::ROSTER_GROUPS.len() {
                 els.push((El::RosterToggle(group as u8), geom::roster_group(group)));
             }
@@ -3320,9 +3374,8 @@ mod tests {
         // both Stratum I lanterns lit.
         let clauses = game.expedition.stairs_clauses();
         assert!(
-            clauses[2]
-                .1
-                .contains("Floors 1 and 2 have lit their lanterns"),
+            clauses[2].1.contains("Floor 1's lantern is lit")
+                && clauses[2].1.contains("Floor 2's lantern is lit"),
             "clause 3: {}",
             clauses[2].1
         );
@@ -3331,6 +3384,29 @@ mod tests {
         let save = game.expedition.save_json().expect("save");
         let loaded = Expedition::load_json(&save).expect("load");
         assert_eq!(loaded, game.expedition);
+    }
+
+    /// Floor 3's door answers the pointer when both valley
+    /// FOEs have fallen, and refuses it while either stands.
+    #[test]
+    fn floor3_door_answers_the_pointer_when_reachable() {
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        game.screen = Screen::Floor2Hub;
+        let rect = geom::door_floor3();
+        game.pointer_down(rect.cx(), rect.cy());
+        game.pointer_up(rect.cx(), rect.cy());
+        assert_eq!(
+            game.screen,
+            Screen::Floor2Hub,
+            "barred while the FOEs stand"
+        );
+        game.expedition.foe.state = FoeState::Fallen;
+        game.expedition.floor2.foe.state = FoeState::Fallen;
+        game.pointer_down(rect.cx(), rect.cy());
+        game.pointer_up(rect.cx(), rect.cy());
+        assert_eq!(game.screen, Screen::Floor3Hub);
     }
 
     /// The general pointer path still works outside overlays:

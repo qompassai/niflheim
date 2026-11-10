@@ -12,7 +12,9 @@
 //! on its own table, the brazier calibration, and the Admission
 //! Desk judged by the second cargo gate. Floor 2 is complete:
 //! its integration pass and driven playthrough evidence landed
-//! as the build's final step, and the descent continues below.
+//! as the build's final step. Floor 3, the Gatehouse, stands
+//! scaffolded on it — its door, its hub, and save format v3;
+//! its chambers and its FOE land in their own steps.
 //!
 //! The crate is layered so the game logic never depends on the
 //! engine: `core` (bounded text machinery), `content` (authored
