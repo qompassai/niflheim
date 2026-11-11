@@ -2433,3 +2433,335 @@ mod floor6_foe_tests {
         assert!(!staff_card_repaired(&[0, 0, 0]));
     }
 }
+
+// ---------------------------------------------------------------------------
+// The model loom (Floor 7's system, frozen for Part B):
+// authored thread programs as op lists, explored over every
+// interleaving in deterministic, lexicographic-by-thread-
+// choice order, up to a stated cap. Deterministic, bounded,
+// no RNG. Consumed by this floor's chambers and FOE, and by
+// Floor 16's whole-cloth assay.
+// ---------------------------------------------------------------------------
+
+/// The model loom: thread programs, interleavings, deadlock.
+pub mod loom {
+    use std::collections::BTreeSet;
+
+    /// One operation in an authored thread program, over
+    /// named (indexed) channels and claimables.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum LoomOp {
+        /// Put one message on a channel. Never blocks.
+        Send(u8),
+        /// Take one message from a channel. Blocks while
+        /// the channel stands empty.
+        Recv(u8),
+        /// Take a claimable. Blocks while another thread
+        /// holds it.
+        Claim(u8),
+        /// Give a claimable back. Never blocks; releasing
+        /// what the thread does not hold is a no-op.
+        Release(u8),
+        /// Wait for a thread to finish. Blocks until the
+        /// named thread's program has run out.
+        Join(u8),
+    }
+
+    /// The loom's report on one exploration.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct LoomReport {
+        /// Terminal paths visited (completed or
+        /// deadlocked), never more than the cap.
+        pub interleavings_tested: u64,
+        /// The first deadlocking interleaving found, as
+        /// the thread-choice trace that reached it, in
+        /// exploration order. None if no deadlock was
+        /// reached within the cap.
+        pub deadlock: Option<Vec<u8>>,
+        /// The final channel-state signatures of the
+        /// completed interleavings: one count per channel,
+        /// in channel order.
+        pub outcomes: BTreeSet<Vec<u8>>,
+    }
+
+    /// The loom's working state for one interleaving.
+    #[derive(Clone)]
+    struct LoomState {
+        /// Each thread's next operation index.
+        pcs: Vec<usize>,
+        /// Messages standing on each channel.
+        channels: Vec<u8>,
+        /// Each claimable's holder, if any.
+        holders: Vec<Option<usize>>,
+    }
+
+    /// Whether one thread can step from this state, and
+    /// the state after its step. None: the thread is
+    /// finished, or its next operation blocks here.
+    fn step(programs: &[Vec<LoomOp>], state: &LoomState, thread: usize) -> Option<LoomState> {
+        let pc = state.pcs[thread];
+        let op = programs.get(thread)?.get(pc)?;
+        let mut next = state.clone();
+        match *op {
+            LoomOp::Send(channel) => {
+                next.channels[channel as usize] = next.channels[channel as usize].saturating_add(1);
+            }
+            LoomOp::Recv(channel) => {
+                if next.channels[channel as usize] == 0 {
+                    return None;
+                }
+                next.channels[channel as usize] -= 1;
+            }
+            LoomOp::Claim(claimable) => match next.holders[claimable as usize] {
+                None => next.holders[claimable as usize] = Some(thread),
+                Some(holder) if holder == thread => {}
+                Some(_) => return None,
+            },
+            LoomOp::Release(claimable) => {
+                if next.holders[claimable as usize] == Some(thread) {
+                    next.holders[claimable as usize] = None;
+                }
+            }
+            LoomOp::Join(other) => {
+                let other = other as usize;
+                let finished = programs
+                    .get(other)
+                    .is_some_and(|program| state.pcs[other] >= program.len());
+                if !finished {
+                    return None;
+                }
+            }
+        }
+        next.pcs[thread] += 1;
+        Some(next)
+    }
+
+    /// Depth-first exploration, thread choices in index
+    /// order — the lexicographic order of record.
+    #[allow(clippy::too_many_arguments)]
+    fn walk(
+        programs: &[Vec<LoomOp>],
+        state: &LoomState,
+        trace: &mut Vec<u8>,
+        cap: u64,
+        tested: &mut u64,
+        deadlock: &mut Option<Vec<u8>>,
+        outcomes: &mut BTreeSet<Vec<u8>>,
+    ) {
+        if *tested >= cap {
+            return;
+        }
+        let mut moved = false;
+        let mut finished_all = true;
+        for thread in 0..programs.len() {
+            if state.pcs[thread] < programs[thread].len() {
+                finished_all = false;
+            }
+            if let Some(next) = step(programs, state, thread) {
+                moved = true;
+                trace.push(thread as u8);
+                walk(programs, &next, trace, cap, tested, deadlock, outcomes);
+                trace.pop();
+                if *tested >= cap {
+                    return;
+                }
+            }
+        }
+        if finished_all {
+            *tested += 1;
+            outcomes.insert(state.channels.clone());
+        } else if !moved {
+            *tested += 1;
+            if deadlock.is_none() {
+                *deadlock = Some(trace.clone());
+            }
+        }
+    }
+
+    /// Explore the interleavings of the given thread
+    /// programs, in deterministic order, visiting at most
+    /// `cap` terminal paths.
+    pub fn explore(programs: &[Vec<LoomOp>], cap: u64) -> LoomReport {
+        let mut channels = 0usize;
+        let mut claimables = 0usize;
+        for program in programs {
+            for op in program {
+                match *op {
+                    LoomOp::Send(channel) | LoomOp::Recv(channel) => {
+                        channels = channels.max(channel as usize + 1);
+                    }
+                    LoomOp::Claim(claimable) | LoomOp::Release(claimable) => {
+                        claimables = claimables.max(claimable as usize + 1);
+                    }
+                    LoomOp::Join(_) => {}
+                }
+            }
+        }
+        let state = LoomState {
+            pcs: vec![0; programs.len()],
+            channels: vec![0; channels],
+            holders: vec![None; claimables],
+        };
+        let mut tested = 0u64;
+        let mut deadlock = None;
+        let mut outcomes = BTreeSet::new();
+        let mut trace = Vec::new();
+        if cap > 0 {
+            walk(
+                programs,
+                &state,
+                &mut trace,
+                cap,
+                &mut tested,
+                &mut deadlock,
+                &mut outcomes,
+            );
+        }
+        LoomReport {
+            interleavings_tested: tested,
+            deadlock,
+            outcomes,
+        }
+    }
+
+    #[cfg(test)]
+    mod loom_tests {
+        use super::*;
+
+        /// Validation: no threads is one empty
+        /// interleaving, completing with no channels.
+        #[test]
+        fn empty_programs_complete_once() {
+            let report = explore(&[], 16);
+            assert_eq!(report.interleavings_tested, 1);
+            assert_eq!(report.deadlock, None);
+            assert_eq!(report.outcomes.len(), 1);
+            assert!(report.outcomes.contains(&Vec::<u8>::new()));
+        }
+
+        /// Validation: two senders interleave two ways;
+        /// both complete with two messages standing.
+        #[test]
+        fn two_senders_two_interleavings() {
+            let programs = vec![vec![LoomOp::Send(0)], vec![LoomOp::Send(0)]];
+            let report = explore(&programs, 16);
+            assert_eq!(report.interleavings_tested, 2);
+            assert_eq!(report.deadlock, None);
+            assert_eq!(report.outcomes.len(), 1);
+            assert!(report.outcomes.contains(&vec![2]));
+        }
+
+        /// Adversarial: two porters claiming in opposite
+        /// orders, neither ever releasing, can only
+        /// deadlock: every interleaving strands someone.
+        /// The first trace in the loom's order is thread
+        /// 0 taking both stairs while thread 1 waits.
+        #[test]
+        fn opposite_claims_deadlock() {
+            let programs = vec![
+                vec![LoomOp::Claim(0), LoomOp::Claim(1)],
+                vec![LoomOp::Claim(1), LoomOp::Claim(0)],
+            ];
+            let report = explore(&programs, 64);
+            assert_eq!(report.interleavings_tested, 4);
+            assert_eq!(report.deadlock, Some(vec![0, 0]));
+            assert!(report.outcomes.is_empty(), "no order completes");
+            let again = explore(&programs, 64);
+            assert_eq!(report, again, "the loom is deterministic");
+        }
+
+        /// Adversarial: with releases, opposite orders
+        /// still deadlock on some interleaving, though
+        /// courteous orders complete — the cycle is in
+        /// the shape, not in every day.
+        #[test]
+        fn opposite_orders_with_releases_still_deadlock() {
+            let programs = vec![
+                vec![
+                    LoomOp::Claim(0),
+                    LoomOp::Claim(1),
+                    LoomOp::Release(1),
+                    LoomOp::Release(0),
+                ],
+                vec![
+                    LoomOp::Claim(1),
+                    LoomOp::Claim(0),
+                    LoomOp::Release(0),
+                    LoomOp::Release(1),
+                ],
+            ];
+            let report = explore(&programs, 4096);
+            assert!(
+                report.deadlock.is_some(),
+                "some interleaving closes the cycle"
+            );
+            assert!(
+                !report.outcomes.is_empty(),
+                "courteous interleavings complete"
+            );
+        }
+
+        /// Validation: one total claim order admits no
+        /// deadlock — the shape the FOE's repair posts.
+        #[test]
+        fn one_order_never_deadlocks() {
+            let programs = vec![
+                vec![
+                    LoomOp::Claim(0),
+                    LoomOp::Claim(1),
+                    LoomOp::Release(1),
+                    LoomOp::Release(0),
+                ],
+                vec![
+                    LoomOp::Claim(0),
+                    LoomOp::Claim(1),
+                    LoomOp::Release(1),
+                    LoomOp::Release(0),
+                ],
+            ];
+            let report = explore(&programs, 1024);
+            assert_eq!(report.deadlock, None);
+            assert!(report.interleavings_tested > 1);
+        }
+
+        /// Adversarial: a receive on an empty channel
+        /// with no sender deadlocks at the empty trace.
+        #[test]
+        fn lonely_receive_deadlocks() {
+            let report = explore(&[vec![LoomOp::Recv(0)]], 16);
+            assert_eq!(report.interleavings_tested, 1);
+            assert_eq!(report.deadlock, Some(vec![]));
+            assert!(report.outcomes.is_empty());
+        }
+
+        /// Validation: a join waits for its thread, then
+        /// completes — exactly one interleaving survives.
+        #[test]
+        fn join_waits_for_its_thread() {
+            let programs = vec![vec![LoomOp::Join(1)], vec![LoomOp::Send(0)]];
+            let report = explore(&programs, 16);
+            assert_eq!(report.interleavings_tested, 1);
+            assert_eq!(report.deadlock, None);
+            assert!(report.outcomes.contains(&vec![1]));
+        }
+
+        /// Adversarial: the cap bounds the exploration,
+        /// deterministically — four senders have 24
+        /// interleavings; a cap of 3 tests exactly 3.
+        #[test]
+        fn cap_bounds_the_exploration() {
+            let programs = vec![
+                vec![LoomOp::Send(0)],
+                vec![LoomOp::Send(0)],
+                vec![LoomOp::Send(0)],
+                vec![LoomOp::Send(0)],
+            ];
+            let full = explore(&programs, 10_000);
+            assert_eq!(full.interleavings_tested, 24);
+            let capped = explore(&programs, 3);
+            assert_eq!(capped.interleavings_tested, 3);
+            let again = explore(&programs, 3);
+            assert_eq!(capped, again, "the loom is deterministic");
+        }
+    }
+}

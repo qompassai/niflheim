@@ -3966,3 +3966,194 @@ pub fn floor6_foe_hints() -> [&'static str; 4] {
          and exclusive can only ever be issued from free.",
     ]
 }
+
+// ---------------------------------------------------------------------------
+// Floor 7 — The Loom of Many Hands. Domain 7: Concurrency
+// & atomics. Keeper: Threadweaver. FOE: The Loom of Many
+// Hands.
+// ---------------------------------------------------------------------------
+
+/// The floor's name.
+pub const FLOOR7_NAME: &str = "The Loom of Many Hands";
+/// The domain this floor teaches.
+pub const FLOOR7_DOMAIN: &str = "Concurrency & Atomics";
+/// The floor's keeper.
+pub const FLOOR7_KEEPER: &str = "Threadweaver";
+/// The floor's introduction, spoken on entry.
+pub const FLOOR7_INTRO: &str = "The Loom of Many Hands: long halls of looms \
+    where many hands pull one thread, and the air is full of \
+    almost-simultaneous events. Every hall posts its happens-before \
+    charters on the wall — Threadweaver asks only that you choose no \
+    ordering without its written argument.";
+
+/// The five Loom chambers.
+pub const LOOM_CHAMBERS: [ChamberMeta; 5] = [
+    ChamberMeta {
+        name: "The scoped loom",
+        room: "The Scoped Loom",
+        inscription_title: "Every Thread Comes Home",
+        inscription: "Six threads are borrowed for one task, and every \
+            thread must be joined before the task's scope closes. Two of \
+            them end early: a thread joined after its life has run out \
+            is not joined at all.",
+        demonstration: "Threadweaver borrows the six threads, works the \
+            pattern, and joins each one home before the scope's frame is \
+            lifted — the early threads first, while they still live.",
+        slot_wants: "six joins inside the scope, the early threads in time",
+        prove_label: "Post the join order",
+    },
+    ChamberMeta {
+        name: "The border seals",
+        room: "The Border Seals",
+        inscription_title: "What May Cross, What May Be Shared",
+        inscription: "A tool may cross the thread border in one hand, or \
+            be used by many hands at once, or neither — and its card \
+            states its parts. Read the fine print: a seal is only as \
+            honest as the smallest part inside.",
+        demonstration: "Threadweaver carries the tools to the border desk \
+            one at a time, reads each card aloud — parts and fine print — \
+            and seals each by what it truly is.",
+        slot_wants: "six tools, each sealed as it truly is",
+        prove_label: "Seal the six",
+    },
+    ChamberMeta {
+        name: "The charter wall",
+        room: "The Charter Wall",
+        inscription_title: "Hold the Witness, Not the Note",
+        inscription: "The wall posts its happens-before edges, and beside \
+            them stand the spin heart's four orderings, recorded \
+            provisional in the Lockheart and carried here unjudged. One \
+            wall claim leans on a weakened ordering; one is a stale tide \
+            — true at dawn, and the shuttle has moved since.",
+        demonstration: "Threadweaver walks the wall with the shuttle's \
+            token in hand, testing each posted claim against the token \
+            itself — never against the note that merely remembers it.",
+        slot_wants: "the true edges, the weakened claim, the stale tide found",
+        prove_label: "Grade the wall",
+    },
+    ChamberMeta {
+        name: "Arc and weak echoes",
+        room: "Arc and Weak Echoes",
+        inscription_title: "The Last Holder Closes the Book",
+        inscription: "A pattern-book held by many hands: strong holders \
+            keep it open, weak echoes only point at it. An echo may ask \
+            to become a holder — and the book answers by whether any \
+            strong hand still holds it.",
+        demonstration: "Threadweaver works the book through its eight \
+            steps — copies taken, echoes made, hands letting go — and \
+            the counts are spoken after every step, from the book itself.",
+        slot_wants: "eight steps, each outcome foretold true",
+        prove_label: "Foretell the eight",
+    },
+    ChamberMeta {
+        name: "The lock-free stack",
+        room: "The Lock-Free Stack",
+        inscription_title: "A History Must Have an Order",
+        inscription: "A shuttle-stack no hand locks. Its recorded \
+            histories are honest only if some one sequential order \
+            could have produced them — turn by turn, each operation's \
+            record respected. A history with no such order is a lie, \
+            and two of its operations are the witnesses.",
+        demonstration: "Threadweaver replays the stack's records against \
+            a sequential model, ordering each history as its turns allow, \
+            and the one that will not order is set aside, marked.",
+        slot_wants: "six verdicts true, and the witness pair named",
+        prove_label: "Judge the histories",
+    },
+];
+
+/// Each chamber's spoken introduction.
+pub const FLOOR7_CHAMBER_INTROS: [&str; 5] = [
+    "The Scoped Loom. Six thread-cards borrowed for one task: assign \
+     each thread its join slot, and mind the two that end early — they \
+     cannot be joined late, however tidy the order looks.",
+    "The Border Seals. Six tools to carry across the thread border: \
+     seal each Send, Sync, or Neither by its card — and read the fine \
+     print before you seal, for one tool is phantom-sealed.",
+    "The Charter Wall. The spin heart's four orderings stand beside the \
+     wall's own claims, provisional still and unjudged here. Place the \
+     happens-before edges, mark the weakened claim, and find the stale \
+     tide — carry the witness, not the note.",
+    "Arc and Weak Echoes. A counter held by many hands, and echoes that \
+     may outlive it: foretell each of the eight steps — whether the \
+     upgrade holds, and the counts after — and the referee's book will \
+     answer.",
+    "The Lock-Free Stack. Six recorded histories of the shuttle-stack: \
+     mark each one linearizable or not, and for the one that is not, \
+     name the two operations whose order cannot be reconciled.",
+];
+
+/// The Examine texts for Floor 7's five chambers.
+pub const F7_EXAMINE_TEXTS: [&str; 5] = [
+    "A great loom in an open frame, six thread-cards on its bar, and a \
+     slate of six join slots beneath. Two cards are edge-marked: their \
+     threads run short, and the slate notes the slot by which each \
+     must be home.",
+    "A border desk at the hall's end: six tools on a tray, each with \
+     its card, and three seals on a chain — SEND, SYNC, NEITHER. One \
+     card's fine print is very fine indeed.",
+    "A charter wall in dressed stone: five candidate edges chalked \
+     between its postings, four claims under them, and a tide note in \
+     an older hand. Beside the wall, on loan from the Lockheart, the \
+     spin heart's four claim-cards hang — stamped PROVISIONAL.",
+    "A pattern-book on a stand, its clasp held by brass counters: one \
+     counts strong hands, one counts weak echoes. An eight-line script \
+     is pinned beside it, and a referee's stamp hangs at the stand's \
+     edge.",
+    "A shuttle-stack in a glass case — no lock on its frame — and six \
+     history slates beneath it, each recording pushes and pops with \
+     their turn-count intervals. A sequential model slate stands \
+     beside them, blank.",
+];
+
+/// Chamber 1's demonstration, spoken at the watch.
+pub const SCOPED_CHARTER: &str = "Threadweaver borrows the six threads \
+    and calls the joins home in their posted order — the two short \
+    threads first, while their lives still run. 'A scope is a promise \
+    with edges,' the keeper says. 'Everything borrowed inside it comes \
+    home inside it, or the pattern is not finished — it is abandoned.'";
+
+/// Chamber 2's demonstration, spoken at the watch.
+pub const SEALS_CHARTER: &str = "Threadweaver reads the first tool's \
+    card — parts, then fine print — and presses the SEND seal. 'A seal \
+    is a contract about every part,' the keeper says, 'including the \
+    part written smallest. The desk will ask about that one first.'";
+
+/// Chamber 3's demonstration, spoken at the watch.
+pub const WALL_WITNESS_CHARTER: &str = "Threadweaver lifts the shuttle's token \
+    from its hook — claimed, though the dawn note calls it free — and \
+    holds it beside the wall. 'The note was true when it was written,' \
+    the keeper says. 'Notes do not stay true. Witnesses are carried, \
+    not remembered.'";
+
+/// Chamber 4's demonstration, spoken at the watch.
+pub const ARC_CHARTER: &str = "Threadweaver takes a strong hold on the \
+    book, makes an echo of it, and lets a second hand take the echo up \
+    as a holder. 'An echo is a rumour of the book,' the keeper says. \
+    'It becomes a holding only while a strong hand still keeps the \
+    book open — ask the counts, not the echo.'";
+
+/// Chamber 5's demonstration, spoken at the watch.
+pub const STACK_CHARTER: &str = "Threadweaver replays the first \
+    history slowly, laying each operation in the one order its turns \
+    allow, until the record and the model agree. 'A history is not \
+    believed,' the keeper says. 'It is ordered, or it is set aside.'";
+
+/// The hint ladders for Floor 7's chambers. At scaffolding only the
+/// general ladder stands; each chamber's own ladder lands with it.
+pub fn floor7_chamber_hints(_chamber: usize) -> [&'static str; 4] {
+    [
+        "The Loom Halls reward the read charter over the worked loom: \
+         before any work, read the wall in front of you — the press \
+         that refuses names the edge you skipped.",
+        "Work the chamber's own order. The demonstration at the watch \
+         is the mechanism shown honestly, by the keeper's own hands; \
+         imitate it exactly and the hall has no surprises left.",
+        "Every refusal in these halls names the missing piece of the \
+         charter out loud. Collect the refusals; they are the rules, \
+         told from the other side.",
+        "The seam of this floor, in miniature: two hands that each \
+         hold one stair and reach for the other — look for the cycle, \
+         and for the single order that makes it impossible.",
+    ]
+}
