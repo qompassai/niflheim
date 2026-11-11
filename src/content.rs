@@ -4959,3 +4959,77 @@ pub fn floor8_chamber_hints(chamber: usize) -> [&'static str; 4] {
         "The seam: carry errand and generation in the signal, and refuse stale generations at the face.",
     ]
 }
+
+/// Floor 9 — The Hoard Beneath, vault-mines of collections and allocators.
+pub const FLOOR9_NAME: &str = "The Hoard Beneath";
+pub const FLOOR9_KEEPER: &str = "Heapwarden";
+pub const FLOOR9_INTRO: &str = "Vault-mines where collections are grown, counted, and stored. Heapwarden posts the price of growth, probing, and allocation. A tally must travel with its evidence.";
+pub const HOARD_CHAMBERS: [ChamberMeta; 5] = [
+    ChamberMeta {
+        name: "The Shelf",
+        room: "The Shelf",
+        inscription_title: "Growth Has a Price",
+        inscription: "Predict length and capacity across eight pushes on the real shelf. The capacity boundary is where the growth rule changes.",
+        demonstration: "Heapwarden compares the shelf's length and true capacity. A live shared loan refuses a push at the ledger.",
+        slot_wants: "LENGTH + CAPACITY TRACE",
+        prove_label: "File the trace",
+    },
+    ChamberMeta {
+        name: "Honest Chains",
+        room: "Honest Chains",
+        inscription_title: "One Tail, Two Referrers",
+        inscription: "Rebuild three chains as six arena slots and next indices. Keep the shared tail shared; 255 means no next node.",
+        demonstration: "Scattered nodes carry honest arrows. Two chains refer to one shared tail; an indexed row preserves that identity.",
+        slot_wants: "SLOTS + NEXT INDICES",
+        prove_label: "File the redesign",
+    },
+    ChamberMeta {
+        name: "The Cellar",
+        room: "The Cellar",
+        inscription_title: "Count Every Probe",
+        inscription: "Walk five keys through the cellar, then account for a collision flood. Include the landing slot in each probe count.",
+        demonstration: "A probe-lantern walks consecutive slots, wrapping at the end. The real map supplies the count.",
+        slot_wants: "PROBE TRACE + FLOOD COST",
+        prove_label: "File the probe walk",
+    },
+    ChamberMeta {
+        name: "The Counting Steward",
+        room: "The Counting Steward",
+        inscription_title: "Predict, Then Explain",
+        inscription: "Predict the exact allocation count of ten operations across the Trio. Explain the responsible operation when a prediction misses.",
+        demonstration: "The counting wrapper records the structures' actual work, operation by operation. A bare total does not explain its cost.",
+        slot_wants: "ALLOCATION COUNT + EXPLANATION",
+        prove_label: "File the accounting",
+    },
+    ChamberMeta {
+        name: "The Interner's Hoard, Rebuilt",
+        room: "The Interner's Hoard, Rebuilt",
+        inscription_title: "Count the Last Mile",
+        inscription: "Rebuild the old interner on Hoard blocks without changing its original suite. Account for all eight strings, including the uninterned last mile.",
+        demonstration: "Blocks issue in order and reset as one. Exhaustion is a documented refusal; deduplication must still match the original suite.",
+        slot_wants: "SUITE + BLOCK COUNT + LAST MILE",
+        prove_label: "File the rebuild",
+    },
+];
+pub const FLOOR9_CHAMBER_INTROS: [&str; 5] = [
+    "The Shelf: predict the real shelf's length and capacity, including the exact boundary.",
+    "Honest Chains: preserve the shared tail as arena indices.",
+    "The Cellar: follow each probe and account for the collision flood.",
+    "The Counting Steward: predict ten operations' allocation cost and explain every miss.",
+    "The Interner's Hoard, Rebuilt: preserve the original suite and count the last mile.",
+];
+pub const F9_EXAMINE_TEXTS: [&str; 5] = [
+    "A growing shelf, eight trace lines, and a shared-loan ledger.",
+    "Three chains of six scattered nodes; two arrows reach the same tail.",
+    "A key-cellar with numbered slots and a probe-lantern.",
+    "Ten operations on a slate beside the Heapwarden's Trio.",
+    "Eight strings beside sequential arena blocks and a reset lever.",
+];
+pub fn floor9_chamber_hints(_chamber: usize) -> [&'static str; 4] {
+    [
+        "Read the posted claim and identify what must be counted.",
+        "Follow the real structure one operation at a time.",
+        "Check the boundary, collisions, and the last issued block against the ledger.",
+        "The seam: a tally needs its evidence. Count actual operations and keep each count fused to its census-scroll.",
+    ]
+}

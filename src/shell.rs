@@ -1016,6 +1016,10 @@ fn rebuild_now(
         Screen::Floor6Hub => build_floor6_hub(commands, game, &pal, fonts, stage),
         Screen::Floor7Hub => build_floor7_hub(commands, game, &pal, fonts, stage),
         Screen::Floor8Hub => build_floor8_hub(commands, game, &pal, fonts, stage),
+        Screen::Floor9Hub => build_floor9_hub(commands, game, &pal, fonts, stage),
+        Screen::Floor9Chamber(index) => {
+            build_floor9_chamber(commands, game, &pal, fonts, stage, index)
+        }
         Screen::Floor2Chamber(index) => {
             build_floor2_chamber(commands, game, &pal, fonts, stage, index)
         }
@@ -1201,6 +1205,12 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         Screen::Floor6Hub => "Niflheim — Floor 6 · The Lockheart".to_string(),
         Screen::Floor7Hub => "Niflheim — Floor 7 · The Loom of Many Hands".to_string(),
         Screen::Floor8Hub => "Niflheim — Floor 8 · The Suspended Hour".to_string(),
+        Screen::Floor9Hub => "Niflheim — Floor 9 · The Hoard Beneath".into(),
+        Screen::Floor9Chamber(index) => format!(
+            "Floor 9 · Chamber {} — {}",
+            index + 1,
+            content::HOARD_CHAMBERS[index].name
+        ),
         Screen::Floor2Chamber(index) => format!(
             "Floor 2 · Chamber {} — {}",
             index + 1,
@@ -9537,6 +9547,126 @@ fn build_floor8_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
     );
 }
 
+fn build_floor9_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Hoard Beneath — vault-mines of collections and allocators",
+    );
+    for (index, meta) in content::HOARD_CHAMBERS.iter().enumerate() {
+        let rect = geom::door_chamber(index);
+        spawn_box(
+            commands,
+            stage,
+            rect,
+            Some(pal.card),
+            Some((2.0, pal.edge)),
+            0.0,
+        );
+        spawn_text_centered(
+            commands,
+            stage,
+            rect.cx(),
+            rect.y + 4.0,
+            rect.w - 8.0,
+            meta.name,
+            10.0,
+            false,
+            pal.ink,
+            fonts,
+        );
+        spawn_text_centered(
+            commands,
+            stage,
+            rect.cx(),
+            rect.y + 42.0,
+            rect.w,
+            &format!(
+                "{} · {:?}",
+                index + 1,
+                game.expedition.floor9.chambers[index].state
+            ),
+            9.0,
+            true,
+            pal.ink_dim,
+            fonts,
+        );
+    }
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::door_foe(),
+        pal.wax,
+        "THE HOARD BENEATH",
+        &format!("{:?}", game.expedition.floor9.foe.state),
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::camp_stone(),
+        pal.card,
+        "CAMP",
+        "rest and save",
+    );
+}
+
+fn build_floor9_chamber(
+    commands: &mut Commands,
+    game: &Game,
+    pal: &Pal,
+    fonts: &Fonts,
+    stage: Entity,
+    index: usize,
+) {
+    let meta = &content::HOARD_CHAMBERS[index];
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(commands, pal, fonts, stage, meta.name);
+    build_panel_header(
+        commands,
+        pal,
+        fonts,
+        stage,
+        meta.name,
+        content::FLOOR9_KEEPER,
+    );
+    let progress = &game.expedition.floor9.chambers[index];
+    build_slot(
+        commands,
+        pal,
+        fonts,
+        stage,
+        progress.state,
+        meta.slot_wants,
+        progress.facet,
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        pal.card,
+        meta.inscription_title,
+        "read the inscription",
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::floor9_return(),
+        "Return to the Hoard",
+        pal,
+        false,
+        fonts,
+    );
+}
+
 fn build_floor5_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
     build_header(commands, game, pal, fonts, stage);
     build_room_base(
@@ -9785,6 +9915,20 @@ fn build_floor5_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
         pal.ink,
         Justify::Left,
         fonts,
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::door_floor9(),
+        pal.card,
+        content::FLOOR9_NAME,
+        if game.expedition.floor9_reachable() {
+            "OPEN"
+        } else {
+            "BARRED"
+        },
     );
 }
 
@@ -10956,6 +11100,43 @@ fn build_map(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, sta
                     floor.class,
                     &floor8_status,
                     game.expedition.floor8.foe.state == FoeState::Fallen,
+                );
+            } else if index == 8 {
+                let repaired9 = game.expedition.floor9_chambers_repaired();
+                let floor9_status = match game.expedition.floor9.foe.state {
+                    FoeState::Fallen => format!(
+                        "FOE FALLEN — {}",
+                        game.expedition
+                            .floor9
+                            .foe
+                            .fallen_date
+                            .clone()
+                            .unwrap_or_default()
+                    ),
+                    _ if !game.expedition.floor9_reachable() => "BARRED".to_string(),
+                    _ if repaired9 > 0
+                        || game
+                            .expedition
+                            .floor9
+                            .chambers
+                            .iter()
+                            .any(|c| c.state == ChamberState::Diagnosed) =>
+                    {
+                        format!("CHARTING ({repaired9}/5)")
+                    }
+                    _ => "UNCHARTED".to_string(),
+                };
+                build_square(
+                    commands,
+                    pal,
+                    fonts,
+                    stage,
+                    rect,
+                    9,
+                    floor.domain,
+                    floor.class,
+                    &floor9_status,
+                    game.expedition.floor9.foe.state == FoeState::Fallen,
                 );
             } else {
                 build_square(

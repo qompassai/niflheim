@@ -209,6 +209,8 @@ pub enum Screen {
     /// Floor 7's hub: the Loom of Many Hands.
     Floor7Hub,
     Floor8Hub,
+    Floor9Hub,
+    Floor9Chamber(usize),
     /// A Floor 7 chamber, by index (0-4).
     Floor7Chamber(usize),
     Floor8Chamber(usize),
@@ -353,6 +355,9 @@ pub enum El {
     /// The door to Floor 7, on Floor 5's hub.
     DoorFloor7,
     DoorFloor8,
+    DoorFloor9,
+    Floor9Door(u8),
+    F9Return,
     /// A Floor 7 chamber door.
     Floor7Door(u8),
     Floor8Door(u8),
@@ -959,6 +964,8 @@ impl Game {
                 | Screen::Floor6Chamber(_)
                 | Screen::Floor7Hub
                 | Screen::Floor8Hub
+                | Screen::Floor9Hub
+                | Screen::Floor9Chamber(_)
                 | Screen::Floor7Chamber(_)
                 | Screen::Floor8Chamber(_)
                 | Screen::Chamber(_)
@@ -1232,7 +1239,8 @@ impl Game {
             | Screen::Floor5Hub
             | Screen::Floor6Hub
             | Screen::Floor7Hub
-            | Screen::Floor8Hub => {
+            | Screen::Floor8Hub
+            | Screen::Floor9Hub => {
                 vec![Verb::Read, Verb::Map]
             }
             Screen::Chamber(_)
@@ -1242,7 +1250,8 @@ impl Game {
             | Screen::Floor5Chamber(_)
             | Screen::Floor6Chamber(_)
             | Screen::Floor7Chamber(_)
-            | Screen::Floor8Chamber(_) => vec![
+            | Screen::Floor8Chamber(_)
+            | Screen::Floor9Chamber(_) => vec![
                 Verb::Examine,
                 Verb::Read,
                 Verb::Prove,
@@ -1371,6 +1380,15 @@ pub mod geom {
     /// from 292), and the panel (x from 792).
     pub fn door_floor7() -> Rect {
         Rect::new(440.0, 150.0, 124.0, 124.0)
+    }
+
+    /// Floor 9 on Floor 5: west of F7, leaving the far west for F10.
+    pub fn door_floor9() -> Rect {
+        Rect::new(240.0, 150.0, 124.0, 124.0)
+    }
+
+    pub fn floor9_return() -> Rect {
+        Rect::new(380.0, 578.0, 376.0, 32.0)
     }
 
     /// Open upper field on Floor 6's hub, below the chamber row.
@@ -2047,7 +2065,8 @@ impl Game {
             | Screen::Floor5Hub
             | Screen::Floor6Hub
             | Screen::Floor7Hub
-            | Screen::Floor8Hub => cy == 0 || cell == (5, 4),
+            | Screen::Floor8Hub
+            | Screen::Floor9Hub => cy == 0 || cell == (5, 4),
             Screen::Chamber(_)
             | Screen::Floor2Chamber(_)
             | Screen::Floor3Chamber(_)
@@ -2056,6 +2075,7 @@ impl Game {
             | Screen::Floor6Chamber(_)
             | Screen::Floor7Chamber(_)
             | Screen::Floor8Chamber(_)
+            | Screen::Floor9Chamber(_)
             | Screen::Foe
             | Screen::Floor2Foe
             | Screen::Floor3Foe
@@ -2370,6 +2390,8 @@ impl Game {
                          charters on every wall, and many hands pulling \
                          one thread under a single posted order."
                     }
+                    Screen::Floor9Hub => content::FLOOR9_INTRO,
+                    Screen::Floor9Chamber(index) => content::F9_EXAMINE_TEXTS[index],
                     Screen::Floor8Hub => {
                         "The Stillroom of Hours: suspended bells and sleeping messengers, time kept in jars."
                     }
@@ -2501,6 +2523,13 @@ impl Game {
                 }
             }
             Verb::Prove => {
+                if matches!(self.screen, Screen::Floor9Chamber(_)) {
+                    self.say(
+                        StatusKind::Refusal,
+                        "The chamber's work does not yet prove its claim.",
+                    );
+                    return;
+                }
                 if let Screen::Chamber(index) = self.screen {
                     match self.expedition.file_proof(index) {
                         Ok(text) => {
@@ -2614,6 +2643,14 @@ impl Game {
                 }
             }
             Verb::Hint => {
+                if let Screen::Floor9Chamber(index) = self.screen {
+                    let hints = &mut self.expedition.floor9.chambers[index].hints_used;
+                    *hints = (*hints).max(1);
+                    self.hint_showing = *hints;
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                    return;
+                }
                 if let Screen::Floor8Chamber(index) = self.screen {
                     if self.expedition.floor8_hints_used(index) == 0 {
                         self.expedition.floor8_view_hint(index);
@@ -3014,6 +3051,34 @@ impl Game {
                 }
             }
 
+            El::DoorFloor9 => {
+                if self.expedition.floor9_reachable() {
+                    self.enter_screen(Screen::Floor9Hub);
+                    self.say(StatusKind::Info, content::FLOOR9_INTRO);
+                } else {
+                    self.say(StatusKind::Refusal, "The Hoard Beneath is barred: the Veilworks must stand complete — five chambers repaired and the Thing Behind the Veil fallen.");
+                }
+            }
+            El::Floor9Door(index) => {
+                let index = usize::from(index);
+                if self.screen != Screen::Floor9Hub || index >= 5 {
+                    return;
+                }
+                if index > 0
+                    && self.expedition.floor9.chambers[index - 1].state != ChamberState::Repaired
+                {
+                    self.say(StatusKind::Refusal, "Repair the prior chamber first.");
+                    return;
+                }
+                self.enter_screen(Screen::Floor9Chamber(index));
+                self.say(StatusKind::Info, content::FLOOR9_CHAMBER_INTROS[index]);
+            }
+            El::F9Return => {
+                if matches!(self.screen, Screen::Floor9Chamber(_)) {
+                    self.enter_screen(Screen::Floor9Hub);
+                    self.say(StatusKind::Info, content::FLOOR9_INTRO);
+                }
+            }
             El::DoorFloor8 => {
                 if self.expedition.floor8_reachable() {
                     self.enter_screen(Screen::Floor8Hub);
@@ -6224,6 +6289,13 @@ impl Game {
                 self.bump();
             }
             El::HintDeeper => {
+                if let Screen::Floor9Chamber(index) = self.screen {
+                    let hints = &mut self.expedition.floor9.chambers[index].hints_used;
+                    *hints = hints.saturating_add(1).min(4);
+                    self.hint_showing = *hints;
+                    self.changed();
+                    return;
+                }
                 if self.screen == Screen::Floor8Foe {
                     self.expedition.floor8.foe_hints_used =
                         (self.expedition.floor8.foe_hints_used + 1).min(4);
@@ -7101,6 +7173,7 @@ impl Game {
                 Screen::Floor6Hub => format!("Floor 6 — {}", content::FLOOR6_NAME),
                 Screen::Floor7Hub => format!("Floor 7 — {}", content::FLOOR7_NAME),
                 Screen::Floor8Hub => format!("Floor 8 — {}", content::FLOOR8_NAME),
+                Screen::Floor9Hub => format!("Floor 9 — {}", content::FLOOR9_NAME),
                 _ => format!("Floor 1 — {}", content::FLOOR_NAME),
             },
             ReadingKind::MasterPlan => "The Master Plan".to_string(),
@@ -7111,6 +7184,9 @@ impl Game {
     pub fn reading_text(&self, kind: ReadingKind) -> String {
         match kind {
             ReadingKind::Inscription => match self.screen {
+                Screen::Floor9Chamber(index) => {
+                    content::HOARD_CHAMBERS[index].inscription.to_string()
+                }
                 Screen::Chamber(index) => CHAMBERS[index].inscription.to_string(),
                 Screen::Floor2Chamber(index) => {
                     content::MENAGERIE_CHAMBERS[index].inscription.to_string()
@@ -7137,6 +7213,9 @@ impl Game {
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Demonstration => match self.screen {
+                Screen::Floor9Chamber(index) => {
+                    content::HOARD_CHAMBERS[index].demonstration.to_string()
+                }
                 Screen::Chamber(index) => CHAMBERS[index].demonstration.to_string(),
                 Screen::Floor2Chamber(index) => {
                     content::MENAGERIE_CHAMBERS[index].demonstration.to_string()
@@ -7187,6 +7266,7 @@ impl Game {
                     Screen::Floor6Chamber(index) => content::floor6_chamber_hints(index)[rung - 1],
                     Screen::Floor7Chamber(index) => content::floor7_chamber_hints(index)[rung - 1],
                     Screen::Floor8Chamber(index) => content::floor8_chamber_hints(index)[rung - 1],
+                    Screen::Floor9Chamber(index) => content::floor9_chamber_hints(index)[rung - 1],
                     Screen::Floor2Foe => content::floor2_foe_hints()[rung - 1],
                     Screen::Floor3Foe => content::floor3_foe_hints()[rung - 1],
                     Screen::Floor4Foe => content::floor4_foe_hints()[rung - 1],
@@ -7233,6 +7313,7 @@ impl Game {
                 Screen::Floor6Hub => content::FLOOR6_INTRO.to_string(),
                 Screen::Floor7Hub => content::FLOOR7_INTRO.to_string(),
                 Screen::Floor8Hub => content::FLOOR8_INTRO.to_string(),
+                Screen::Floor9Hub => content::FLOOR9_INTRO.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::MasterPlan => content::MASTER_PLAN.to_string(),
@@ -7404,6 +7485,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor6Chamber(_)
         | Screen::Floor7Chamber(_)
         | Screen::Floor8Chamber(_)
+        | Screen::Floor9Chamber(_)
         | Screen::Foe
         | Screen::Floor2Foe
         | Screen::Floor3Foe
@@ -7417,7 +7499,8 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor5Hub
         | Screen::Floor6Hub
         | Screen::Floor7Hub
-        | Screen::Floor8Hub => {
+        | Screen::Floor8Hub
+        | Screen::Floor9Hub => {
             els.push((El::TabFloor, rects::TAB_FLOOR));
             els.push((El::TabMap, rects::TAB_MAP));
             els.push((El::TabLog, rects::TAB_LOG));
@@ -7459,6 +7542,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             els.push((El::DoorFoe5, geom::door_foe5()));
             els.push((El::DoorFloor6, geom::door_floor6()));
             els.push((El::DoorFloor7, geom::door_floor7()));
+            els.push((El::DoorFloor9, geom::door_floor9()));
         }
         Screen::Floor7Hub => {
             els.push((El::CampStone, geom::camp_stone()));
@@ -7466,6 +7550,15 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
                 els.push((El::Floor7Door(index as u8), geom::door_chamber(index)));
             }
             els.push((El::DoorFoe7, geom::door_foe7()));
+        }
+        Screen::Floor9Hub => {
+            els.push((El::CampStone, geom::camp_stone()));
+            for index in 0..5 {
+                els.push((El::Floor9Door(index as u8), geom::door_chamber(index)));
+            }
+        }
+        Screen::Floor9Chamber(_) => {
+            els.push((El::F9Return, geom::floor9_return()));
         }
         Screen::Floor8Hub => {
             els.push((El::DoorFoe8, geom::door_foe()));
@@ -11902,5 +11995,97 @@ mod tests {
                 .iter()
                 .any(|loot| loot == content::PLUMB_LINE)
         );
+    }
+}
+
+#[cfg(test)]
+mod floor9_scaffolding_tests {
+    use super::*;
+    fn overlap(a: Rect, b: Rect) -> bool {
+        a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+    }
+    #[test]
+    fn floor9_door_geometry_and_pointer_entry() {
+        let door = geom::door_floor9();
+        assert_eq!((door.w, door.h), (124.0, 124.0));
+        let mut game = Game::new();
+        game.expedition =
+            Expedition::load_json(include_str!("../tests/fixtures/floor7-earned.json")).unwrap();
+        game.screen = Screen::Floor5Hub;
+        for (el, rect) in layout(&game) {
+            if matches!(
+                el,
+                El::CampStone | El::DoorFoe5 | El::DoorFloor6 | El::DoorFloor7 | El::Floor5Door(_)
+            ) {
+                assert!(!overlap(door, rect), "{el:?}");
+            }
+        }
+        assert!(!overlap(door, rects::PANEL));
+        // Reserved free rectangle for F10; no F10 element is created.
+        assert!(!overlap(door, Rect::new(40.0, 150.0, 124.0, 124.0)));
+        game.pointer_down(door.cx(), door.cy());
+        game.pointer_up(door.cx(), door.cy());
+        assert_eq!(game.screen, Screen::Floor9Hub);
+        let first = geom::door_chamber(0);
+        game.pointer_down(first.cx(), first.cy());
+        game.pointer_up(first.cx(), first.cy());
+        assert_eq!(game.screen, Screen::Floor9Chamber(0));
+        assert!(
+            game.reading_text(ReadingKind::Inscription)
+                .contains("capacity")
+        );
+        game.activate(El::F9Return);
+        assert_eq!(game.screen, Screen::Floor9Hub);
+    }
+    #[test]
+    fn floor9_header_covers_all_chambers_and_hint_rungs() {
+        let mut game = Game::new();
+        for index in 0..5 {
+            let meta = &content::HOARD_CHAMBERS[index];
+            assert!(!meta.name.is_empty() && !meta.slot_wants.is_empty());
+            assert!(!content::FLOOR9_CHAMBER_INTROS[index].is_empty());
+            assert!(!content::F9_EXAMINE_TEXTS[index].is_empty());
+            game.screen = Screen::Floor9Chamber(index);
+            game.overlay = Overlay::None;
+            game.do_verb(Verb::Hint);
+            for rung in 1..=4 {
+                assert_eq!(game.hint_showing, rung);
+                assert!(
+                    game.reading_text(ReadingKind::Hint)
+                        .contains(content::floor9_chamber_hints(index)[usize::from(rung - 1)])
+                );
+                game.activate(El::HintDeeper);
+            }
+            assert_eq!(game.expedition.floor9.chambers[index].hints_used, 4);
+        }
+    }
+    #[test]
+    fn floor9_barred_and_ordered_doors_refuse() {
+        let mut game = Game::new();
+        game.screen = Screen::Floor5Hub;
+        game.activate(El::DoorFloor9);
+        assert_eq!(game.screen, Screen::Floor5Hub);
+        assert!(game.status.contains("Veilworks"));
+        game.screen = Screen::Floor9Hub;
+        for index in [1, 4, 255] {
+            game.activate(El::Floor9Door(index));
+            assert_eq!(game.screen, Screen::Floor9Hub);
+        }
+        game.screen = Screen::Hub;
+        game.activate(El::Floor9Door(0));
+        assert_eq!(game.screen, Screen::Hub);
+    }
+    #[test]
+    fn floor9_scaffolding_cannot_file_proof_or_strike() {
+        let mut game = Game::new();
+        game.screen = Screen::Floor9Chamber(0);
+        game.do_verb(Verb::Prove);
+        game.activate(El::Seal);
+        assert_eq!(
+            game.expedition.floor9.chambers[0].state,
+            ChamberState::Unworked
+        );
+        assert_eq!(game.expedition.floor9.foe.state, FoeState::Standing);
+        assert!(!game.expedition.floor9.chambers[0].facet);
     }
 }

@@ -1030,6 +1030,87 @@ impl Default for Floor8Progress {
     }
 }
 
+/// Floor 9 — The Hoard Beneath. Work fields arrive with their chambers.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct HoardWork {
+    #[serde(default)]
+    pub watched: bool,
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor9ChamberProgress {
+    #[serde(default = "floor9_unworked")]
+    pub state: ChamberState,
+    #[serde(default)]
+    pub hints_used: u8,
+    #[serde(default)]
+    pub facet: bool,
+    #[serde(default)]
+    pub work: HoardWork,
+}
+fn floor9_unworked() -> ChamberState {
+    ChamberState::Unworked
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor9FoeProgress {
+    #[serde(default = "floor9_standing")]
+    pub state: FoeState,
+    #[serde(default)]
+    pub gate_passed: bool,
+    #[serde(default = "floor9_idle")]
+    pub strike: StrikePhase,
+    #[serde(default)]
+    pub fallen_date: Option<String>,
+}
+fn floor9_standing() -> FoeState {
+    FoeState::Standing
+}
+fn floor9_idle() -> StrikePhase {
+    StrikePhase::Idle
+}
+impl Default for Floor9FoeProgress {
+    fn default() -> Self {
+        Self {
+            state: FoeState::Standing,
+            gate_passed: false,
+            strike: StrikePhase::Idle,
+            fallen_date: None,
+        }
+    }
+}
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct Floor9Progress {
+    #[serde(default = "floor9_chambers")]
+    pub chambers: Vec<Floor9ChamberProgress>,
+    #[serde(default)]
+    pub foe: Floor9FoeProgress,
+    #[serde(default)]
+    pub foe_hints_used: u8,
+}
+fn floor9_chambers() -> Vec<Floor9ChamberProgress> {
+    (0..5)
+        .map(|_| Floor9ChamberProgress {
+            state: ChamberState::Unworked,
+            hints_used: 0,
+            facet: false,
+            work: HoardWork::default(),
+        })
+        .collect()
+}
+impl Floor9Progress {
+    pub fn new() -> Self {
+        Self {
+            chambers: floor9_chambers(),
+            foe: Floor9FoeProgress::default(),
+            foe_hints_used: 0,
+        }
+    }
+}
+impl Default for Floor9Progress {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// The work inside one Veilworks chamber. Fields land with
 /// their chambers; the demonstration flag is here from the
 /// scaffolding, like its elders'.
@@ -1299,6 +1380,8 @@ struct SaveFile {
     floor7: Floor7Progress,
     #[serde(default)]
     floor8: Floor8Progress,
+    #[serde(default)]
+    floor9: Floor9Progress,
 }
 
 /// The whole expedition: the campaign's one source of truth.
@@ -1334,6 +1417,7 @@ pub struct Expedition {
     pub floor6: Floor6Progress,
     pub floor7: Floor7Progress,
     pub floor8: Floor8Progress,
+    pub floor9: Floor9Progress,
 }
 
 impl Default for Expedition {
@@ -1378,6 +1462,7 @@ impl Expedition {
             floor6: Floor6Progress::new(),
             floor7: Floor7Progress::new(),
             floor8: Floor8Progress::new(),
+            floor9: Floor9Progress::new(),
         }
     }
 
@@ -4641,6 +4726,24 @@ impl Expedition {
             .unwrap_or(0)
     }
 
+    // Floor 9 — scaffolding only: no chamber proof is available yet.
+    pub fn floor9_diagnosed(&self, _chamber: usize) -> bool {
+        false
+    }
+    pub fn floor9_reachable(&self) -> bool {
+        self.floor5_complete()
+    }
+    pub fn floor9_chambers_repaired(&self) -> usize {
+        self.floor9
+            .chambers
+            .iter()
+            .filter(|c| c.state == ChamberState::Repaired)
+            .count()
+    }
+    pub fn floor9_complete(&self) -> bool {
+        self.floor9_chambers_repaired() == 5 && self.floor9.foe.state == FoeState::Fallen
+    }
+
     /// Floor 2 fallen and Floor 6 complete; Floor 7 is not a gate.
     pub fn floor8_reachable(&self) -> bool {
         self.floor2.foe.state == FoeState::Fallen && self.floor6_complete()
@@ -5003,6 +5106,7 @@ impl Expedition {
             floor6: self.floor6.clone(),
             floor7: self.floor7.clone(),
             floor8: self.floor8.clone(),
+            floor9: self.floor9.clone(),
         };
         serde_json::to_string(&file).map_err(|error| SaveError::Corrupt {
             reason: error.to_string(),
@@ -5073,6 +5177,7 @@ impl Expedition {
             floor6: file.floor6,
             floor7: file.floor7,
             floor8: file.floor8,
+            floor9: file.floor9,
         };
         expedition.validate_invariants()?;
         Ok(expedition)
@@ -5113,6 +5218,24 @@ impl Expedition {
         }
         if self.floor7.chambers.len() != 5 {
             return Err(corrupt("the save does not hold five Floor 7 chambers"));
+        }
+        // Floor 9 — only this floor's proofs and facets are extended here.
+        if self.floor9.chambers.len() != 5 {
+            return Err(corrupt("the save does not hold five Floor 9 chambers"));
+        }
+        for (chamber, progress) in self.floor9.chambers.iter().enumerate() {
+            if progress.facet
+                && (progress.state != ChamberState::Repaired || progress.hints_used > 3)
+            {
+                return Err(corrupt(
+                    "a Floor 9 facet stands without a full-standard repair",
+                ));
+            }
+            if progress.state != ChamberState::Unworked && !self.floor9_diagnosed(chamber) {
+                return Err(corrupt(
+                    "the save claims a Floor 9 proof its work does not hold",
+                ));
+            }
         }
         if self.floor8.chambers.len() != 5 {
             return Err(corrupt("the save does not hold five Floor 8 chambers"));
@@ -5544,7 +5667,7 @@ mod tests {
     fn load_refuses_future_versions() {
         let expedition = Expedition::new();
         let text = expedition.save_json().expect("save");
-        let future = text.replace("\"version\":8", "\"version\":99");
+        let future = text.replace("\"version\":9", "\"version\":99");
         assert_eq!(
             Expedition::load_json(&future),
             Err(SaveError::FutureVersion { found: 99 })
@@ -5614,7 +5737,7 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).expect("v1 loads");
         assert_eq!(loaded.floor2, Floor2Progress::new());
         let resaved = loaded.save_json().expect("re-save");
-        assert!(resaved.contains("\"version\":8"));
+        assert!(resaved.contains("\"version\":9"));
     }
 
     /// Validation: Floor 2 opens only when the Hoard has fallen.
@@ -5647,7 +5770,7 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).expect("v2 loads");
         assert_eq!(loaded.floor3, Floor3Progress::new());
         let resaved = loaded.save_json().expect("re-save");
-        assert!(resaved.contains("\"version\":8"));
+        assert!(resaved.contains("\"version\":9"));
     }
 
     /// Validation: a version-3 save (no floor4 field at all)
@@ -5662,7 +5785,7 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).expect("v3 loads");
         assert_eq!(loaded.floor4, Floor4Progress::new());
         let resaved = loaded.save_json().expect("re-save");
-        assert!(resaved.contains("\"version\":8"));
+        assert!(resaved.contains("\"version\":9"));
     }
 
     /// Validation: a version-4 save (no floor5 field at all)
@@ -5677,7 +5800,7 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).expect("v4 loads");
         assert_eq!(loaded.floor5, Floor5Progress::new());
         let resaved = loaded.save_json().expect("re-save");
-        assert!(resaved.contains("\"version\":8"));
+        assert!(resaved.contains("\"version\":9"));
     }
 
     /// Validation: Floor 5 opens only when Floor 4 stands
@@ -6091,7 +6214,7 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).unwrap();
         assert_eq!(loaded.floor8, Floor8Progress::new());
         assert_eq!(loaded.floor6, e.floor6);
-        assert!(loaded.save_json().unwrap().contains("\"version\":8"));
+        assert!(loaded.save_json().unwrap().contains("\"version\":9"));
     }
 
     fn hour_test_walk_gate(e: &mut Expedition) {
@@ -6375,7 +6498,7 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).expect("v6 loads");
         assert_eq!(loaded.floor7, Floor7Progress::new());
         let resaved = loaded.save_json().expect("re-save");
-        assert!(resaved.contains("\"version\":8"));
+        assert!(resaved.contains("\"version\":9"));
     }
 
     /// Validation: Floor 7 opens when the Veilworks stands
@@ -6474,7 +6597,7 @@ mod tests {
         let loaded = Expedition::load_json(&value.to_string()).expect("v5 loads");
         assert_eq!(loaded.floor6, Floor6Progress::new());
         let resaved = loaded.save_json().expect("re-save");
-        assert!(resaved.contains("\"version\":8"));
+        assert!(resaved.contains("\"version\":9"));
     }
 
     /// Validation: Floor 6 opens when the Veilworks stands
@@ -7830,5 +7953,89 @@ mod tests {
                 other => panic!("expected corrupt error, got: {:?}", other),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod floor9_scaffolding_tests {
+    use super::*;
+
+    #[test]
+    fn version_eight_loads_fresh_hoard_and_preserves_earned_records() {
+        let earned = include_str!("../tests/fixtures/floor7-earned.json");
+        let expedition = Expedition::load_json(earned).unwrap();
+        let mut value: serde_json::Value =
+            serde_json::from_str(&expedition.save_json().unwrap()).unwrap();
+        value["version"] = serde_json::json!(8);
+        value.as_object_mut().unwrap().remove("floor9");
+        let loaded = Expedition::load_json(&value.to_string()).unwrap();
+        assert_eq!(loaded.floor9, Floor9Progress::new());
+        assert_eq!(loaded.floor5, expedition.floor5);
+        assert_eq!(loaded.floor7, expedition.floor7);
+        let resaved: serde_json::Value =
+            serde_json::from_str(&loaded.save_json().unwrap()).unwrap();
+        assert_eq!(resaved["version"], 9);
+        for (key, old) in value.as_object().unwrap() {
+            if key != "version" {
+                assert_eq!(&resaved[key], old, "old record {key}");
+            }
+        }
+        // Every field newly introduced in v9 accepts omission.
+        let mut partial = resaved;
+        partial["floor9"] = serde_json::json!({"chambers": [{}, {}, {}, {}, {}], "foe": {}});
+        assert_eq!(
+            Expedition::load_json(&partial.to_string()).unwrap().floor9,
+            Floor9Progress::new()
+        );
+        partial["floor9"] = serde_json::json!({});
+        assert_eq!(
+            Expedition::load_json(&partial.to_string()).unwrap().floor9,
+            Floor9Progress::new()
+        );
+    }
+
+    #[test]
+    fn floor9_reachability_uses_floor5_without_floor8_gate() {
+        let mut expedition =
+            Expedition::load_json(include_str!("../tests/fixtures/floor7-earned.json")).unwrap();
+        assert!(expedition.floor5_complete());
+        assert!(!expedition.floor8_complete());
+        assert!(expedition.floor9_reachable());
+        expedition.floor9.chambers[0].work.watched = true;
+        let loaded = Expedition::load_json(&expedition.save_json().unwrap()).unwrap();
+        assert!(loaded.floor9.chambers[0].work.watched);
+        assert!(!loaded.floor9_diagnosed(0));
+        assert!(!loaded.floor9_complete());
+    }
+
+    #[test]
+    fn floor9_missing_prerequisite_and_forged_proofs_refused() {
+        let mut expedition = Expedition::new();
+        expedition.floor8.foe.state = FoeState::Fallen;
+        assert!(!expedition.floor9_reachable());
+        expedition.floor8 = Floor8Progress::new();
+        for state in [ChamberState::Diagnosed, ChamberState::Repaired] {
+            expedition.floor9.chambers[0].state = state;
+            assert!(expedition.validate_invariants().is_err());
+            assert!(Expedition::load_json(&expedition.save_json().unwrap()).is_err());
+        }
+        expedition.floor9 = Floor9Progress::new();
+        expedition.floor9.chambers.pop();
+        assert!(expedition.validate_invariants().is_err());
+    }
+
+    #[test]
+    fn floor9_facets_need_supported_repair() {
+        let mut expedition = Expedition::new();
+        expedition.floor9.chambers[0].facet = true;
+        assert!(expedition.validate_invariants().is_err());
+        expedition.floor9.chambers[0].state = ChamberState::Repaired;
+        expedition.floor9.chambers[0].hints_used = 4;
+        assert!(expedition.validate_invariants().is_err());
+        expedition.floor9.chambers[0].hints_used = 3;
+        assert!(
+            expedition.validate_invariants().is_err(),
+            "no Step 1 proof supports even a low-hint repair"
+        );
     }
 }

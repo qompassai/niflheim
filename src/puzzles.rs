@@ -3449,3 +3449,410 @@ pub fn hour_bell_diagnosed(polls: &[u8; 5], rung: bool) -> bool {
 pub fn hour_tapestry_diagnosed(torn: bool, pinned: bool, moved: bool) -> bool {
     torn && pinned && moved
 }
+
+// Floor 9 — the Heapwarden's Trio. R-F9-1..4 govern this shared surface.
+/// A real Vec with an explicit modelled shared-loan ledger.
+#[derive(Debug)]
+pub struct ShelfVec<T> {
+    values: Vec<T>,
+    loans: u32,
+}
+#[allow(clippy::len_without_is_empty)] // Frozen surface: len, not an extra API.
+impl<T> ShelfVec<T> {
+    pub fn new(reserve: usize) -> Self {
+        Self {
+            values: Vec::with_capacity(reserve),
+            loans: 0,
+        }
+    }
+    /// R-F9-2 refuses every push while a shared loan is live.
+    pub fn push(&mut self, value: T) -> bool {
+        if self.loans > 0 {
+            return false;
+        }
+        self.values.push(value);
+        true
+    }
+    pub fn get(&self, index: usize) -> Option<&T> {
+        self.values.get(index)
+    }
+    pub fn len(&self) -> usize {
+        self.values.len()
+    }
+    pub fn cap(&self) -> usize {
+        self.values.capacity()
+    }
+    pub fn stamps(&self) -> u32 {
+        self.loans
+    }
+    pub fn take_loan(&mut self) {
+        self.loans = self.loans.saturating_add(1);
+    }
+    pub fn return_loan(&mut self) {
+        self.loans = self.loans.saturating_sub(1);
+    }
+}
+
+/// Deterministic, tombstone-free linear probing; every walk is bounded by slots.
+pub struct CellarMap<K, V> {
+    slots: Vec<Option<(K, V)>>,
+    len: usize,
+    probes: u64,
+}
+#[allow(clippy::len_without_is_empty)] // Frozen surface.
+impl<K: Eq + core::hash::Hash, V> CellarMap<K, V> {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            slots: std::iter::repeat_with(|| None)
+                .take(capacity.max(1))
+                .collect(),
+            len: 0,
+            probes: 0,
+        }
+    }
+    fn start(&self, key: &K) -> usize {
+        use core::hash::Hasher;
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        key.hash(&mut hasher);
+        (hasher.finish() % self.slots.len() as u64) as usize
+    }
+    /// Counts every examined slot, including a full-table refusal's walk.
+    pub fn insert(&mut self, key: K, value: V) -> Option<usize> {
+        let start = self.start(&key);
+        for offset in 0..self.slots.len() {
+            let index = (start + offset) % self.slots.len();
+            self.probes += 1;
+            match &mut self.slots[index] {
+                Some((stored, old)) if *stored == key => {
+                    *old = value;
+                    return Some(offset + 1);
+                }
+                None => {
+                    self.slots[index] = Some((key, value));
+                    self.len += 1;
+                    return Some(offset + 1);
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+    pub fn get(&self, key: &K) -> Option<&V> {
+        let start = self.start(key);
+        for offset in 0..self.slots.len() {
+            match &self.slots[(start + offset) % self.slots.len()] {
+                Some((stored, value)) if stored == key => return Some(value),
+                None => return None,
+                _ => {}
+            }
+        }
+        None
+    }
+    pub fn len(&self) -> usize {
+        self.len
+    }
+    pub fn probes_total(&self) -> u64 {
+        self.probes
+    }
+}
+
+/// A byte-bounded bump arena issuing sequential block handles, never pointers.
+#[derive(Debug)]
+pub struct Hoard {
+    capacity: u32,
+    used: u32,
+    blocks: u32,
+}
+impl Hoard {
+    pub fn new(capacity: u32) -> Self {
+        Self {
+            capacity,
+            used: 0,
+            blocks: 0,
+        }
+    }
+    pub fn issue(&mut self, bytes: u32) -> Option<u32> {
+        if bytes == 0 {
+            return None;
+        }
+        let used = self.used.checked_add(bytes)?;
+        if used > self.capacity {
+            return None;
+        }
+        let next = self.blocks.checked_add(1)?;
+        let handle = self.blocks;
+        self.used = used;
+        self.blocks = next;
+        Some(handle)
+    }
+    pub fn reset(&mut self) {
+        self.used = 0;
+        self.blocks = 0;
+    }
+    pub fn used(&self) -> u32 {
+        self.used
+    }
+    pub fn blocks_used(&self) -> u32 {
+        self.blocks
+    }
+}
+
+/// A value fused to its census. R-F9-3 permits only checked addition.
+/// Operator addition is unavailable, even when the runtime ids match:
+/// ```compile_fail
+/// use niflheim::puzzles::Stamped;
+/// let _ = Stamped::seal(1u32, 7) + Stamped::seal(2u32, 8);
+/// ```
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Stamped<T> {
+    value: T,
+    census: u32,
+}
+impl<T> Stamped<T> {
+    pub fn seal(value: T, census: u32) -> Self {
+        Self { value, census }
+    }
+    pub fn value(&self) -> &T {
+        &self.value
+    }
+    pub fn census_id(&self) -> u32 {
+        self.census
+    }
+}
+impl<T: Copy + core::ops::Add<Output = T>> Stamped<T> {
+    pub fn add(&self, other: &Stamped<T>) -> Option<Stamped<T>> {
+        (self.census == other.census).then(|| Self::seal(self.value + other.value, self.census))
+    }
+}
+
+#[cfg(test)]
+mod floor9_trio_tests {
+    use super::{CellarMap, Hoard, ShelfVec, Stamped};
+    use std::collections::{BTreeMap, hash_map::DefaultHasher};
+    use std::hash::{Hash, Hasher};
+
+    #[test]
+    fn shelf_differential_10000_operations() {
+        let mut shelf = ShelfVec::new(3);
+        let mut reference = Vec::with_capacity(3);
+        let mut loans = 0u32;
+        for operation in 0..10_000 {
+            match operation % 11 {
+                0 => {
+                    shelf.take_loan();
+                    loans += 1;
+                }
+                1 | 2 => {
+                    shelf.return_loan();
+                    loans = loans.saturating_sub(1);
+                }
+                3 => assert_eq!(
+                    shelf.get(operation % (reference.len() + 1)),
+                    reference.get(operation % (reference.len() + 1))
+                ),
+                _ => {
+                    assert_eq!(shelf.push(operation), loans == 0);
+                    if loans == 0 {
+                        reference.push(operation);
+                    }
+                }
+            }
+            assert_eq!(
+                (shelf.len(), shelf.cap(), shelf.stamps()),
+                (reference.len(), reference.capacity(), loans)
+            );
+            for (index, value) in reference.iter().enumerate() {
+                assert_eq!(shelf.get(index), Some(value));
+            }
+            assert_eq!(shelf.get(reference.len()), None);
+        }
+    }
+
+    #[test]
+    fn shelf_boundary_and_nested_loan_refusals() {
+        let mut shelf = ShelfVec::new(2);
+        let mut reference = Vec::with_capacity(2);
+        let cap = shelf.cap();
+        for value in 0..cap {
+            assert!(shelf.push(value));
+            reference.push(value);
+        }
+        shelf.take_loan();
+        shelf.take_loan();
+        assert!(!shelf.push(cap));
+        assert_eq!(
+            (shelf.len(), shelf.cap()),
+            (reference.len(), reference.capacity())
+        );
+        shelf.return_loan();
+        assert!(!shelf.push(cap));
+        shelf.return_loan();
+        shelf.return_loan();
+        assert_eq!(shelf.stamps(), 0);
+        assert!(shelf.push(cap));
+        reference.push(cap);
+        assert_eq!(
+            (shelf.len(), shelf.cap()),
+            (reference.len(), reference.capacity())
+        );
+        let mut spare = ShelfVec::new(8);
+        spare.take_loan();
+        assert!(!spare.push(1));
+        assert_eq!(spare.len(), 0);
+        let mut empty = ShelfVec::new(0);
+        assert!(empty.push(1));
+        assert_eq!(empty.get(1), None);
+    }
+
+    // Deliberately slow reference: BTreeMap for values and a separate slot ledger
+    // scanned in circular order for probe accounting, independent of map methods.
+    fn reference_insert(
+        slots: &mut [Option<u32>],
+        values: &mut BTreeMap<u32, u32>,
+        key: u32,
+        value: u32,
+    ) -> (Option<usize>, u64) {
+        let mut hash = DefaultHasher::new();
+        key.hash(&mut hash);
+        let home = (hash.finish() % slots.len() as u64) as usize;
+        let walk: Vec<_> = (home..slots.len()).chain(0..home).collect();
+        let landing = walk
+            .iter()
+            .position(|&index| slots[index].is_none() || slots[index] == Some(key));
+        match landing {
+            Some(offset) => {
+                slots[walk[offset]] = Some(key);
+                values.insert(key, value);
+                (Some(offset + 1), (offset + 1) as u64)
+            }
+            None => (None, slots.len() as u64),
+        }
+    }
+
+    #[test]
+    fn cellar_differential_10000_operations() {
+        let mut map = CellarMap::new(31);
+        let mut slots = vec![None; 31];
+        let mut values = BTreeMap::new();
+        let mut total = 0;
+        for operation in 0u32..10_000 {
+            let key = (operation * 17) % 47;
+            if operation % 3 == 0 {
+                assert_eq!(map.get(&key), values.get(&key));
+            } else {
+                let (result, probes) = reference_insert(&mut slots, &mut values, key, operation);
+                total += probes;
+                assert_eq!(map.insert(key, operation), result);
+            }
+            assert_eq!((map.len(), map.probes_total()), (values.len(), total));
+            for key in 0..48 {
+                assert_eq!(map.get(&key), values.get(&key));
+            }
+        }
+    }
+
+    #[derive(Eq, PartialEq)]
+    struct Collision(u8);
+    impl Hash for Collision {
+        fn hash<H: Hasher>(&self, state: &mut H) {
+            0u8.hash(state);
+        }
+    }
+    #[test]
+    fn cellar_collision_flood_full_replacement_and_wrap() {
+        let capacity = 7;
+        let mut map = CellarMap::new(capacity);
+        let mut total = 0;
+        for index in 0..capacity {
+            let probes = map.insert(Collision(index as u8), index).unwrap();
+            // All keys hash identically: every prior occupied slot plus landing.
+            let expected = (0..=index).count();
+            assert_eq!(probes, expected);
+            assert_ne!(probes, expected + 1);
+            total += probes as u64;
+            assert_eq!(map.probes_total(), total);
+        }
+        let before = map.probes_total();
+        assert_eq!(map.insert(Collision(255), 99), None);
+        assert_eq!(map.probes_total() - before, capacity as u64);
+        assert_eq!(map.get(&Collision(255)), None);
+        let probes = map.insert(Collision(6), 99).unwrap();
+        assert_eq!(probes, capacity);
+        assert_eq!(map.len(), capacity);
+        assert_eq!(map.get(&Collision(6)), Some(&99));
+        let mut one = CellarMap::new(0);
+        assert!(one.insert("one", String::from("value")).is_some());
+        assert!(one.insert("two", String::new()).is_none());
+        assert_eq!(one.get(&"one").map(String::as_str), Some("value"));
+    }
+
+    #[test]
+    fn hoard_differential_10000_operations() {
+        let capacity = 137;
+        let mut hoard = Hoard::new(capacity);
+        let mut blocks = Vec::<u32>::new();
+        for operation in 0..10_000u32 {
+            if operation % 97 == 0 {
+                hoard.reset();
+                blocks.clear();
+            } else {
+                let bytes = (operation * 13) % 41;
+                let used: u32 = blocks.iter().sum();
+                let expected =
+                    if bytes > 0 && u64::from(used) + u64::from(bytes) <= u64::from(capacity) {
+                        let handle = blocks.len() as u32;
+                        blocks.push(bytes);
+                        Some(handle)
+                    } else {
+                        None
+                    };
+                assert_eq!(hoard.issue(bytes), expected);
+            }
+            assert_eq!(hoard.used(), blocks.iter().sum::<u32>());
+            assert_eq!(hoard.blocks_used(), blocks.len() as u32);
+        }
+    }
+
+    #[test]
+    fn hoard_exact_capacity_zero_exhaustion_overflow_and_reset() {
+        let mut hoard = Hoard::new(u32::MAX);
+        assert_eq!(hoard.issue(0), None);
+        assert_eq!((hoard.used(), hoard.blocks_used()), (0, 0));
+        assert_eq!(hoard.issue(u32::MAX), Some(0));
+        let before = (hoard.used(), hoard.blocks_used());
+        for bytes in [0, 1, u32::MAX] {
+            assert_eq!(hoard.issue(bytes), None);
+            assert_eq!((hoard.used(), hoard.blocks_used()), before);
+        }
+        hoard.reset();
+        assert_eq!((hoard.used(), hoard.blocks_used()), (0, 0));
+        assert_eq!(hoard.issue(1), Some(0));
+        assert_eq!(hoard.issue(1), Some(1));
+        let mut empty = Hoard::new(0);
+        assert_eq!(empty.issue(1), None);
+    }
+
+    #[test]
+    fn stamped_same_scroll_sum_preserves_census() {
+        let mut shelf = ShelfVec::new(0);
+        let mut map = CellarMap::new(3);
+        for value in [4u8, 9] {
+            assert!(shelf.push(value));
+            assert!(map.insert(value, value).is_some());
+        }
+        let a = Stamped::seal(shelf.len() as u32, 7);
+        let b = Stamped::seal(map.len() as u32, 7);
+        let sum = a.add(&b).unwrap();
+        assert_eq!(*sum.value(), *a.value() + *b.value());
+        assert_eq!(sum.census_id(), a.census_id());
+    }
+
+    #[test]
+    fn stamped_different_scrolls_refuse_even_equal_values() {
+        let a = Stamped::seal(Hoard::new(8).blocks_used(), 7);
+        let b = Stamped::seal(*a.value(), 8);
+        assert_eq!(a.add(&b), None);
+        assert_eq!(b.add(&a), None);
+        assert_ne!(a.census_id(), b.census_id());
+    }
+}
