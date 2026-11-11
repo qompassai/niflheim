@@ -359,6 +359,7 @@ pub enum El {
     F8Poll(u8),
     F8Ring,
     DoorFoe8,
+    F8Return,
     F8Ledger(u8),
     F8LedgerRead(u8),
     F8Foe(HourAction),
@@ -1256,12 +1257,19 @@ impl Game {
                 Verb::Hint,
                 Verb::Map,
             ],
+            Screen::Floor8Foe => vec![
+                Verb::Examine,
+                Verb::Read,
+                Verb::Enumerate,
+                Verb::Prove,
+                Verb::Hint,
+                Verb::Map,
+            ],
             Screen::Floor2Foe
             | Screen::Floor3Foe
             | Screen::Floor4Foe
             | Screen::Floor5Foe
             | Screen::Floor6Foe
-            | Screen::Floor8Foe
             | Screen::Floor7Foe => vec![
                 Verb::Examine,
                 Verb::Read,
@@ -1371,6 +1379,10 @@ pub mod geom {
     }
 
     /// Floor 7 chambers: one thread row.
+    pub fn floor8_return() -> Rect {
+        Rect::new(380.0, 578.0, 376.0, 32.0)
+    }
+
     pub fn f7_op_row(index: usize) -> Rect {
         Rect::new(380.0, 100.0 + index as f32 * 56.0, 300.0, 30.0)
     }
@@ -3018,6 +3030,12 @@ impl Game {
                         StatusKind::Refusal,
                         format!("The Stillroom is barred: {}.", missing.join("; ")),
                     );
+                }
+            }
+            El::F8Return => {
+                if matches!(self.screen, Screen::Floor8Chamber(_) | Screen::Floor8Foe) {
+                    self.enter_screen(Screen::Floor8Hub);
+                    self.say(StatusKind::Info, content::FLOOR8_INTRO);
                 }
             }
             El::DoorFoe8 => {
@@ -7827,7 +7845,11 @@ fn layout_floor6_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
 pub fn floor8_foe_controls(game: &Game) -> Vec<(El, Rect, String)> {
     use HourAction::*;
     let f = &game.expedition.floor8.foe;
-    let mut controls = Vec::new();
+    let mut controls = vec![(
+        El::F8Return,
+        geom::floor8_return(),
+        "Return to the Stillroom".into(),
+    )];
     for (i, title) in ["Evidence", "Roster gate", "Typed repair"]
         .iter()
         .enumerate()
@@ -8000,7 +8022,7 @@ pub fn floor8_controls(game: &Game, chamber: usize) -> Vec<(El, Rect, String)> {
                     42.0,
                     36.0,
                 ),
-                format!("Read {}", i + 1),
+                "Read".into(),
             ));
         }
         controls.push((
@@ -8043,6 +8065,7 @@ pub fn floor8_controls(game: &Game, chamber: usize) -> Vec<(El, Rect, String)> {
 }
 
 fn layout_floor8_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: usize) {
+    els.push((El::F8Return, geom::floor8_return()));
     els.push((El::F8Watch, Rect::new(380.0, 100.0, 300.0, 36.0)));
     els.extend(
         floor8_controls(game, chamber)
@@ -10259,6 +10282,228 @@ mod tests {
         assert_eq!(game.screen, Screen::Floor8Hub);
         game.activate(El::Floor8Door(255));
         assert_eq!(game.screen, Screen::Floor8Hub);
+    }
+
+    #[test]
+    fn floor8_whole_floor_gui_playthrough() {
+        fn click(g: &mut Game, el: El) {
+            let rect = layout(g)
+                .into_iter()
+                .find(|(found, _)| *found == el)
+                .unwrap_or_else(|| panic!("{el:?} missing on {:?} / {:?}", g.screen, g.overlay))
+                .1;
+            assert_eq!(
+                hit_test(g, rect.cx(), rect.cy()),
+                Some(el),
+                "overlapping {el:?}"
+            );
+            g.pointer_down(rect.cx(), rect.cy());
+            g.pointer_up(rect.cx(), rect.cy());
+        }
+        fn repair(g: &mut Game, room: usize) {
+            click(g, El::Chip(Verb::Prove));
+            click(g, El::Seal);
+            click(g, El::SealConfirm);
+            assert_eq!(
+                g.expedition.floor8.chambers[room].state,
+                ChamberState::Repaired
+            );
+            assert!(g.expedition.floor8.chambers[room].facet);
+            click(g, El::F8Return);
+            assert_eq!(g.screen, Screen::Floor8Hub);
+        }
+        let mut g = Game::new();
+        g.begin();
+        g.io = None;
+        g.today = "2026-11-10".into();
+        // Only the already-earned prior-floor fixture and starting room are
+        // installed. Every Floor 8 progress transition uses pointer handlers.
+        g.expedition =
+            Expedition::load_json(include_str!("../tests/fixtures/floor7-earned.json")).unwrap();
+        assert!(g.expedition.floor8_reachable());
+        assert!(!g.expedition.floor8_complete());
+        g.screen = Screen::Floor6Hub;
+        click(&mut g, El::DoorFloor8);
+        assert_eq!(g.screen, Screen::Floor8Hub);
+        click(&mut g, El::Floor8Door(1));
+        assert_eq!(g.screen, Screen::Floor8Hub);
+        click(&mut g, El::Floor8Door(0));
+        click(&mut g, El::F8Watch);
+        click(&mut g, El::F8Poll(2));
+        click(&mut g, El::F8Ring);
+        assert_eq!(g.expedition.floor8.chambers[0].work.polls, [0; 5]);
+        for report in crate::puzzles::hour_bell_reports() {
+            click(&mut g, El::F8Poll(report));
+        }
+        click(&mut g, El::F8Ring);
+        repair(&mut g, 0);
+        click(&mut g, El::Floor8Door(1));
+        click(&mut g, El::F8Watch);
+        click(&mut g, El::F8Pin);
+        assert!(!g.expedition.floor8.chambers[1].work.pinned);
+        click(&mut g, El::F8Move);
+        click(&mut g, El::F8Move);
+        assert!(!g.expedition.floor8.chambers[1].work.moved);
+        click(&mut g, El::F8Pin);
+        click(&mut g, El::F8Move);
+        repair(&mut g, 1);
+        click(&mut g, El::Floor8Door(2));
+        click(&mut g, El::F8Watch);
+        click(&mut g, El::F8Part(4));
+        click(&mut g, El::F8Trial);
+        assert!(!g.expedition.floor8.chambers[2].work.trial_walked);
+        for part in 1..=4 {
+            click(&mut g, El::F8Part(part));
+        }
+        click(&mut g, El::F8Trial);
+        repair(&mut g, 2);
+        click(&mut g, El::Floor8Door(3));
+        click(&mut g, El::F8Watch);
+        click(&mut g, El::F8Judge);
+        assert!(!g.expedition.floor8.chambers[3].work.judged);
+        for (i, event) in crate::puzzles::hour_attendant_trace().iter().enumerate() {
+            click(&mut g, El::F8ReadEvent(i as u8));
+            for _ in 0..crate::puzzles::hour_event_kind(event) {
+                click(&mut g, El::F8Predict(i as u8));
+            }
+        }
+        click(&mut g, El::F8Judge);
+        repair(&mut g, 3);
+        click(&mut g, El::Floor8Door(4));
+        click(&mut g, El::F8Watch);
+        for (i, (_, state)) in crate::puzzles::hour::ledger().iter().enumerate() {
+            click(&mut g, El::F8LedgerRead(i as u8));
+            for _ in 0..*state {
+                click(&mut g, El::F8Ledger(i as u8));
+            }
+        }
+        repair(&mut g, 4);
+        click(&mut g, El::DoorFoe8);
+        click(&mut g, El::Seal);
+        assert!(!g.seal_armed());
+        click(&mut g, El::F8Foe(HourAction::Exhibit(2)));
+        assert_eq!(g.expedition.floor8.foe.exhibits, [false; 3]);
+        for i in 0..3 {
+            click(&mut g, El::F8Foe(HourAction::Exhibit(i)));
+        }
+        click(&mut g, El::Chip(Verb::Prove));
+        assert_eq!(g.expedition.floor8.foe.state, FoeState::Exposed);
+        click(&mut g, El::F8Foe(HourAction::Page(1)));
+        click(&mut g, El::F8Foe(HourAction::Identify));
+        assert_eq!(g.expedition.floor8.foe.unsequenced, None);
+        for i in 0..4 {
+            click(&mut g, El::F8Foe(HourAction::Select(i)));
+            let events = crate::puzzles::hour::presentation(usize::from(i));
+            let wrong = crate::puzzles::hour_event_kind(&events[0]) % 9 + 1;
+            click(&mut g, El::F8Foe(HourAction::Predict(wrong)));
+            assert!(g.expedition.floor8.foe.predictions[usize::from(i)].is_empty());
+            for event in &events {
+                click(&mut g, El::F8Foe(HourAction::Read));
+                click(
+                    &mut g,
+                    El::F8Foe(HourAction::Predict(crate::puzzles::hour_event_kind(event))),
+                );
+            }
+            assert_eq!(
+                g.expedition.floor8.foe.predictions[usize::from(i)].len(),
+                events.len()
+            );
+            if usize::from(i) == content::HOUR_UNSEQUENCED {
+                click(&mut g, El::F8Foe(HourAction::Identify));
+            }
+        }
+        click(&mut g, El::F8Foe(HourAction::Policy));
+        assert!(matches!(g.overlay, Overlay::Reading(_)));
+        assert!(
+            g.reading_text(ReadingKind::Demonstration)
+                .contains("Panicked")
+        );
+        click(&mut g, El::OverlayClose);
+        assert!(g.expedition.floor8.foe.gate_passed);
+        click(&mut g, El::F8Foe(HourAction::Page(2)));
+        for i in 0..3 {
+            click(&mut g, El::F8Foe(HourAction::Card(i)));
+        }
+        click(&mut g, El::F8Foe(HourAction::SignalSeal));
+        for generation in 1..=crate::puzzles::hour::living_signal().1 {
+            click(&mut g, El::F8Foe(HourAction::SignalGeneration));
+            assert_eq!(
+                g.expedition.floor8_foe_rewrite(),
+                generation == crate::puzzles::hour::living_signal().1
+            );
+        }
+        click(&mut g, El::Seal);
+        assert!(g.seal_armed());
+        click(&mut g, El::SealCancel);
+        assert!(!g.seal_armed());
+        click(&mut g, El::Seal);
+        click(&mut g, El::SealConfirm);
+        assert!(g.expedition.floor8_complete());
+        assert_eq!(g.expedition.floor8.foe.state, FoeState::Fallen);
+        let save = g.expedition.save_json().unwrap();
+        assert_eq!(Expedition::load_json(&save).unwrap(), g.expedition);
+        if let Ok(path) = std::env::var("NIFLHEIM_GUI_SAVE_OUT") {
+            std::fs::write(path, save).unwrap();
+        }
+        click(&mut g, El::F8Return);
+        assert_eq!(g.screen, Screen::Floor8Hub);
+    }
+
+    #[test]
+    fn floor8_keyboard_and_touch_share_refusals_and_event_order() {
+        fn touch(g: &mut Game, el: El) {
+            let r = layout(g).into_iter().find(|(e, _)| *e == el).unwrap().1;
+            g.pointer_down(r.cx(), r.cy());
+            g.pointer_up(r.cx(), r.cy());
+        }
+        fn keyboard(g: &mut Game, el: El) {
+            for _ in 0..=layout(g).len() {
+                if g.focused_element() == Some(el) {
+                    g.key(Key::Confirm);
+                    return;
+                }
+                g.key(Key::Tab);
+            }
+            panic!("unfocusable {el:?}");
+        }
+        let mut a = Game::new();
+        a.begin();
+        a.io = None;
+        a.screen = Screen::Floor8Foe;
+        let mut b = Game::new();
+        b.begin();
+        b.io = None;
+        b.screen = Screen::Floor8Foe;
+        let mut actions = vec![
+            El::F8Foe(HourAction::Exhibit(2)),
+            El::F8Foe(HourAction::Page(1)),
+            El::F8Foe(HourAction::Predict(9)),
+        ];
+        for event in crate::puzzles::hour::presentation(0) {
+            actions.push(El::F8Foe(HourAction::Read));
+            actions.push(El::F8Foe(HourAction::Predict(
+                crate::puzzles::hour_event_kind(&event),
+            )));
+        }
+        actions.push(El::F8Return);
+        for action in actions {
+            touch(&mut a, action);
+            keyboard(&mut b, action);
+            assert_eq!(a.expedition, b.expedition);
+            assert_eq!(a.screen, b.screen);
+        }
+        assert!(!a.expedition.floor8.foe.gate_passed);
+        assert_ne!(a.expedition.floor8.foe.state, FoeState::Fallen);
+        a.screen = Screen::Floor8Chamber(4);
+        for (_, rect, _) in floor8_controls(&a, 4) {
+            let b = geom::floor8_return();
+            assert!(
+                rect.x + rect.w <= b.x
+                    || b.x + b.w <= rect.x
+                    || rect.y + rect.h <= b.y
+                    || b.y + b.h <= rect.y
+            );
+        }
     }
 
     #[test]

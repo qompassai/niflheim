@@ -4832,7 +4832,7 @@ pub const F8_EVENT_KINDS: [&str; 10] = [
     "wake",
     "timer fired",
     "completed",
-    "cancelled + cleanup",
+    "cancel+clean",
     "panicked",
     "stale refused",
     "accounted",

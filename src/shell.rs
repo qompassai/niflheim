@@ -8346,6 +8346,15 @@ fn build_floor8_chamber(
         false,
         fonts,
     );
+    spawn_button(
+        commands,
+        stage,
+        geom::floor8_return(),
+        "Return to the Stillroom",
+        pal,
+        false,
+        fonts,
+    );
     for (_, rect, label) in crate::game::floor8_controls(game, index) {
         spawn_button(commands, stage, rect, &label, pal, false, fonts);
     }

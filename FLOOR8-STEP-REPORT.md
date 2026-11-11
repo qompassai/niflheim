@@ -300,4 +300,72 @@ Corrected pinned/offline cargo route, shared target flag, nice 10 and foreign
 process checks throughout; no downloads/syncs/fresh target. Commit recorded
 externally after commit.
 
+## Step 5 — Integration — Floor 8 Complete
+
+Base: 6bfa30b. Added the F8Return hub-return control to every Floor 8
+chamber screen (drawn and hit-tested from the one layout definition;
+the chamber panel gains the return rect with pairwise clearance
+against every chamber control), and the whole-floor GUI playthrough:
+starting from the earned Floor 7 fixture, every Floor 8 transition is
+driven through shipped pointer handlers — the four single-attendant
+chambers, the Cancellation Ledger chamber, the FOE's three pages
+(exhibits, prediction walks, policy reading, typed card, signal
+seal/generation), the shared two-step seal, and the return to the
+hub. A second test proves keyboard and touch share refusals and event
+order on the FOE page and that the return rect clears every
+chamber-4 control. The earned-fixture file the playthrough loads
+(tests/fixtures/floor7-earned.json, the Floor 7 Step 5 earned save)
+is committed with this step because the shipped test includes it at
+compile time; the transient determinism probe stays uncommitted per
+DS-9 and was removed after its runs.
+
+Two new shipped tests (1 validation / 1 adversarial): whole-floor GUI
+playthrough from the earned fixture; keyboard/touch shared refusals
+and event order + return-rect clearance. Suite grows 267 to 269; no
+old test removed/ignored/weakened. Current-step probe earns all five
+repairs + fallen FOE through state operations, writes v8 and reloads
+it; the probe save, the GUI playthrough saves and the Step 4 earned
+state all agree byte-for-byte (SHA
+6c7d2ed6247d73f5c6316c0cdcd44ea769744b1b8e77735865ed596208f08973).
+
+Incidents: the playthrough's first full run failed (268/1,
+test-first-failed.log retained); the failure was fixed in the step's
+own code and the final suite is 269/0 (final-test.log). The build
+lane's run 7 was then cut mid-gate-sequence by the Codex provider
+usage limit (21:53, after Steps 1–4 had committed and Step 5's code
+and source gates were complete in-tree); runs 8–11 failed instantly
+on the same limit and the night driver was stopped by the
+coordinator's escalate flag. Under the standing takeover policy the
+coordinator re-ran the full Step 5 gate battery independently on the
+in-tree work (coord-* logs), completed the platform gates, and wrote
+this section and the commit. Theodolite note: the planted control in
+game.rs was seen same-session (count=3, SHA-verified restore) in four
+sessions, but that file's rust-analyzer push pair from the plant did
+not clear in-session even at a 10-minute wait (attempt logs
+retained); a second session planting the control in shell.rs instead
+read all three touched files at count 0 with its own same-session
+control seen and restore verified (theodolite-session2.json) — the
+PASS is that composite, and the stuck-push behaviour is recorded
+here rather than smoothed over. The coordinator's first platform
+attempt also failed on two harness env errors of its own making
+(bacon launcher env/exec order; lavapipe ICD filename lvp_icd.json),
+both corrected and re-run green. Markdown report not-LSP-validated
+(no configured route). Save remains v8; gate.rs and unsafe forbid
+unchanged. Commit hash recorded externally.
+
+| Gate | Result / evidence under /home/phaedrus/.local/share/pax/niflheim-floor8-step5-build-20261110 |
+|---|---|
+| fmt apply/check | PASS; coord-fmt.log (lane fmt.log also retained) |
+| Full tests | PASS: 269 shipped, zero failed/ignored + 1 transient; coord-test.log (lane final-test.log) |
+| Clippy all-targets -D warnings | PASS; coord-clippy.log (lane clippy.log) |
+| Theodolite | PASS (composite, see Incidents); producer-first, control 3 E0308 seen in game.rs sessions and in the shell.rs session, game.rs restore SHA 39482a3aa936fa67ef29cdb4fa7acec374468308e49c227e5cd105e79c537fd5; all three touched Rust files zero; theodolite-session2.json |
+| Determinism/load-back | PASS; five earned repaired chambers + fallen FOE, v8, identical SHA 6c7d2ed6247d73f5c6316c0cdcd44ea769744b1b8e77735865ed596208f08973 (lane pair and coordinator pair) |
+| Android pinned lib | PASS; coord-android.log; 1353177464 bytes |
+| Desktop/Xvfb | PASS; coord-xvfb-smoke2.log; cold_start_ms=733, expected exit 124, zero panics |
+
+Source and artifact SHA-256 manifests filed. Probe and producer files
+preserved in evidence and removed from worktree. Coordinator takeover
+finish after the provider usage limit; no downloads/syncs/fresh
+target. Commit recorded externally after commit.
+
 <!-- END FLOOR 8 STEP REPORTS -->
