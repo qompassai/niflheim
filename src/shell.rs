@@ -1037,6 +1037,7 @@ fn rebuild_now(
         Screen::Floor4Foe => build_floor4_foe(commands, game, &pal, fonts, stage),
         Screen::Floor5Foe => build_floor5_foe(commands, game, &pal, fonts, stage),
         Screen::Floor6Foe => build_floor6_foe(commands, game, &pal, fonts, stage),
+        Screen::Floor7Foe => build_floor7_foe(commands, game, &pal, fonts, stage),
         Screen::Chamber(index) => build_chamber(commands, game, &pal, fonts, stage, index),
         Screen::Foe => build_foe(commands, game, &pal, fonts, stage),
         Screen::Floor2Foe => build_foe2(commands, game, &pal, fonts, stage),
@@ -1229,6 +1230,7 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         Screen::Floor4Foe => "Floor 4 · The Crooked Foundation".to_string(),
         Screen::Floor5Foe => "Floor 5 · The Thing Behind the Veil".to_string(),
         Screen::Floor6Foe => "Floor 6 · The Heart Locked Twice".to_string(),
+        Screen::Floor7Foe => "Floor 7 · The Standing Seamstress".to_string(),
 
         Screen::Title => "Niflheim".to_string(),
     };
@@ -8257,6 +8259,7 @@ fn build_floor7_chamber(
         1 => build_f7c2(commands, game, pal, fonts, stage),
         2 => build_f7c3(commands, game, pal, fonts, stage),
         3 => build_f7c4(commands, game, pal, fonts, stage),
+        4 => build_f7c5(commands, game, pal, fonts, stage),
         _ => {}
     }
 }
@@ -8609,6 +8612,385 @@ fn build_f7c4(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, st
     );
 }
 
+/// Chamber 5's panel: the six recorded histories with
+/// their operations and the player's verdicts, and the
+/// witness pairs for the one that will not order.
+fn build_f7c5(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor7.chambers[4].work;
+    for (index, history) in content::STACK_HISTORIES.iter().enumerate() {
+        let rect = geom::f7_step_row(index);
+        let verdict = work.verdicts[index];
+        spawn_button(
+            commands,
+            stage,
+            rect,
+            &format!(
+                "HISTORY {} — {}",
+                index + 1,
+                match verdict {
+                    1 => "LINEARIZABLE",
+                    2 => "NOT LINEARIZABLE",
+                    _ => "UNENTERED",
+                }
+            ),
+            pal,
+            verdict != 0,
+            fonts,
+        );
+        let ops: Vec<String> = history
+            .iter()
+            .map(|op| {
+                let value = match op.value {
+                    content::STACK_A => "A",
+                    content::STACK_B => "B",
+                    _ => "empty",
+                };
+                if op.push {
+                    format!("push {value} [{}–{}]", op.start, op.end)
+                } else {
+                    format!("pop→{value} [{}–{}]", op.start, op.end)
+                }
+            })
+            .collect();
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 33.0,
+            Some(420.0),
+            &ops.join(" · "),
+            10.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    let witness_rect = geom::f7_step_row(6);
+    spawn_button(
+        commands,
+        stage,
+        witness_rect,
+        &format!(
+            "WITNESS — {}",
+            if work.witness == 0 {
+                "UNNAMED".to_string()
+            } else {
+                let (a, b) = content::WITNESS_PAIRS[(work.witness - 1) as usize];
+                format!("{a} / {b}")
+            }
+        ),
+        pal,
+        work.witness != 0,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        witness_rect.x + 4.0,
+        witness_rect.y + 33.0,
+        Some(420.0),
+        "Name the pair no order can reconcile — for the one history that will not order.",
+        10.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        "No judge stamps this chamber: the diagnosis itself \
+         recomputes every verdict against the referee's search \
+         and the named witness. When it stands true, Prove it.",
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// The Standing Seamstress's hall: her three exhibits,
+/// the waits-for chart's four edges, the queue's three
+/// loads and its pressure exhibit, and the posted order
+/// of the four claimables.
+fn build_floor7_foe(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Standing Seamstress — the pattern that stands",
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        Color::srgb_u8(150, 120, 90),
+        "THE STANDING LOOM",
+        "its servants frozen mid-claim",
+    );
+    let stone = geom::stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text(
+        commands,
+        stage,
+        stone.x + 10.0,
+        stone.y + 8.0,
+        Some(stone.w - 20.0),
+        "THE LOOMSTONE",
+        12.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        stone.x + 10.0,
+        stone.y + 30.0,
+        Some(stone.w - 20.0),
+        content::LOOMSTONE_TEXT,
+        11.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let foe = &game.expedition.floor7.foe;
+    spawn_text(
+        commands,
+        stage,
+        56.0,
+        100.0,
+        None,
+        "HER DEMONSTRATION — THREE EXHIBITS, IN ORDER",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (exhibit, name) in content::FOE7_EXHIBITS.iter().enumerate() {
+        let label = if foe.exhibits[exhibit] {
+            format!("SHOWN — {name}")
+        } else {
+            format!("EXHIBIT — {name}")
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f7foe_exhibit_btn(exhibit),
+            &label,
+            pal,
+            false,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        56.0,
+        320.0,
+        None,
+        "AT CAPACITY — THE NEXT SEND WAITS",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_button(
+        commands,
+        stage,
+        geom::f7foe_pressure_btn(),
+        if foe.pressure {
+            "SHOWN — THE QUEUE STANDS FULL"
+        } else {
+            "FILL THE QUEUE"
+        },
+        pal,
+        false,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        72.0,
+        None,
+        "THE WAITS-FOR CHART — DRAW ITS EDGES",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (edge, text) in content::FOE7_EDGES.iter().enumerate() {
+        let label = if foe.edges[edge] {
+            format!("DRAWN — {text}")
+        } else {
+            format!("EDGE — {text}")
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f7foe_edge_row(edge),
+            &label,
+            pal,
+            foe.edges[edge],
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        276.0,
+        None,
+        "THE QUEUE — THREE STATED LOADS",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (load, (name, producers, per_producer)) in content::FOE7_LOADS.iter().enumerate() {
+        let label = if foe.loads[load] {
+            format!("WALKED — {} ({} × {})", name, producers, per_producer)
+        } else {
+            format!("WALK — {} ({} × {})", name, producers, per_producer)
+        };
+        spawn_button(
+            commands,
+            stage,
+            geom::f7foe_load_row(load),
+            &label,
+            pal,
+            foe.loads[load],
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        476.0,
+        None,
+        "THE POSTED ORDER — RANK EVERY CLAIMABLE",
+        11.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (claimable, name) in content::FOE7_CLAIMABLES.iter().enumerate() {
+        let rank = foe.order[claimable];
+        spawn_button(
+            commands,
+            stage,
+            geom::f7foe_order_btn(claimable),
+            &format!(
+                "{} — {}",
+                name,
+                if rank == 0 {
+                    "UNRANKED".to_string()
+                } else {
+                    format!("RANK {rank}")
+                }
+            ),
+            pal,
+            rank != 0,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        84.0,
+        None,
+        "The Demonstration's Standing",
+        14.0,
+        true,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        116.0,
+        Some(424.0),
+        &format!(
+            "Class #15 — Two Porters, One Stairwell. Ansel claims North \
+             then South; Berta, South then North. Exhibits shown: {} of \
+             3. The loom's run: {}. Loads reconciled: {} of 3. The posted \
+             order: {}. The gate: {}.",
+            foe.exhibits.iter().filter(|shown| **shown).count(),
+            if foe.loom_run {
+                "the deadlock found, on the loom itself"
+            } else {
+                "not yet run"
+            },
+            foe.loads.iter().filter(|walked| **walked).count(),
+            if game.expedition.floor7_foe_order_holds() {
+                "holds — the loom finds no deadlock under it"
+            } else {
+                "does not yet hold"
+            },
+            if foe.gate_passed {
+                "walked — the seal may be pressed"
+            } else {
+                "unwalked"
+            },
+        ),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        if foe.state == FoeState::Fallen {
+            "She sits in the first chair by the door, demonstrator \
+             still — and the hall breathes like a workshop again."
+        } else if game.seal_armed() {
+            "The seal is raised — the standing panel at the stair \
+             foot holds the confirm."
+        } else {
+            "When the demonstration stands complete and the queue \
+             stands walked, press the seal at the stair foot."
+        },
+        12.0,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+}
+
 fn build_floor7_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
     build_header(commands, game, pal, fonts, stage);
     build_room_base(
@@ -8778,6 +9160,58 @@ fn build_floor7_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
             fonts,
         );
         y += 24.0;
+    }
+    let foe_door = geom::door_foe7();
+    spawn_box(
+        commands,
+        stage,
+        foe_door,
+        Some(pal.card),
+        Some((2.0, pal.edge)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        foe_door.x,
+        foe_door.y + 10.0,
+        foe_door.w,
+        "THE FOE",
+        11.0,
+        true,
+        pal.ink_dim,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        foe_door.x,
+        foe_door.y + 28.0,
+        foe_door.w - 8.0,
+        "The Standing Seamstress",
+        14.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    let foe7_tag = match game.expedition.floor7.foe.state {
+        FoeState::Fallen => "SEATED",
+        FoeState::Exposed => "EXPOSED",
+        FoeState::Standing => "",
+    };
+    if !foe7_tag.is_empty() {
+        spawn_text_centered(
+            commands,
+            stage,
+            foe_door.x,
+            foe_door.y + 56.0,
+            foe_door.w,
+            foe7_tag,
+            11.0,
+            true,
+            pal.good,
+            fonts,
+        );
     }
     let foe_word = match game.expedition.floor7.foe.state {
         FoeState::Fallen => format!(

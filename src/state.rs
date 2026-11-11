@@ -802,6 +802,14 @@ pub struct LoomWork {
     /// script (0 = unforetold).
     #[serde(default)]
     pub predictions: [u8; 8],
+    /// Chamber 5: the six verdicts (0 = unentered,
+    /// 1 = linearizable, 2 = not).
+    #[serde(default)]
+    pub verdicts: [u8; 6],
+    /// Chamber 5: the named witness pair
+    /// (0 = unnamed, 1..=3 = the pair).
+    #[serde(default)]
+    pub witness: u8,
 }
 
 /// Floor 7, one chamber's progress.
@@ -828,6 +836,26 @@ pub struct Floor7FoeProgress {
     pub strike: StrikePhase,
     /// The date inscribed when the FOE fell (`YYYY-MM-DD`).
     pub fallen_date: Option<String>,
+    /// Exhibits demonstrated, in her order.
+    #[serde(default)]
+    pub exhibits: [bool; 3],
+    /// The waits-for chart's edges, drawn or not.
+    #[serde(default)]
+    pub edges: [bool; 4],
+    /// The deadlocking interleaving has been run on the
+    /// model loom.
+    #[serde(default)]
+    pub loom_run: bool,
+    /// The queue's stated loads, walked or not.
+    #[serde(default)]
+    pub loads: [bool; 3],
+    /// The at-capacity exhibit has been shown.
+    #[serde(default)]
+    pub pressure: bool,
+    /// The posted order: per-claimable rank
+    /// (0 = unranked, 1..=4).
+    #[serde(default)]
+    pub order: [u8; 4],
 }
 
 /// The whole of Floor 7: five chambers and the FOE.
@@ -858,6 +886,12 @@ impl Floor7Progress {
                 gate_passed: false,
                 strike: StrikePhase::Idle,
                 fallen_date: None,
+                exhibits: [false; 3],
+                edges: [false; 4],
+                loom_run: false,
+                loads: [false; 3],
+                pressure: false,
+                order: [0; 4],
             },
             foe_hints_used: 0,
         }
@@ -3708,6 +3742,254 @@ impl Expedition {
     /// Whether a Floor 7 chamber's work presently proves out.
     /// No chamber proves yet: the judges land with their
     /// chambers in Steps 2–4.
+    /// Floor 7's demon: has she demonstrated exhibit `n`
+    /// (0-based)?
+    pub fn floor7_foe_exhibit_seen(&self, exhibit: usize) -> bool {
+        self.floor7
+            .foe
+            .exhibits
+            .get(exhibit)
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// Record one of the Seamstress's demonstrations, in
+    /// her order: the claim orders (0), the waits-for chart
+    /// (1) — which may not be shown before the orders are
+    /// spoken — and the deadlocking interleaving (2), run
+    /// on the model loom itself, which requires the drawn
+    /// chart complete and the loom's own deadlock found.
+    pub fn floor7_foe_show_exhibit(&mut self, exhibit: usize) -> Result<(), Refusal> {
+        if !(0..3).contains(&exhibit) {
+            return Err(Refusal("she has three exhibits, no more".to_string()));
+        }
+        if exhibit > 0 && !self.floor7_foe_exhibit_seen(exhibit - 1) {
+            return Err(Refusal(
+                "her demonstrations come in her order: the one                  before this stands unshown"
+                    .to_string(),
+            ));
+        }
+        if exhibit == 2 {
+            if !(0..4).all(|edge| self.floor7_foe_edge_connected(edge)) {
+                return Err(Refusal(
+                    "the run waits on the chart: draw all four edges                      first — the deadlock is run against the drawn                      cycle, not a spoken one"
+                        .to_string(),
+                ));
+            }
+            let report =
+                crate::puzzles::loom::explore(&crate::puzzles::foe_servant_programs(), 4096);
+            if report.deadlock.is_none() {
+                return Err(Refusal(
+                    "the loom found no deadlock — the chart is not                      the servants' tangle"
+                        .to_string(),
+                ));
+            }
+            self.floor7.foe.loom_run = true;
+        }
+        self.floor7.foe.exhibits[exhibit] = true;
+        Ok(())
+    }
+
+    /// Is one waits-for edge drawn between the servants?
+    pub fn floor7_foe_edge_connected(&self, edge: usize) -> bool {
+        self.floor7.foe.edges.get(edge).copied().unwrap_or(false)
+    }
+
+    /// Draw one waits-for edge. The chart exhibit must
+    /// have been shown: edges are drawn on the chart, not
+    /// before it.
+    pub fn floor7_foe_connect_edge(&mut self, edge: usize) -> Result<(), Refusal> {
+        if !(0..4).contains(&edge) {
+            return Err(Refusal("the chart has four edges".to_string()));
+        }
+        if !self.floor7_foe_exhibit_seen(1) {
+            return Err(Refusal(
+                "the chart is not yet unrolled — her demonstrations                  come in her order"
+                    .to_string(),
+            ));
+        }
+        self.floor7.foe.edges[edge] = true;
+        Ok(())
+    }
+
+    /// Has one stated load been walked on the queue?
+    pub fn floor7_foe_load_walked(&self, load: usize) -> bool {
+        self.floor7.foe.loads.get(load).copied().unwrap_or(false)
+    }
+
+    /// Walk one stated load on the bounded queue and
+    /// return its report: the producers, per-producer
+    /// counts, and stated capacity come from the floor's
+    /// tables. The load counts as walked only when the
+    /// queue model reconciles the received set exactly.
+    pub fn floor7_foe_walk_load(
+        &mut self,
+        load: usize,
+    ) -> Result<crate::puzzles::QueueReport, Refusal> {
+        let Some((_, producers, per_producer)) = crate::content::FOE7_LOADS.get(load) else {
+            return Err(Refusal("the queue has three stated loads".to_string()));
+        };
+        let report = crate::puzzles::queue_run(
+            *producers,
+            *per_producer,
+            crate::content::FOE7_QUEUE_CAPACITY,
+        );
+        if !report.reconciled {
+            return Err(Refusal(
+                "the load does not reconcile — the queue is not                  walked on a hope"
+                    .to_string(),
+            ));
+        }
+        self.floor7.foe.loads[load] = true;
+        self.floor7_foe_refresh_gate();
+        Ok(report)
+    }
+
+    /// Has the at-capacity exhibit been shown — the queue
+    /// full, the next send waiting?
+    pub fn floor7_foe_pressure_shown(&self) -> bool {
+        self.floor7.foe.pressure
+    }
+
+    /// Show the at-capacity exhibit: fill the queue to its
+    /// stated capacity and find the next send standing
+    /// pending — waited, not dropped, not spun. Returns
+    /// the standing count and whether the send pends.
+    pub fn floor7_foe_show_pressure(&mut self) -> Result<(usize, bool), Refusal> {
+        let (standing, waits) =
+            crate::puzzles::queue_at_capacity(crate::content::FOE7_QUEUE_CAPACITY);
+        if !waits {
+            return Err(Refusal("the queue does not stand full".to_string()));
+        }
+        self.floor7.foe.pressure = true;
+        self.floor7_foe_refresh_gate();
+        Ok((standing, waits))
+    }
+
+    /// Her gate is the queue walked: all three stated
+    /// loads reconciled and the pressure exhibit shown.
+    /// Recomputed from the work each time it changes —
+    /// never merely claimed.
+    fn floor7_foe_refresh_gate(&mut self) {
+        let loads_ok = (0..3).all(|load| self.floor7_foe_load_walked(load));
+        self.floor7.foe.gate_passed = loads_ok && self.floor7.foe.pressure;
+    }
+
+    /// The rank posted for one claimable (1-based index
+    /// into the door's list; 0 = unranked).
+    pub fn floor7_foe_order_rank(&self, claimable: usize) -> u8 {
+        self.floor7.foe.order.get(claimable).copied().unwrap_or(0)
+    }
+
+    /// Cycle one claimable's posted rank: unranked, then
+    /// 1..=4, then unranked again.
+    pub fn floor7_foe_cycle_order(&mut self, claimable: usize) -> Result<(), Refusal> {
+        if !(0..4).contains(&claimable) {
+            return Err(Refusal("the door lists four claimables".to_string()));
+        }
+        self.floor7.foe.order[claimable] = (self.floor7.foe.order[claimable] + 1) % 5;
+        Ok(())
+    }
+
+    /// Does the posted order stand as the repair? A valid
+    /// total order under which the loom — run on both
+    /// servants re-cut to it — finds no deadlock.
+    pub fn floor7_foe_order_holds(&self) -> bool {
+        crate::puzzles::posted_order_holds(&self.floor7.foe.order)
+    }
+
+    /// The strike's proof: the orders spoken, the chart
+    /// drawn, the deadlock run on the loom, and the posted
+    /// order holding — every piece of her demonstration
+    /// complete.
+    pub fn floor7_foe_proof_complete(&self) -> bool {
+        (0..3).all(|exhibit| self.floor7_foe_exhibit_seen(exhibit))
+            && self.floor7.foe.loom_run
+            && self.floor7_foe_order_holds()
+    }
+
+    /// How many of her ladder's rungs have been read.
+    pub fn floor7_foe_hints_used(&self) -> u8 {
+        self.floor7.foe_hints_used
+    }
+
+    /// Read the next rung of her ladder (the count is the
+    /// ladder's memory, as on every floor).
+    pub fn floor7_foe_view_hint(&mut self) {
+        self.floor7.foe_hints_used = (self.floor7.foe_hints_used + 1).min(4);
+    }
+
+    /// Arm the Seamstress's sitting: the seal will strike
+    /// only when her whole demonstration stands — exhibits
+    /// run, the queue walked, the order posted and
+    /// holding.
+    pub fn floor7_foe_arm_strike(&mut self) -> Result<(), Refusal> {
+        if self.floor7.foe.state == FoeState::Fallen {
+            return Err(Refusal(
+                "the Seamstress has already sat, and stays seated".to_string(),
+            ));
+        }
+        if !self.floor7_foe_proof_complete() {
+            return Err(Refusal(
+                "the strike sleeps until the demonstration stands \
+                 complete: the orders spoken, the chart drawn, the \
+                 deadlock run on the loom, and a total order posted \
+                 under which it cannot recur"
+                    .to_string(),
+            ));
+        }
+        if !self.floor7.foe.gate_passed {
+            return Err(Refusal(
+                "the strike sleeps until the queue stands walked: \
+                 three stated loads reconciled, and the next send \
+                 seen waiting at capacity"
+                    .to_string(),
+            ));
+        }
+        self.floor7.foe.strike = StrikePhase::Armed;
+        Ok(())
+    }
+
+    /// The Seamstress sits. Requires the armed strike. The
+    /// loomstone joins the codex; the Threadweaver's Arc &
+    /// Queue goes in the pack.
+    pub fn floor7_foe_confirm_strike(&mut self, date: &str) -> Result<String, Refusal> {
+        if self.floor7.foe.state == FoeState::Fallen {
+            return Err(Refusal(
+                "the Seamstress has already sat, and stays seated".to_string(),
+            ));
+        }
+        if self.floor7.foe.strike != StrikePhase::Armed {
+            return Err(Refusal(
+                "the strike is not armed — press the seal first".to_string(),
+            ));
+        }
+        self.floor7.foe.strike = StrikePhase::Idle;
+        self.floor7.foe.state = FoeState::Fallen;
+        self.floor7.foe.fallen_date = Some(date.to_string());
+        if !self
+            .codex
+            .iter()
+            .any(|stone| stone == crate::content::LOOMSTONE_TEXT)
+        {
+            self.codex.push(crate::content::LOOMSTONE_TEXT.to_string());
+        }
+        if !self
+            .pack
+            .iter()
+            .any(|loot| loot == "The Threadweaver's Arc & Queue")
+        {
+            self.pack.push("The Threadweaver's Arc & Queue".to_string());
+        }
+        Ok(crate::content::FOE7_DEMONSTRATION.to_string())
+    }
+
+    /// The strike's receipt: she has sat, and the hall
+    /// keeps her seated.
+    pub fn floor7_receipt_standing(&self) -> bool {
+        self.floor7.foe.state == FoeState::Fallen
+    }
+
     pub fn floor7_diagnosed(&self, chamber: usize) -> bool {
         let Some(progress) = self.floor7.chambers.get(chamber) else {
             return false;
@@ -3724,6 +4006,11 @@ impl Expedition {
                     && crate::puzzles::wall_graded(&work.edges, work.weak_marked, work.stale_found)
             }
             3 => work.watched && work.judged && crate::puzzles::arc_foretold(&work.predictions),
+            4 => {
+                work.watched
+                    && crate::puzzles::stack_verdicts_true(&work.verdicts)
+                    && work.witness == crate::content::WITNESS_KEY + 1
+            }
             _ => false,
         }
     }
@@ -4985,6 +5272,115 @@ mod tests {
         assert_eq!(work.spin_annotations, [0; 4]);
     }
 
+    /// Floor 7 Step 4 state: the Lock-Free Stack judges on
+    /// the referee's searched verdicts plus the named
+    /// witness.
+    #[test]
+    fn floor7_stack_chamber_judged() {
+        let mut expedition = Expedition::new();
+        {
+            let work = &mut expedition.floor7.chambers[4].work;
+            work.watched = true;
+            work.verdicts = [1, 1, 2, 1, 1, 1];
+        }
+        // Verdicts true, witness unnamed: not yet.
+        assert!(!expedition.floor7_diagnosed(4));
+        // Either wrong pair named: still not yet, though
+        // the verdicts stand.
+        expedition.floor7.chambers[4].work.witness = 1;
+        assert!(!expedition.floor7_diagnosed(4));
+        expedition.floor7.chambers[4].work.witness = 3;
+        assert!(!expedition.floor7_diagnosed(4));
+        expedition.floor7.chambers[4].work.witness = 2;
+        assert!(expedition.floor7_diagnosed(4));
+        assert!(expedition.floor7_file_proof(4).is_ok());
+        assert!(expedition.floor7_repair_chamber(4).is_ok());
+        expedition.floor7_reset_chamber(4);
+        assert_eq!(expedition.floor7.chambers[4].work.verdicts, [0; 6]);
+    }
+
+    /// Floor 7's demon at the state level: exhibits in her
+    /// order (the chart before its edges, the run after the
+    /// chart), the queue walked load by load, the posted
+    /// order holding — then the strike's receipt.
+    #[test]
+    fn floor7_seamstress_demonstration_judged() {
+        let mut expedition = Expedition::new();
+        // The chart cannot precede the spoken orders, and
+        // its edges cannot precede the chart.
+        assert!(expedition.floor7_foe_show_exhibit(1).is_err());
+        assert!(expedition.floor7_foe_connect_edge(0).is_err());
+        expedition
+            .floor7_foe_show_exhibit(0)
+            .expect("orders spoken");
+        expedition.floor7_foe_show_exhibit(1).expect("chart shown");
+        // The run refuses an unfinished chart.
+        assert!(expedition.floor7_foe_show_exhibit(2).is_err());
+        for edge in 0..4 {
+            expedition
+                .floor7_foe_connect_edge(edge)
+                .expect("edge drawn");
+        }
+        expedition.floor7_foe_show_exhibit(2).expect("deadlock run");
+        assert!(expedition.floor7.foe.loom_run);
+        // The gate: three loads and the pressure exhibit.
+        assert!(!expedition.floor7.foe.gate_passed);
+        for load in 0..3 {
+            let report = expedition.floor7_foe_walk_load(load).expect("load walked");
+            assert!(report.reconciled);
+        }
+        assert!(!expedition.floor7.foe.gate_passed);
+        let (standing, waits) = expedition.floor7_foe_show_pressure().expect("pressure");
+        assert_eq!(standing, crate::content::FOE7_QUEUE_CAPACITY);
+        assert!(waits);
+        assert!(expedition.floor7.foe.gate_passed);
+        // The repair: no order posted, no proof, no arm.
+        assert!(!expedition.floor7_foe_proof_complete());
+        assert!(expedition.floor7_foe_arm_strike().is_err());
+        assert!(expedition.floor7_foe_confirm_strike("2026-11-10").is_err());
+        for (claimable, rank) in [(0usize, 1u8), (1, 2), (2, 3), (3, 4)] {
+            for _ in 0..rank {
+                expedition
+                    .floor7_foe_cycle_order(claimable)
+                    .expect("rank posted");
+            }
+            assert_eq!(expedition.floor7_foe_order_rank(claimable), rank);
+        }
+        assert!(expedition.floor7_foe_order_holds());
+        assert!(expedition.floor7_foe_proof_complete());
+        assert!(!expedition.floor7_complete());
+        expedition.floor7_foe_arm_strike().expect("the strike arms");
+        expedition
+            .floor7_foe_confirm_strike("2026-11-10")
+            .expect("she sits");
+        assert_eq!(expedition.floor7.foe.state, FoeState::Fallen);
+        assert!(expedition.floor7_receipt_standing());
+        assert!(
+            expedition
+                .codex
+                .iter()
+                .any(|stone| stone == crate::content::LOOMSTONE_TEXT)
+        );
+        assert!(
+            expedition
+                .pack
+                .iter()
+                .any(|loot| loot == "The Threadweaver's Arc & Queue")
+        );
+        assert!(!expedition.floor7_complete(), "chambers still stand");
+    }
+
+    /// Adversarial: a posted order that ranks the stairs
+    /// but doubles a rank elsewhere is no total order —
+    /// the loom never gets to save it.
+    #[test]
+    fn floor7_posted_order_must_be_total_in_state() {
+        let mut expedition = Expedition::new();
+        expedition.floor7.foe.order = [1, 2, 2, 4];
+        assert!(!expedition.floor7_foe_order_holds());
+        expedition.floor7.foe.order = [3, 4, 1, 2];
+        assert!(expedition.floor7_foe_order_holds());
+    }
     /// Floor 7 Step 3 state: the Charter Wall judges on the
     /// graded wall, recomputed; Arc and Weak Echoes on the
     /// foretold script, traced by the model.

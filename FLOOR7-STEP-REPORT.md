@@ -214,4 +214,89 @@ chalked.
 - Xvfb smoke: cold_start_ms=1108, zero panics.
 - `#![forbid(unsafe_code)]` intact.
 
+Commit: `d456574` on `pax/floor2-build-20261109`.
+
+## Step 4 — The Lock-Free Stack and the Standing Seamstress
+
+**Built.** Chamber 5 (The Lock-Free Stack): `LoomWork.verdicts[6]`
++ `witness`; content `STACK_HISTORIES` — six recorded histories as
+(push/pop, value, start, end) operations — and `WITNESS_PAIRS` with
+`WITNESS_KEY` 1 (the push of B, the pop that returned A). The
+referee in puzzles is a REAL linearizability search:
+`history_linearizable` tries every sequential order the turn
+intervals allow (real-time precedence: an operation may be placed
+only when nothing unplaced must precede it) against a sequential
+stack; five histories order, the third — B pushed and never popped,
+yet the pop returns A beneath it — does not. `stack_verdicts_true`
+recomputes all six; the chamber has no judge press — the diagnosis
+itself recomputes (verdicts + named witness). Presses
+`F7VerdictCycle` / `F7WitnessCycle`.
+
+The FOE (The Standing Seamstress, class #15 — Two Porters, One
+Stairwell): `Floor7FoeProgress` gains exhibits[3], edges[4],
+loom_run, loads[3], pressure, order[4] (all serde-defaulted, so
+Step 1–3 era v7 saves still load). Her demonstration, in her order:
+exhibit 0 the servants' claim orders (Ansel North→South, Berta
+South→North); exhibit 1 the waits-for chart, its four edges drawn
+by `F7FoeEdge` presses (edges refuse before the chart); exhibit 2
+runs the deadlock on the model loom itself — state runs
+`loom::explore` on the servants' opposite-order programs and
+requires a deadlock found; the press text reports the found trace
+and the searched count. Her gate is the bounded queue: three
+stated loads (2×60, 3×45, 4×250 at capacity 8) walked on puzzles'
+`queue_run` — a real turn-based producer/consumer model with
+back-pressure (at capacity a producer's turn passes; nothing drops,
+nothing spins) whose received set is reconciled exactly by dense
+id — plus the at-capacity exhibit (`queue_at_capacity`: the queue
+stands full, the next send pends). The repair is the posted order:
+four claimables ranked (the two stairs plus the brazier and the
+staff, carried from the floor below); `posted_order_holds`
+requires a true permutation AND `loom::explore` on both servants
+re-cut to the posted stair order returning no deadlock. Strike
+arming (`floor7_foe_arm_strike`, Refusal-spoken) requires proof
+(exhibits + loom run + order holds) and gate; the confirm seats
+her — loomstone text to the codex, "The Threadweaver's Arc &
+Queue" to the pack. Full wiring mirrors Floor 6's FOE: Screen::
+Floor7Foe, DoorFoe7 (hub layout + drawn door), exhibits/edges/
+loads/pressure/order elements, seal arm/confirm arms, Enumerate =
+exhibit 0, her own 4-rung hint ladder, inscription/demonstration
+readings, token/cell-blocked/tab lists. The puzzles suite carries
+the DS-13 million-message exact-set proof over `queue_run`
+(10 × 100,000 at capacity 64: sent = received = 1,000,000,
+reconciled).
+
+**Incidents, self-caught and cured in-step.** (1) The first
+splice's Enumerate insert duplicated the verb arm's opener —
+game.rs failed to parse; restored from git and re-spliced with
+the insert inside the existing arm. (2) Two splicer guards were
+non-unique across floors (`pub exhibits: [bool; 3]`,
+`pub verdicts` exist in elder floors' structs), so the FoeProgress
+and LoomWork field blocks were silently skipped while their
+consumers landed — E0609s at first compile; both blocks applied
+by a direct fix-up splice with unique anchors. Guards in this
+programme are now checked for cross-floor collisions before use.
+
+**Gates** (primo, rustc 1.99.0; evidence
+`~/.local/share/pax/niflheim-floor7-step4-build-20261110/`):
+- `cargo fmt --check` — clean.
+- `cargo test` — **228 passed / 0 failed** (217 + 7 puzzles + 3
+  state + 1 GUI), re-run after the clippy cure: still 228/0.
+- `cargo clippy --all-targets -- -D warnings` — exit 0
+  (`clippy2.log`). One curative fix: `queue_run`'s producer loop
+  rewritten to `next.iter_mut().enumerate()` (first run at
+  `clippy.log`).
+- Theodolite (cured protocol; bacon producer live): planted run —
+  game.rs count=3, E0308 from `theodolite_route_control` at line
+  10515, the other four touched files count=0 in the same session;
+  restore sha256 `9338b49e…` verified; clean run — all five touched
+  files count=0. PASS both modes.
+- Determinism: state-level probe through the whole floor — all
+  five chambers repaired and the Seamstress seated,
+  `floor7_complete()` asserted in-probe (transient, removed after,
+  DS-9) — two runs byte-identical, sha256
+  `84346cd774e7a193a486764db5f61bba4d6ae6f2d04981d91c1358e97495bca3`.
+- Android: exit 0 (libniflheim.so 1,350,816,104 bytes).
+- Xvfb smoke: cold_start_ms=1049, zero panics.
+- `#![forbid(unsafe_code)]` intact.
+
 Commit: (this commit)

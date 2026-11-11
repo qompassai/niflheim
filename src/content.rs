@@ -4405,3 +4405,195 @@ pub const ARC_SCRIPT: [ArcStep; 8] = [
         op: 4,
     },
 ];
+
+/// One operation in a recorded stack history: a push of a
+/// value, or a pop and the value it returned (255 = the
+/// pop found the stack empty), over the turn-count
+/// interval [start, end] during which it ran.
+#[derive(Clone, Copy, Debug)]
+pub struct StackOp {
+    /// True for a push, false for a pop.
+    pub push: bool,
+    /// The pushed value, or the value the pop returned
+    /// (255 = empty).
+    pub value: u8,
+    /// The turn the operation began.
+    pub start: u8,
+    /// The turn the operation ended.
+    pub end: u8,
+}
+
+/// Shorthand for a history's push.
+const fn push(value: u8, start: u8, end: u8) -> StackOp {
+    StackOp {
+        push: true,
+        value,
+        start,
+        end,
+    }
+}
+
+/// Shorthand for a history's pop.
+const fn pop(value: u8, start: u8, end: u8) -> StackOp {
+    StackOp {
+        push: false,
+        value,
+        start,
+        end,
+    }
+}
+
+/// Values as the stack speaks them: 1 = A, 2 = B.
+pub const STACK_A: u8 = 1;
+/// The second shuttle.
+pub const STACK_B: u8 = 2;
+/// A pop that found nothing.
+pub const STACK_EMPTY: u8 = 255;
+
+/// Floor 7 Chamber 5's six recorded histories. Five admit
+/// a sequential order that produces them; the third does
+/// not — B stands pushed and never popped, yet the pop
+/// returns A beneath it. The referee in puzzles decides
+/// each history by search, not by this table's say-so.
+pub const STACK_HISTORIES: [&[StackOp]; 6] = [
+    &[push(STACK_A, 1, 2), pop(STACK_A, 3, 4)],
+    &[push(STACK_A, 1, 3), push(STACK_B, 2, 4), pop(STACK_B, 5, 6)],
+    &[push(STACK_A, 1, 2), push(STACK_B, 3, 4), pop(STACK_A, 5, 6)],
+    &[
+        push(STACK_A, 1, 2),
+        pop(STACK_A, 3, 4),
+        push(STACK_B, 5, 6),
+        pop(STACK_B, 7, 8),
+    ],
+    &[push(STACK_A, 1, 4), push(STACK_B, 2, 3), pop(STACK_B, 5, 6)],
+    &[
+        pop(STACK_EMPTY, 1, 2),
+        push(STACK_A, 3, 4),
+        pop(STACK_A, 5, 6),
+    ],
+];
+
+/// The witness pairs offered for the one history that
+/// will not order: two operations whose order cannot be
+/// reconciled. The true pair is the second: the push that
+/// buried A, and the pop that returned A over it.
+pub const WITNESS_PAIRS: [(&str, &str); 3] = [
+    ("the push of A", "the push of B"),
+    ("the push of B", "the pop that returned A"),
+    ("the push of A", "the pop that returned A"),
+];
+
+/// The true witness pair's index into WITNESS_PAIRS.
+pub const WITNESS_KEY: u8 = 1;
+
+/// The Standing Seamstress's name, as the halls speak it.
+pub const FOE7_NAME: &str = "The Standing Seamstress";
+
+/// Her class line, filed in the bestiary: class #15 names
+/// the two porters' tangle, the pattern she was made from.
+pub const FOE7_CLASS: &str = "Class #15 — Two Porters, One Stairwell, as the bestiary files her.";
+
+/// The Seamstress confronted — how she came to stand.
+pub const FOE7_INTRO: &str = "At the hall's end the pattern stands up off the loom \
+    and does not let go of its threads. The Standing Seamstress was the \
+    weavers'-hall's own demonstrator: a hundred hands' worth of pattern \
+    given one standing shape, so apprentices could watch the chairs' \
+    work made visible. When the chairs fell silent she kept demonstrating \
+    — to no one, for no one — and the demonstration perfected itself into \
+    her. She does not hate you. She has never once seen you: in her \
+    pattern there is only the work, the waits, and the hands that must \
+    be shown their own tangle before anyone may pass.";
+
+/// The inscription over her door: the law the whole
+/// floor runs on, stated once, at the end.
+pub const FOE7_INSCRIPTION: &str = "A GLOBAL ORDER FORBIDS CYCLES.";
+
+/// The loomstone's text, in the floor's own words.
+pub const LOOMSTONE_TEXT: &str = "A global order forbids cycles.";
+
+/// The three exhibits she demonstrates, in order.
+pub const FOE7_EXHIBITS: [&str; 3] = [
+    "Each servant's claim order, spoken aloud",
+    "The waits-for chart, drawn between them",
+    "The deadlocking interleaving, run on the loom itself",
+];
+
+/// Her two servants and their standing claim orders.
+pub const FOE7_SERVANTS: [(&str, &str, &str); 2] = [
+    (
+        "Ansel",
+        "claims the North Stair, then the South",
+        "North, then South",
+    ),
+    (
+        "Berta",
+        "claims the South Stair, then the North",
+        "South, then North",
+    ),
+];
+
+/// The waits-for chart's four edges, as the player joins
+/// them: holder, held thing, waiter, waited thing — the
+/// cycle stated in pieces.
+pub const FOE7_EDGES: [&str; 4] = [
+    "Ansel waits for the South Stair",
+    "The South Stair is held by Berta",
+    "Berta waits for the North Stair",
+    "The North Stair is held by Ansel",
+];
+
+/// The four claimables the posted order ranks: the two
+/// stairs the cycle turns on, and two of the house's
+/// furniture carried over from the floor below.
+pub const FOE7_CLAIMABLES: [&str; 4] = [
+    "the North Stair",
+    "the South Stair",
+    "the brazier",
+    "the staff",
+];
+
+/// The queue hall's three stated loads, as (name,
+/// producers, messages per producer). The queue's stated
+/// capacity stands in FOE7_QUEUE_CAPACITY.
+pub const FOE7_LOADS: [(&str, u32, u32); 3] = [
+    ("the morning load", 2, 60),
+    ("the noon load", 3, 45),
+    ("the evening load", 4, 250),
+];
+
+/// The queue's stated capacity: eight messages standing.
+pub const FOE7_QUEUE_CAPACITY: usize = 8;
+
+/// What her fall restores, in her own pattern's words.
+pub const FOE7_DEMONSTRATION: &str = "When the demonstration completes, the Seamstress does the \
+    strangest thing a standing pattern can do: she sits. The threads \
+    slacken into one woven band — the floor's pattern, whole, the waits \
+    charted and the cycle forbidden by a posted order — and the hall \
+    breathes like a workshop again. She keeps the first chair by the \
+    door, demonstrator still, and watches the apprentices' hands with \
+    something that is almost pride. The loomstone is pressed into your \
+    palm as you pass: a global order forbids cycles — hers, now, is \
+    the order that proves it.";
+
+/// The Standing Seamstress's hint ladder, in her own
+/// demonstrator's patience.
+pub fn floor7_foe_hints() -> [&'static str; 4] {
+    [
+        "She demonstrates in her order, and only in her order: the \
+         claim orders spoken, the chart drawn, the interleaving run. \
+         Nothing skips its turn — that is rather the point of her.",
+        "The chart has four edges: Ansel waits for the South Stair; \
+         the South Stair is held by Berta; Berta waits for the North \
+         Stair; the North Stair is held by Ansel. Drawn whole, it is \
+         a cycle with no first step.",
+        "Her gate is a queue, not a key: three stated loads walked \
+         until each received set reconciles exactly with its sent \
+         set, and one moment at capacity, where the next send waits \
+         — visibly waits — instead of dropping or spinning.",
+        "The repair is an order, posted where all hands can read it: \
+         rank all four claimables, each rank once. Under any true \
+         total order both servants claim the stairs in the same \
+         sequence — and the loom, run on the re-cut pair, finds no \
+         deadlock. A global order forbids cycles.",
+    ]
+}

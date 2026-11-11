@@ -3034,3 +3034,306 @@ mod floor7_second_tests {
         assert!(!arc_foretold(&foretold));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Floor 7 — the Lock-Free Stack and the Loom of Many Hands.
+// The stack's referee is a real linearizability search:
+// every sequential order the histories' turn intervals
+// allow is tried against a sequential stack. The FOE runs
+// on the model loom itself, and its gate on the bounded
+// queue model: producers, a bounded queue, back-pressure
+// when full — the received set reconciled exactly.
+// ---------------------------------------------------------------------------
+
+use crate::content::StackOp;
+
+/// Whether operation `a` must precede operation `b` in any
+/// sequential account: a ended before b began.
+fn must_precede(a: &StackOp, b: &StackOp) -> bool {
+    a.end < b.start
+}
+
+/// Try the remaining operations in every allowed order:
+/// an operation may be placed next when nothing unplaced
+/// must precede it. The sequential stack judges each
+/// placement — a pop must return the stack's top, or
+/// nothing from an empty stack.
+fn order_search(ops: &[StackOp], placed: &mut [bool], stack: &mut Vec<u8>, left: usize) -> bool {
+    if left == 0 {
+        return true;
+    }
+    for index in 0..ops.len() {
+        if placed[index] {
+            continue;
+        }
+        let blocked = (0..ops.len()).any(|other| {
+            !placed[other] && other != index && must_precede(&ops[other], &ops[index])
+        });
+        if blocked {
+            continue;
+        }
+        let op = &ops[index];
+        if op.push {
+            placed[index] = true;
+            stack.push(op.value);
+            if order_search(ops, placed, stack, left - 1) {
+                return true;
+            }
+            stack.pop();
+            placed[index] = false;
+        } else if stack.is_empty() {
+            if op.value != crate::content::STACK_EMPTY {
+                continue;
+            }
+            placed[index] = true;
+            if order_search(ops, placed, stack, left - 1) {
+                return true;
+            }
+            placed[index] = false;
+        } else {
+            if *stack.last().expect("non-empty") != op.value {
+                continue;
+            }
+            placed[index] = true;
+            let value = stack.pop().expect("non-empty");
+            if order_search(ops, placed, stack, left - 1) {
+                return true;
+            }
+            stack.push(value);
+            placed[index] = false;
+        }
+    }
+    false
+}
+
+/// Whether one recorded history is linearizable: some
+/// sequential order, respecting the turn intervals,
+/// produces exactly its results.
+pub fn history_linearizable(ops: &[StackOp]) -> bool {
+    let mut placed = vec![false; ops.len()];
+    let mut stack = Vec::new();
+    order_search(ops, &mut placed, &mut stack, ops.len())
+}
+
+/// Whether the six verdicts stand true against the
+/// referee's search (recorded 1 = linearizable,
+/// 2 = not).
+pub fn stack_verdicts_true(verdicts: &[u8; 6]) -> bool {
+    crate::content::STACK_HISTORIES
+        .iter()
+        .enumerate()
+        .all(|(index, history)| {
+            verdicts[index] == if history_linearizable(history) { 1 } else { 2 }
+        })
+}
+
+/// The bounded many-handed queue's report on one load.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct QueueReport {
+    /// Messages the producers sent.
+    pub sent: u64,
+    /// Messages the consumer received.
+    pub received: u64,
+    /// Whether the received set is exactly the sent set:
+    /// every message once, none lost, none invented.
+    pub reconciled: bool,
+}
+
+/// Run one load on the bounded queue: the producers take
+/// turns in fixed order, each sending one message per
+/// turn while the queue has room — at capacity a producer
+/// WAITS (its turn passes; nothing is dropped, nothing
+/// spins in place) — and the consumer takes one message
+/// per turn. Message ids are dense (producer-major), so
+/// the received set is checked exactly, id by id.
+pub fn queue_run(producers: u32, per_producer: u32, capacity: usize) -> QueueReport {
+    let total = (producers * per_producer) as usize;
+    let mut queue: std::collections::VecDeque<u32> = std::collections::VecDeque::new();
+    let mut seen = vec![false; total];
+    let mut next = vec![0u32; producers as usize];
+    let mut sent = 0u64;
+    let mut received = 0u64;
+    let mut exact = true;
+    while (received as usize) < total {
+        for (producer, next_id) in next.iter_mut().enumerate() {
+            if *next_id < per_producer && queue.len() < capacity.max(1) {
+                let id = producer as u32 * per_producer + *next_id;
+                *next_id += 1;
+                queue.push_back(id);
+                sent += 1;
+            }
+        }
+        if let Some(id) = queue.pop_front() {
+            if seen[id as usize] {
+                exact = false;
+            }
+            seen[id as usize] = true;
+            received += 1;
+        }
+    }
+    QueueReport {
+        sent,
+        received,
+        reconciled: exact && seen.iter().all(|held| *held) && sent == received,
+    }
+}
+
+/// The at-capacity demonstration: fill the queue to its
+/// stated capacity; the next send finds no room and
+/// WAITS — it stands pending, neither dropped nor spun.
+/// Returns the standing count and whether the next send
+/// pends.
+pub fn queue_at_capacity(capacity: usize) -> (usize, bool) {
+    let mut queue: std::collections::VecDeque<u32> = std::collections::VecDeque::new();
+    for id in 0..capacity as u32 {
+        queue.push_back(id);
+    }
+    let next_waits = queue.len() >= capacity;
+    (queue.len(), next_waits)
+}
+
+/// The FOE's two servants as loom programs over the two
+/// stairs (claimables 0 and 1), in their standing —
+/// opposite — claim orders.
+pub fn foe_servant_programs() -> Vec<Vec<crate::puzzles::loom::LoomOp>> {
+    use crate::puzzles::loom::LoomOp;
+    vec![
+        vec![
+            LoomOp::Claim(0),
+            LoomOp::Claim(1),
+            LoomOp::Release(1),
+            LoomOp::Release(0),
+        ],
+        vec![
+            LoomOp::Claim(1),
+            LoomOp::Claim(0),
+            LoomOp::Release(0),
+            LoomOp::Release(1),
+        ],
+    ]
+}
+
+/// The servants re-cut to a posted total order: both
+/// claim the stairs in the order's stair sequence (the
+/// order's other claimables are house furniture — the
+/// servants' stairs are what the cycle turns on).
+pub fn foe_recut_programs(order: &[u8; 4]) -> Vec<Vec<crate::puzzles::loom::LoomOp>> {
+    use crate::puzzles::loom::LoomOp;
+    let mut stairs: Vec<u8> = (0..4u8).filter(|claimable| *claimable < 2).collect();
+    stairs.sort_by_key(|claimable| order[*claimable as usize]);
+    let program = |stairs: &[u8]| -> Vec<LoomOp> {
+        let mut ops: Vec<LoomOp> = stairs.iter().map(|stair| LoomOp::Claim(*stair)).collect();
+        ops.extend(stairs.iter().rev().map(|stair| LoomOp::Release(*stair)));
+        ops
+    };
+    vec![program(&stairs), program(&stairs)]
+}
+
+/// Whether a posted order is the repair's truth: a valid
+/// total order of the four claimables (each rank 1..=4
+/// exactly once) under which the loom — run on the
+/// re-cut servants — finds no deadlock.
+pub fn posted_order_holds(order: &[u8; 4]) -> bool {
+    let mut ranks = [0u8; 4];
+    for rank in order {
+        if *rank == 0 || *rank > 4 {
+            return false;
+        }
+        ranks[(*rank - 1) as usize] += 1;
+    }
+    if ranks != [1, 1, 1, 1] {
+        return false;
+    }
+    let report = crate::puzzles::loom::explore(&foe_recut_programs(order), 4096);
+    report.deadlock.is_none()
+}
+
+#[cfg(test)]
+mod floor7_third_tests {
+    use super::*;
+
+    /// Validation: five of the six histories order; the
+    /// referee's search finds their sequential accounts.
+    #[test]
+    fn five_histories_order() {
+        for (index, history) in crate::content::STACK_HISTORIES.iter().enumerate() {
+            assert_eq!(history_linearizable(history), index != 2, "history {index}");
+        }
+        assert!(stack_verdicts_true(&[1, 1, 2, 1, 1, 1]));
+    }
+
+    /// Adversarial: calling the buried-A history sound —
+    /// or any honest history torn — fails the set; and a
+    /// hand-made history whose pop returns a value never
+    /// pushed is refused by the same search.
+    #[test]
+    fn verdict_lies_fail() {
+        assert!(!stack_verdicts_true(&[1, 1, 1, 1, 1, 1]));
+        assert!(!stack_verdicts_true(&[1, 2, 2, 1, 1, 1]));
+        assert!(!stack_verdicts_true(&[0, 1, 2, 1, 1, 1]));
+        let invented = [StackOp {
+            push: false,
+            value: 1,
+            start: 1,
+            end: 2,
+        }];
+        assert!(!history_linearizable(&invented));
+    }
+
+    /// Validation: the FOE's standing orders deadlock on
+    /// the loom, and every posted total order — stairs
+    /// first or last — clears the cycle when both
+    /// servants are re-cut to it.
+    #[test]
+    fn foe_orders_on_the_loom() {
+        let report = crate::puzzles::loom::explore(&foe_servant_programs(), 4096);
+        assert!(report.deadlock.is_some());
+        assert!(posted_order_holds(&[1, 2, 3, 4]));
+        assert!(posted_order_holds(&[4, 3, 2, 1]));
+        assert!(posted_order_holds(&[2, 1, 4, 3]));
+    }
+
+    /// Adversarial: a posted order with a doubled or
+    /// missing rank is no total order, whatever the loom
+    /// would say of it.
+    #[test]
+    fn posted_order_must_be_total() {
+        assert!(!posted_order_holds(&[1, 1, 2, 3]));
+        assert!(!posted_order_holds(&[0, 1, 2, 3]));
+        assert!(!posted_order_holds(&[1, 2, 3, 5]));
+    }
+
+    /// Validation: the queue carries its stated loads —
+    /// the evening count among them — with the received
+    /// set reconciling exactly, every time.
+    #[test]
+    fn queue_loads_reconcile() {
+        for (producers, per_producer) in [(2, 60), (3, 45), (4, 250)] {
+            let report = queue_run(producers, per_producer, 8);
+            assert!(report.reconciled);
+            assert_eq!(report.sent, report.received);
+            assert_eq!(report.sent, (producers * per_producer) as u64);
+        }
+    }
+
+    /// The million-message exact-set proof (DS-13): a
+    /// real run of the queue model at scale — ten hands,
+    /// a hundred thousand messages each — and the
+    /// received set is the sent set, exactly.
+    #[test]
+    fn queue_million_messages_exact() {
+        let report = queue_run(10, 100_000, 64);
+        assert_eq!(report.sent, 1_000_000);
+        assert_eq!(report.received, 1_000_000);
+        assert!(report.reconciled);
+    }
+
+    /// Validation: at capacity the next send waits — the
+    /// queue stands full and the pending send is a state,
+    /// not a drop and not a spin.
+    #[test]
+    fn queue_full_waits() {
+        assert_eq!(queue_at_capacity(8), (8, true));
+        assert_eq!(queue_at_capacity(1), (1, true));
+    }
+}

@@ -210,6 +210,8 @@ pub enum Screen {
     Floor7Hub,
     /// A Floor 7 chamber, by index (0-4).
     Floor7Chamber(usize),
+    /// Floor 7's FOE: the Standing Seamstress.
+    Floor7Foe,
 }
 
 /// What a reading overlay is showing.
@@ -392,6 +394,22 @@ pub enum El {
     F6Invariant(u8),
     /// Floor 6's hub: the FOE's door.
     DoorFoe6,
+    /// Floor 7's hub: the FOE's door.
+    DoorFoe7,
+    /// Floor 7 Chamber 5: cycle one history's verdict.
+    F7VerdictCycle(u8),
+    /// Floor 7 Chamber 5: cycle the named witness pair.
+    F7WitnessCycle,
+    /// The FOE: show one of the Seamstress's exhibits.
+    F7Exhibit(u8),
+    /// The FOE: draw one waits-for edge.
+    F7FoeEdge(u8),
+    /// The FOE: walk one stated load on the queue.
+    F7Load(u8),
+    /// The FOE: show the at-capacity exhibit.
+    F7Pressure,
+    /// The FOE: cycle one claimable's posted rank.
+    F7OrderCycle(u8),
     /// The FOE: exhibit one sight of the staff.
     F6Exhibit(u8),
     /// The FOE: walk one of the loom's four cases.
@@ -741,6 +759,7 @@ enum ArmedFor {
     Foe5,
     /// Floor 6 FOE's strike.
     Foe6,
+    Foe7,
     /// The FOE's strike.
     Foe,
     /// Floor 2 FOE's strike.
@@ -910,6 +929,7 @@ impl Game {
                 | Screen::Floor4Foe
                 | Screen::Floor5Foe
                 | Screen::Floor6Foe
+                | Screen::Floor7Foe
                 | Screen::Foe
                 | Screen::Floor2Foe
         )
@@ -965,6 +985,7 @@ impl Game {
             Screen::Floor4Foe => self.expedition.floor4.foe.strike == StrikePhase::Armed,
             Screen::Floor5Foe => self.expedition.floor5.foe.strike == StrikePhase::Armed,
             Screen::Floor6Foe => self.expedition.floor6.foe.strike == StrikePhase::Armed,
+            Screen::Floor7Foe => self.expedition.floor7.foe.strike == StrikePhase::Armed,
             _ => false,
         }
     }
@@ -1195,7 +1216,8 @@ impl Game {
             | Screen::Floor3Foe
             | Screen::Floor4Foe
             | Screen::Floor5Foe
-            | Screen::Floor6Foe => vec![
+            | Screen::Floor6Foe
+            | Screen::Floor7Foe => vec![
                 Verb::Examine,
                 Verb::Read,
                 Verb::Enumerate,
@@ -1340,6 +1362,36 @@ pub mod geom {
     /// the earlier floors proved for theirs.
     pub fn door_foe6() -> Rect {
         Rect::new(600.0, 292.0, 168.0, 124.0)
+    }
+
+    /// Floor 7's hub: the Seamstress's door.
+    pub fn door_foe7() -> Rect {
+        Rect::new(600.0, 292.0, 168.0, 124.0)
+    }
+
+    /// Floor 7's FOE: one exhibit's button.
+    pub fn f7foe_exhibit_btn(index: usize) -> Rect {
+        Rect::new(96.0, 140.0 + index as f32 * 52.0, 220.0, 30.0)
+    }
+
+    /// Floor 7's FOE: the at-capacity button.
+    pub fn f7foe_pressure_btn() -> Rect {
+        Rect::new(96.0, 316.0, 220.0, 30.0)
+    }
+
+    /// Floor 7's FOE: one waits-for edge's row.
+    pub fn f7foe_edge_row(index: usize) -> Rect {
+        Rect::new(380.0, 96.0 + index as f32 * 48.0, 300.0, 30.0)
+    }
+
+    /// Floor 7's FOE: one stated load's row.
+    pub fn f7foe_load_row(index: usize) -> Rect {
+        Rect::new(380.0, 300.0 + index as f32 * 48.0, 300.0, 30.0)
+    }
+
+    /// Floor 7's FOE: one claimable's order button.
+    pub fn f7foe_order_btn(index: usize) -> Rect {
+        Rect::new(380.0 + index as f32 * 180.0, 500.0, 168.0, 30.0)
     }
 
     /// Floor 6 Chamber 5: one datum's housing row.
@@ -1945,7 +1997,8 @@ impl Game {
             | Screen::Floor3Foe
             | Screen::Floor4Foe
             | Screen::Floor5Foe
-            | Screen::Floor6Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
+            | Screen::Floor6Foe
+            | Screen::Floor7Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
             Screen::Title => true,
         }
     }
@@ -2204,6 +2257,12 @@ impl Game {
                          shared and exclusive, and a counter beside it \
                          reading a number the state does not hold."
                     }
+                    Screen::Floor7Foe => {
+                        "The standing loom: two servants frozen mid-claim \
+                         on two stairs, each holding one stair and \
+                         reaching for the other — and the pattern that \
+                         wears them both, watching you watch them."
+                    }
                     Screen::Floor3Foe => {
                         "The Gatehouse Release: a great door, a lantern \
                          burning before its keeper came, and a slate that \
@@ -2250,6 +2309,28 @@ impl Game {
                 self.bump();
             }
             Verb::Enumerate => {
+                if self.screen == Screen::Floor7Foe {
+                    let first = !self.expedition.floor7.foe.exhibits[0];
+                    match self.expedition.floor7_foe_show_exhibit(0) {
+                        Ok(()) => {
+                            if first {
+                                self.expedition.log_push(
+                                    "The Seamstress's first exhibit was shown: \
+                                     each servant's claim order, spoken aloud.",
+                                );
+                            }
+                            self.say(
+                                StatusKind::Good,
+                                "Ansel claims the North Stair, then the South. \
+                                 Berta claims the South Stair, then the North. \
+                                 The orders are spoken aloud — and they are \
+                                 exact opposites.",
+                            );
+                        }
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
                 if self.screen == Screen::Floor6Foe {
                     let first = !self.expedition.floor6.foe.exhibits[0];
                     match self.expedition.floor6_foe_exhibit(0) {
@@ -2478,6 +2559,13 @@ impl Game {
                         self.expedition.floor2_foe_view_hint();
                     }
                     self.hint_showing = self.expedition.floor2_foe_hints_used().max(1);
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                } else if self.screen == Screen::Floor7Foe {
+                    if self.expedition.floor7_foe_hints_used() == 0 {
+                        self.expedition.floor7_foe_view_hint();
+                    }
+                    self.hint_showing = self.expedition.floor7_foe_hints_used().max(1);
                     self.overlay = Overlay::Reading(ReadingKind::Hint);
                     self.changed();
                 } else if self.screen == Screen::Floor6Foe {
@@ -4505,6 +4593,183 @@ impl Game {
                 }
             }
 
+            El::F7VerdictCycle(history) => {
+                if let Screen::Floor7Chamber(4) = self.screen {
+                    let history = history as usize;
+                    if let Some(work) = self.expedition.floor7.chambers[4]
+                        .work
+                        .verdicts
+                        .get_mut(history)
+                    {
+                        *work = (*work + 1) % 3;
+                    }
+                    let verdict = self.expedition.floor7.chambers[4].work.verdicts[history];
+                    self.say(
+                        StatusKind::Info,
+                        format!(
+                            "History {} — verdict: {}.",
+                            history + 1,
+                            match verdict {
+                                1 => "linearizable",
+                                2 => "not linearizable",
+                                _ => "unentered",
+                            }
+                        ),
+                    );
+                    self.changed();
+                }
+            }
+
+            El::F7WitnessCycle => {
+                if let Screen::Floor7Chamber(4) = self.screen {
+                    let work = &mut self.expedition.floor7.chambers[4].work;
+                    work.witness = (work.witness + 1) % 4;
+                    let witness = self.expedition.floor7.chambers[4].work.witness;
+                    self.say(
+                        StatusKind::Info,
+                        format!(
+                            "The irreconcilable pair named: {}.",
+                            if witness == 0 {
+                                "none".to_string()
+                            } else {
+                                let (a, b) = content::WITNESS_PAIRS[(witness - 1) as usize];
+                                format!("{a} / {b}")
+                            }
+                        ),
+                    );
+                    self.changed();
+                }
+            }
+
+            El::F7Exhibit(exhibit) => {
+                if self.screen == Screen::Floor7Foe {
+                    let shown = exhibit as usize;
+                    match self.expedition.floor7_foe_show_exhibit(shown) {
+                        Ok(()) => {
+                            let text = match shown {
+                                0 => "Ansel claims the North Stair, then the \
+                                      South. Berta claims the South Stair, \
+                                      then the North. The orders are spoken \
+                                      aloud — and they are exact opposites."
+                                    .to_string(),
+                                1 => "The waits-for chart is unrolled between \
+                                      them. Draw its four edges: who waits \
+                                      for what, and who holds it — until the \
+                                      cycle stands visible."
+                                    .to_string(),
+                                _ => {
+                                    let report = puzzles::loom::explore(
+                                        &puzzles::foe_servant_programs(),
+                                        4096,
+                                    );
+                                    let trace =
+                                        report
+                                            .deadlock
+                                            .map(|choices| {
+                                                choices
+                                                    .iter()
+                                                    .map(|choice| {
+                                                        if *choice == 0 { "Ansel" } else { "Berta" }
+                                                    })
+                                                    .collect::<Vec<_>>()
+                                                    .join(" steps; ")
+                                            })
+                                            .unwrap_or_default();
+                                    format!(
+                                        "The loom runs it — not argued, RUN: {trace} \
+                                         steps. Then no hand can move: Ansel holds \
+                                         the North Stair and waits for the South; \
+                                         Berta holds the South and waits for the \
+                                         North. {} interleavings were searched to \
+                                         stand here.",
+                                        report.interleavings_tested
+                                    )
+                                }
+                            };
+                            self.say(StatusKind::Good, text);
+                        }
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F7FoeEdge(edge) => {
+                if self.screen == Screen::Floor7Foe {
+                    let edge = edge as usize;
+                    match self.expedition.floor7_foe_connect_edge(edge) {
+                        Ok(()) => self.say(
+                            StatusKind::Good,
+                            format!("Drawn: {}.", content::FOE7_EDGES[edge]),
+                        ),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F7Load(load) => {
+                if self.screen == Screen::Floor7Foe {
+                    let load = load as usize;
+                    match self.expedition.floor7_foe_walk_load(load) {
+                        Ok(report) => {
+                            let (name, producers, per_producer) = content::FOE7_LOADS[load];
+                            self.say(
+                                StatusKind::Good,
+                                format!(
+                                    "{} walks the queue: {} hands × {} messages \
+                                     — {} sent, {} received, and the received \
+                                     set is the sent set, exactly.",
+                                    name, producers, per_producer, report.sent, report.received
+                                ),
+                            );
+                        }
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F7Pressure => {
+                if self.screen == Screen::Floor7Foe {
+                    match self.expedition.floor7_foe_show_pressure() {
+                        Ok((standing, _)) => self.say(
+                            StatusKind::Good,
+                            format!(
+                                "The queue fills: {standing} messages stand \
+                                 in it, and the next send WAITS — held by \
+                                 the hall's own hand, neither dropped nor \
+                                 spun. Back-pressure, shown."
+                            ),
+                        ),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F7OrderCycle(claimable) => {
+                if self.screen == Screen::Floor7Foe {
+                    let claimable = claimable as usize;
+                    if self.expedition.floor7_foe_cycle_order(claimable).is_ok() {
+                        let rank = self.expedition.floor7_foe_order_rank(claimable);
+                        self.say(
+                            StatusKind::Info,
+                            format!(
+                                "{} — posted {}.",
+                                content::FOE7_CLAIMABLES[claimable],
+                                if rank == 0 {
+                                    "unranked".to_string()
+                                } else {
+                                    format!("rank {rank}")
+                                }
+                            ),
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
             El::F7Watch => {
                 if let Screen::Floor7Chamber(index) = self.screen {
                     if let Some(progress) = self.expedition.floor7.chambers.get_mut(index) {
@@ -4925,6 +5190,22 @@ impl Game {
                 } else {
                     self.enter_screen(Screen::Floor6Foe);
                     self.say(StatusKind::Info, content::FOE6_INTRO);
+                }
+                self.bump();
+            }
+
+            El::DoorFoe7 => {
+                if self.expedition.floor7.foe.state == FoeState::Fallen {
+                    self.say(
+                        StatusKind::Info,
+                        "The first chair by the door is taken: the \
+                         Seamstress sits in it, demonstrator still, and \
+                         watches the apprentices' hands with something \
+                         that is almost pride.",
+                    );
+                } else {
+                    self.enter_screen(Screen::Floor7Foe);
+                    self.say(StatusKind::Info, content::FOE7_INTRO);
                 }
                 self.bump();
             }
@@ -5788,6 +6069,20 @@ impl Game {
                 Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
             },
 
+            Screen::Floor7Foe => match self.expedition.floor7_foe_arm_strike() {
+                Ok(()) => {
+                    self.armed = Some(ArmedFor::Foe7);
+                    self.say(
+                        StatusKind::Info,
+                        "The seal is pressed. Confirm to seat the \
+                         Seamstress — the demonstration complete, the \
+                         cycle forbidden by her own posted order — or \
+                         stand down.",
+                    );
+                }
+                Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+            },
+
             Screen::Floor5Foe => match self.expedition.floor5_foe_arm_strike() {
                 Ok(()) => {
                     self.armed = Some(ArmedFor::Foe5);
@@ -5994,6 +6289,28 @@ impl Game {
                         self.expedition.log_push(
                             "The Lockheart Stone entered the codex; the \
                              Lockheart Pair, the pack.",
+                        );
+                        self.say(StatusKind::Good, text);
+                    }
+                    Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                }
+                self.changed();
+            }
+
+            Some(ArmedFor::Foe7) => {
+                self.armed = None;
+                let date = if self.today.is_empty() {
+                    "an unrecorded day".to_string()
+                } else {
+                    self.today.clone()
+                };
+                match self.expedition.floor7_foe_confirm_strike(&date) {
+                    Ok(text) => {
+                        self.expedition
+                            .log_push(format!("The Standing Seamstress sat on {date}."));
+                        self.expedition.log_push(
+                            "The Loomstone entered the codex; the \
+                             Threadweaver's Arc & Queue, the pack.",
                         );
                         self.say(StatusKind::Good, text);
                     }
@@ -6316,6 +6633,7 @@ impl Game {
                 Screen::Floor4Foe => "The Foundation's Inscription".to_string(),
                 Screen::Floor5Foe => "The Thing's Inscription".to_string(),
                 Screen::Floor6Foe => "The Heart's Inscription".to_string(),
+                Screen::Floor7Foe => "The Loomstone".to_string(),
                 _ => "The Inscription".to_string(),
             },
             ReadingKind::Demonstration => "The Demonstration".to_string(),
@@ -6353,6 +6671,7 @@ impl Game {
                 Screen::Floor4Foe => content::FOE4_INSCRIPTION.to_string(),
                 Screen::Floor5Foe => content::FOE5_INSCRIPTION.to_string(),
                 Screen::Floor6Foe => content::FOE6_INSCRIPTION.to_string(),
+                Screen::Floor7Foe => content::FOE7_INSCRIPTION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Demonstration => match self.screen {
@@ -6385,6 +6704,7 @@ impl Game {
                 Screen::Floor4Foe => content::FOE4_DEMONSTRATION.to_string(),
                 Screen::Floor5Foe => content::FOE5_DEMONSTRATION.to_string(),
                 Screen::Floor6Foe => content::FOE6_DEMONSTRATION.to_string(),
+                Screen::Floor7Foe => content::FOE7_DEMONSTRATION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
             ReadingKind::Hint => {
@@ -6401,6 +6721,7 @@ impl Game {
                     Screen::Floor4Foe => content::floor4_foe_hints()[rung - 1],
                     Screen::Floor5Foe => content::floor5_foe_hints()[rung - 1],
                     Screen::Floor6Foe => content::floor6_foe_hints()[rung - 1],
+                    Screen::Floor7Foe => content::floor7_foe_hints()[rung - 1],
                     _ => {
                         let challenge = self.current_challenge().unwrap_or(0);
                         content::hints(challenge)[rung - 1]
@@ -6615,6 +6936,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor4Foe
         | Screen::Floor5Foe
         | Screen::Floor6Foe
+        | Screen::Floor7Foe
         | Screen::Floor3Hub
         | Screen::Floor4Hub
         | Screen::Floor5Hub
@@ -6667,6 +6989,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             for index in 0..5 {
                 els.push((El::Floor7Door(index as u8), geom::door_chamber(index)));
             }
+            els.push((El::DoorFoe7, geom::door_foe7()));
         }
         Screen::Floor6Hub => {
             els.push((El::CampStone, geom::camp_stone()));
@@ -6854,6 +7177,32 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             layout_seal(&mut els, game);
         }
 
+        Screen::Floor7Foe => {
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.push((El::ResetChamber, rects::RESET_BTN));
+            for exhibit in 0..content::FOE7_EXHIBITS.len() {
+                els.push((
+                    El::F7Exhibit(exhibit as u8),
+                    geom::f7foe_exhibit_btn(exhibit),
+                ));
+            }
+            for edge in 0..content::FOE7_EDGES.len() {
+                els.push((El::F7FoeEdge(edge as u8), geom::f7foe_edge_row(edge)));
+            }
+            for load in 0..content::FOE7_LOADS.len() {
+                els.push((El::F7Load(load as u8), geom::f7foe_load_row(load)));
+            }
+            els.push((El::F7Pressure, geom::f7foe_pressure_btn()));
+            for claimable in 0..content::FOE7_CLAIMABLES.len() {
+                els.push((
+                    El::F7OrderCycle(claimable as u8),
+                    geom::f7foe_order_btn(claimable),
+                ));
+            }
+            layout_seal(&mut els, game);
+        }
+
         Screen::Floor2Foe => {
             els.push((El::Desk, geom::desk()));
             els.push((El::Stone, geom::stone()));
@@ -6938,6 +7287,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         Screen::Floor4Foe => game.expedition.floor4.foe.strike == StrikePhase::Armed,
         Screen::Floor5Foe => game.expedition.floor5.foe.strike == StrikePhase::Armed,
         Screen::Floor6Foe => game.expedition.floor6.foe.strike == StrikePhase::Armed,
+        Screen::Floor7Foe => game.expedition.floor7.foe.strike == StrikePhase::Armed,
         _ => false,
     };
     els.push((El::Seal, rects::SEAL));
@@ -7018,6 +7368,15 @@ fn layout_floor7_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
                 els.push((El::F7PredictCycle(step as u8), geom::f7_step_row(step)));
             }
             els.push((El::F7ArcJudge, geom::f7_arc_judge_btn()));
+        }
+        4 => {
+            for history in 0..6 {
+                els.push((
+                    El::F7VerdictCycle(history as u8),
+                    geom::f7_step_row(history),
+                ));
+            }
+            els.push((El::F7WitnessCycle, geom::f7_step_row(6)));
         }
         _ => {}
     }
@@ -8714,6 +9073,109 @@ mod tests {
         );
     }
 
+    /// Floor 7 Step 4, driven on the GUI surface: the
+    /// Lock-Free Stack is judged verdict by verdict with
+    /// its witness named, then the Standing Seamstress is
+    /// demonstrated to — exhibits in order, edges drawn,
+    /// the deadlock run, the queue walked, the order
+    /// posted — and sits at the seal.
+    #[test]
+    fn floor7_stack_and_seamstress_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn to_floor7_hub(game: &mut Game) {
+            game.screen = Screen::Hub;
+            game.expedition.foe.state = FoeState::Fallen;
+            game.expedition.foe.gate_passed = true;
+            game.expedition.floor2.foe.state = FoeState::Fallen;
+            game.expedition.floor3.foe.gate_passed = true;
+            for chamber in game.expedition.floor2.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            for chamber in game.expedition.floor4.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor4.foe.state = FoeState::Fallen;
+            for chamber in game.expedition.floor5.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor5.foe.state = FoeState::Fallen;
+            click(game, El::DoorFloor4);
+            click(game, El::DoorFloor5);
+            click(game, El::DoorFloor7);
+            assert_eq!(game.screen, Screen::Floor7Hub);
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        to_floor7_hub(&mut game);
+        // Chamber 5 — the Lock-Free Stack.
+        click(&mut game, El::Floor7Door(4));
+        click(&mut game, El::F7Watch);
+        // Verdicts [1, 1, 2, 1, 1, 1]: one click each, two
+        // for the third history.
+        for history in 0..6u8 {
+            click(&mut game, El::F7VerdictCycle(history));
+        }
+        click(&mut game, El::F7VerdictCycle(2));
+        assert!(!game.expedition.floor7_diagnosed(4), "witness unnamed");
+        click(&mut game, El::F7WitnessCycle);
+        click(&mut game, El::F7WitnessCycle);
+        assert!(game.expedition.floor7_diagnosed(4));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor7.chambers[4].state,
+            ChamberState::Repaired
+        );
+        // The Seamstress.
+        click(&mut game, El::TabFloor);
+        to_floor7_hub(&mut game);
+        click(&mut game, El::DoorFoe7);
+        assert_eq!(game.screen, Screen::Floor7Foe);
+        // Her order is hers: the chart refuses first, and
+        // the run refuses an unfinished chart.
+        click(&mut game, El::F7Exhibit(1));
+        assert!(!game.expedition.floor7_foe_exhibit_seen(1));
+        click(&mut game, El::F7Exhibit(0));
+        click(&mut game, El::F7Exhibit(1));
+        click(&mut game, El::F7Exhibit(2));
+        assert!(!game.expedition.floor7_foe_exhibit_seen(2));
+        for edge in 0..4u8 {
+            click(&mut game, El::F7FoeEdge(edge));
+        }
+        click(&mut game, El::F7Exhibit(2));
+        assert!(game.expedition.floor7.foe.loom_run);
+        // The gate: three loads and the pressure exhibit.
+        for load in 0..3u8 {
+            click(&mut game, El::F7Load(load));
+        }
+        assert!(!game.expedition.floor7.foe.gate_passed);
+        click(&mut game, El::F7Pressure);
+        assert!(game.expedition.floor7.foe.gate_passed);
+        // The seal refuses before the repair is posted.
+        game.press_seal();
+        assert!(!game.seal_armed());
+        for (claimable, rank) in [(0u8, 1u8), (1, 2), (2, 3), (3, 4)] {
+            for _ in 0..rank {
+                click(&mut game, El::F7OrderCycle(claimable));
+            }
+        }
+        assert!(game.expedition.floor7_foe_proof_complete());
+        game.press_seal();
+        assert!(game.seal_armed());
+        click(&mut game, El::SealConfirm);
+        assert_eq!(game.expedition.floor7.foe.state, FoeState::Fallen);
+        assert!(game.expedition.floor7_receipt_standing());
+    }
     /// Floor 7 Step 3, driven on the GUI surface: the
     /// Charter Wall is graded piece by piece — edges
     /// chalked, the weakened claim marked, the stale tide
