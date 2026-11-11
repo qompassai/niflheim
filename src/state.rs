@@ -910,6 +910,14 @@ impl Default for Floor7Progress {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct HourWork {
     #[serde(default)]
+    pub parts: [u8; 4],
+    #[serde(default)]
+    pub trial_walked: bool,
+    #[serde(default)]
+    pub roster: [u8; 12],
+    #[serde(default)]
+    pub judged: bool,
+    #[serde(default)]
     pub polls: [u8; 5],
     #[serde(default)]
     pub rung: bool,
@@ -4254,8 +4262,69 @@ impl Expedition {
         match chamber {
             0 => crate::puzzles::hour_bell_diagnosed(&work.polls, work.rung),
             1 => crate::puzzles::hour_tapestry_diagnosed(work.torn, work.pinned, work.moved),
+            2 => crate::puzzles::hour_waker_diagnosed(&work.parts, work.trial_walked),
+            3 => crate::puzzles::hour_attendant_diagnosed(&work.roster, work.judged),
             _ => false,
         }
+    }
+
+    pub fn floor8_add_part(&mut self, part: u8) -> Result<String, Refusal> {
+        let work = &mut self.floor8.chambers[2].work;
+        let Some(index) = work.parts.iter().position(|&p| p == 0) else {
+            return Err(Refusal("All four waker parts are already fitted.".into()));
+        };
+        if usize::from(part) != index + 1 {
+            return Err(Refusal(format!(
+                "Fit {} first; order unchanged.",
+                crate::content::F8_WAKER_PARTS[index]
+            )));
+        }
+        work.parts[index] = part;
+        Ok(format!("Fitted {}.", crate::content::F8_WAKER_PARTS[index]))
+    }
+
+    pub fn floor8_sleep_trial(&mut self) -> Result<String, Refusal> {
+        if !crate::puzzles::hour_waker_diagnosed(&self.floor8.chambers[2].work.parts, true) {
+            return Err(Refusal("Fit counter, errand name, generation stamp, then wake face before the sleep trial.".into()));
+        }
+        self.floor8.chambers[2].work.trial_walked = true;
+        let (sleeps, wakes, polls, spin) = crate::puzzles::hour_sleep_evidence();
+        Ok(format!(
+            "Hall dimmed for {sleeps} sleeps; {wakes} generation-stamped wakes, {polls} polls. Spinning twin: {spin} polls. Both are real authored executor drives; no host timing."
+        ))
+    }
+
+    pub fn floor8_predict(&mut self, index: usize) -> Result<String, Refusal> {
+        let work = &mut self.floor8.chambers[3].work;
+        let Some(slot) = work.roster.get_mut(index) else {
+            return Err(Refusal("No such event slot.".into()));
+        };
+        *slot = *slot % 9 + 1;
+        work.judged = false;
+        self.floor8.chambers[3].state = ChamberState::Unworked;
+        self.floor8.chambers[3].facet = false;
+        Ok("Prediction changed; rejudge before filing.".into())
+    }
+
+    pub fn floor8_judge_roster(&mut self) -> Result<String, Refusal> {
+        let expected = crate::puzzles::hour_attendant_trace();
+        let work = &mut self.floor8.chambers[3].work;
+        if let Some((i, event)) = expected
+            .iter()
+            .enumerate()
+            .find(|(i, event)| work.roster[*i] != crate::puzzles::hour_event_kind(event))
+        {
+            work.judged = false;
+            return Err(Refusal(format!(
+                "Event {} mismatch: computed {event:?}; prediction retained for correction.",
+                i + 1
+            )));
+        }
+        work.judged = true;
+        Ok(format!(
+            "All {} computed events match, using the Lockheart borrowing rules.",
+            expected.len()
+        ))
     }
 
     pub fn floor8_poll(&mut self, report: u8) -> Result<String, Refusal> {
@@ -4332,6 +4401,10 @@ impl Expedition {
                 1 => {
                     "MOVEMENT RECORD mismatch: exhibit the tear, pin the referent, then move the handle soundly."
                 }
+                2 => {
+                    "WAKER mismatch: four ordered parts and the two-sleep/two-wake trial are required."
+                }
+                3 => "ROSTER mismatch: predict and explicitly judge every computed event.",
                 _ => "The chamber's work does not yet prove its claim.",
             };
             return Err(Refusal(mismatch.into()));
@@ -5817,6 +5890,78 @@ mod tests {
         assert_eq!(loaded.floor8, Floor8Progress::new());
         assert_eq!(loaded.floor6, e.floor6);
         assert!(loaded.save_json().unwrap().contains("\"version\":8"));
+    }
+
+    #[test]
+    fn hour_waker_trial_computes_sleep_not_spin_and_loads() {
+        let mut e = Expedition::new();
+        for part in 1..=4 {
+            e.floor8_add_part(part).unwrap();
+        }
+        e.floor8_sleep_trial().unwrap();
+        assert!(e.floor8_diagnosed(2));
+        let (sleeps, wakes, polls, spin) = crate::puzzles::hour_sleep_evidence();
+        assert_eq!((sleeps, wakes, polls), (2, 2, 3));
+        assert!(spin > 100);
+        e.floor8_file_proof(2).unwrap();
+        e.floor8_repair_chamber(2).unwrap();
+        assert!(
+            Expedition::load_json(&e.save_json().unwrap())
+                .unwrap()
+                .floor8_diagnosed(2)
+        );
+    }
+
+    #[test]
+    fn hour_waker_refuses_wrong_part_early_trial_and_forged_trial() {
+        let mut e = Expedition::new();
+        assert!(e.floor8_add_part(4).is_err());
+        assert!(e.floor8_sleep_trial().is_err());
+        assert_eq!(e.floor8.chambers[2].work.parts, [0; 4]);
+        e.floor8.chambers[2].work.trial_walked = true;
+        e.floor8.chambers[2].state = ChamberState::Diagnosed;
+        assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
+    }
+
+    #[test]
+    fn hour_four_errands_produce_twelve_real_heart_events() {
+        let mut e = Expedition::new();
+        let trace = crate::puzzles::hour_attendant_trace();
+        assert_eq!(trace.len(), 12);
+        for (i, event) in trace.iter().enumerate() {
+            for _ in 0..crate::puzzles::hour_event_kind(event) {
+                e.floor8_predict(i).unwrap();
+            }
+        }
+        e.floor8_judge_roster().unwrap();
+        assert!(e.floor8_diagnosed(3));
+        e.floor8_file_proof(3).unwrap();
+        e.floor8_repair_chamber(3).unwrap();
+        assert!(
+            Expedition::load_json(&e.save_json().unwrap())
+                .unwrap()
+                .floor8_diagnosed(3)
+        );
+    }
+
+    #[test]
+    fn hour_roster_refuses_wrong_predictions_and_invalidates_edited_proof() {
+        let mut e = Expedition::new();
+        assert!(e.floor8_judge_roster().is_err());
+        assert!(e.floor8_predict(12).is_err());
+        for (i, event) in crate::puzzles::hour_attendant_trace().iter().enumerate() {
+            for _ in 0..crate::puzzles::hour_event_kind(event) {
+                e.floor8_predict(i).unwrap();
+            }
+        }
+        assert!(!e.floor8_diagnosed(3));
+        e.floor8_judge_roster().unwrap();
+        e.floor8_file_proof(3).unwrap();
+        e.floor8_repair_chamber(3).unwrap();
+        e.floor8_predict(0).unwrap();
+        assert!(!e.floor8_diagnosed(3));
+        assert_eq!(e.floor8.chambers[3].state, ChamberState::Unworked);
+        assert!(!e.floor8.chambers[3].facet);
     }
 
     #[test]

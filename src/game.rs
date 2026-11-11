@@ -342,6 +342,11 @@ pub enum El {
     Floor8Door(u8),
     F8Poll(u8),
     F8Ring,
+    F8Part(u8),
+    F8Trial,
+    F8Predict(u8),
+    F8ReadEvent(u8),
+    F8Judge,
     F8Pin,
     F8Move,
     /// Floor 2 hub: a chamber door, by index.
@@ -2963,6 +2968,57 @@ impl Game {
                     );
                 }
             }
+            El::F8Part(part) => {
+                if self.screen == Screen::Floor8Chamber(2) {
+                    let result = self.expedition.floor8_add_part(part);
+                    match result {
+                        Ok(s) => self.say(StatusKind::Info, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
+                }
+            }
+            El::F8Trial => {
+                if self.screen == Screen::Floor8Chamber(2) {
+                    let result = self.expedition.floor8_sleep_trial();
+                    match result {
+                        Ok(s) => self.say(StatusKind::Info, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
+                }
+            }
+            El::F8ReadEvent(slot) => {
+                if self.screen == Screen::Floor8Chamber(3) {
+                    if let Some(event) =
+                        crate::puzzles::hour_attendant_trace().get(usize::from(slot))
+                    {
+                        self.say(StatusKind::Info, format!("Event {}: {event:?}", slot + 1));
+                    } else {
+                        self.say(StatusKind::Refusal, "No such event.");
+                    }
+                }
+            }
+            El::F8Predict(slot) => {
+                if self.screen == Screen::Floor8Chamber(3) {
+                    let result = self.expedition.floor8_predict(usize::from(slot));
+                    match result {
+                        Ok(s) => self.say(StatusKind::Info, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
+                }
+            }
+            El::F8Judge => {
+                if self.screen == Screen::Floor8Chamber(3) {
+                    let result = self.expedition.floor8_judge_roster();
+                    match result {
+                        Ok(s) => self.say(StatusKind::Info, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
+                }
+            }
             El::F8Poll(report) => {
                 if self.screen == Screen::Floor8Chamber(0) {
                     let result = self.expedition.floor8_poll(report);
@@ -2996,10 +3052,18 @@ impl Game {
             El::F8Watch => {
                 if let Screen::Floor8Chamber(index) = self.screen {
                     self.expedition.floor8.chambers[index].work.watched = true;
-                    self.say(
-                        StatusKind::Info,
-                        content::HOUR_CHAMBERS[index].demonstration,
-                    );
+                    let evidence = match index {
+                        2 => {
+                            let log: Vec<_> = crate::puzzles::executor::run(&content::hour_sleep_roster(false)).iter().filter_map(|e| match e {
+                                crate::puzzles::executor::Event::Sleep { generation, .. } => Some(format!("sleep g{generation}")),
+                                crate::puzzles::executor::Event::Wake { generation, .. } => Some(format!("wake g{generation}")), _ => None,
+                            }).collect();
+                            format!("Sleeping errand: {}. Spin twin: {} polls; sleep drive: {} polls.", log.join(" → "), crate::puzzles::hour_sleep_evidence().3, crate::puzzles::hour_sleep_evidence().2)
+                        }
+                        3 => "Four errands, Lockheart hearts. Read each computed event beside its prediction; judge all twelve after entering them.".into(),
+                        _ => content::HOUR_CHAMBERS[index].demonstration.into(),
+                    };
+                    self.say(StatusKind::Info, evidence);
                     self.changed();
                 }
             }
@@ -7530,7 +7594,51 @@ fn layout_floor6_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
 
 /// The Floor 7 chambers' panel elements: the watch; each
 /// chamber's own controls land with its step.
-pub fn floor8_controls(chamber: usize) -> Vec<(El, Rect, String)> {
+pub fn floor8_controls(game: &Game, chamber: usize) -> Vec<(El, Rect, String)> {
+    if chamber == 3 {
+        let mut controls: Vec<_> = game.expedition.floor8.chambers[3]
+            .work
+            .roster
+            .iter()
+            .enumerate()
+            .map(|(i, &kind)| {
+                (
+                    El::F8Predict(i as u8),
+                    Rect::new(
+                        380.0 + (i % 2) as f32 * 194.0,
+                        154.0 + (i / 2) as f32 * 44.0,
+                        140.0,
+                        36.0,
+                    ),
+                    format!(
+                        "{}: {}",
+                        i + 1,
+                        content::F8_EVENT_KINDS
+                            .get(usize::from(kind))
+                            .unwrap_or(&"invalid")
+                    ),
+                )
+            })
+            .collect();
+        for i in 0..12 {
+            controls.push((
+                El::F8ReadEvent(i),
+                Rect::new(
+                    524.0 + f32::from(i % 2) * 194.0,
+                    154.0 + f32::from(i / 2) * 44.0,
+                    42.0,
+                    36.0,
+                ),
+                format!("Read {}", i + 1),
+            ));
+        }
+        controls.push((
+            El::F8Judge,
+            Rect::new(380.0, 452.0, 380.0, 32.0),
+            "Judge all twelve events".into(),
+        ));
+        return controls;
+    }
     let labels = match chamber {
         0 => vec![
             (El::F8Poll(1), "Poll: Pending"),
@@ -7540,6 +7648,13 @@ pub fn floor8_controls(chamber: usize) -> Vec<(El, Rect, String)> {
         1 => vec![
             (El::F8Move, "Move referent / pinned handle"),
             (El::F8Pin, "Pin the referent"),
+        ],
+        2 => vec![
+            (El::F8Part(1), "Fit counter"),
+            (El::F8Part(2), "Fit errand name"),
+            (El::F8Part(3), "Fit generation stamp"),
+            (El::F8Part(4), "Fit wake face"),
+            (El::F8Trial, "Walk sleep trial"),
         ],
         _ => vec![],
     };
@@ -7556,10 +7671,10 @@ pub fn floor8_controls(chamber: usize) -> Vec<(El, Rect, String)> {
         .collect()
 }
 
-fn layout_floor8_chamber_panel(els: &mut Vec<(El, Rect)>, _game: &Game, chamber: usize) {
+fn layout_floor8_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: usize) {
     els.push((El::F8Watch, Rect::new(380.0, 100.0, 300.0, 36.0)));
     els.extend(
-        floor8_controls(chamber)
+        floor8_controls(game, chamber)
             .into_iter()
             .map(|(el, rect, _)| (el, rect)),
     );
@@ -9773,6 +9888,77 @@ mod tests {
         assert_eq!(game.screen, Screen::Floor8Hub);
         game.activate(El::Floor8Door(255));
         assert_eq!(game.screen, Screen::Floor8Hub);
+    }
+
+    #[test]
+    fn floor8_waker_and_attendant_play_through_buttons() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .into_iter()
+                .find(|(found, _)| *found == el)
+                .unwrap_or_else(|| panic!("{el:?} missing"))
+                .1;
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        game.screen = Screen::Floor8Chamber(2);
+        for part in 1..=4 {
+            click(&mut game, El::F8Part(part));
+        }
+        click(&mut game, El::F8Trial);
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor8.chambers[2].state,
+            ChamberState::Repaired
+        );
+        game.screen = Screen::Floor8Chamber(3);
+        for (i, event) in crate::puzzles::hour_attendant_trace().iter().enumerate() {
+            click(&mut game, El::F8ReadEvent(i as u8));
+            assert!(game.status.contains(&format!("Event {}:", i + 1)));
+            for _ in 0..crate::puzzles::hour_event_kind(event) {
+                click(&mut game, El::F8Predict(i as u8));
+            }
+        }
+        click(&mut game, El::F8Judge);
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor8.chambers[3].state,
+            ChamberState::Repaired
+        );
+    }
+
+    #[test]
+    fn floor8_later_controls_have_clearance_and_refuse_wrong_room() {
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        for room in [2, 3] {
+            game.screen = Screen::Floor8Chamber(room);
+            let controls = floor8_controls(&game, room);
+            for (i, (_, a, _)) in controls.iter().enumerate() {
+                for (_, b, _) in &controls[i + 1..] {
+                    assert!(
+                        a.x + a.w <= b.x
+                            || b.x + b.w <= a.x
+                            || a.y + a.h <= b.y
+                            || b.y + b.h <= a.y
+                    );
+                }
+            }
+        }
+        game.screen = Screen::Floor8Chamber(0);
+        let before = game.expedition.clone();
+        for el in [El::F8Part(1), El::F8Trial, El::F8Predict(0), El::F8Judge] {
+            game.activate(el);
+        }
+        assert_eq!(before, game.expedition);
     }
 
     #[test]

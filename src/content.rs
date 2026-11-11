@@ -4663,6 +4663,85 @@ pub const F8_EXAMINE_TEXTS: [&str; 5] = [
     "The Lockheart Pair on loan, four errand seals, twelve event slots.",
     "Six started errands and six terminal accounting lines.",
 ];
+pub const F8_WAKER_PARTS: [&str; 4] = ["counter", "errand name", "generation stamp", "wake face"];
+pub const F8_EVENT_KINDS: [&str; 10] = [
+    "unentered",
+    "poll",
+    "sleep",
+    "wake",
+    "timer fired",
+    "completed",
+    "cancelled + cleanup",
+    "panicked",
+    "stale refused",
+    "accounted",
+];
+
+/// Four errands, one complete poll each: the minimum full trace is
+/// four (Poll, Completed, Accounting) triples = twelve events.
+pub fn hour_attendant_roster() -> Vec<crate::puzzles::executor::ErrandSpec> {
+    use crate::puzzles::executor::{ErrandSpec, Outcome, State};
+    ["flag first", "spin first", "flag second", "spin second"]
+        .into_iter()
+        .enumerate()
+        .map(|(i, seal)| ErrandSpec {
+            seal,
+            states: vec![State {
+                name: "work heart",
+                outcome: Outcome::Ready,
+                heart: Some(i % 2),
+            }],
+            drive: vec![0],
+            timers: vec![],
+        })
+        .collect()
+}
+
+pub fn hour_sleep_roster(spinning: bool) -> Vec<crate::puzzles::executor::ErrandSpec> {
+    use crate::puzzles::executor::{ErrandSpec, Outcome, State, Timer};
+    // A decimal hundred polls per sleep is the least three-digit
+    // contrast; the sleeping drive needs only three polls for two sleeps.
+    let count = if spinning { 200 } else { 2 };
+    vec![ErrandSpec {
+        seal: if spinning {
+            "spinning twin"
+        } else {
+            "sleeping errand"
+        },
+        states: vec![
+            State {
+                name: "wait",
+                outcome: if spinning {
+                    Outcome::Continue
+                } else {
+                    Outcome::Pending
+                },
+                heart: None,
+            },
+            State {
+                name: "done",
+                outcome: Outcome::Ready,
+                heart: None,
+            },
+        ],
+        drive: (0..count).map(|_| 0).chain(std::iter::once(1)).collect(),
+        timers: if spinning {
+            vec![]
+        } else {
+            vec![
+                Timer {
+                    tick: 1,
+                    generation: 0,
+                },
+                Timer {
+                    tick: 2,
+                    generation: 0,
+                },
+            ]
+        },
+    }]
+}
+
 pub const F8_BELL_STATES: [&str; 5] = [
     "begin loading",
     "wait",
@@ -4686,6 +4765,22 @@ pub fn floor8_chamber_hints(chamber: usize) -> [&'static str; 4] {
             "The unpinned tear must be demonstrated first.",
             "Pin promises the referent stays put.",
             "The seam: move unpinned, pin, then move only the handle; the pinned referent stays at its address.",
+        ];
+    }
+    if chamber == 2 {
+        return [
+            "A waker needs provenance.",
+            "Fit its four named parts in order.",
+            "Read the real wake and spin counts.",
+            "The seam: counter, errand name, generation stamp, wake face; then walk two sleeps and two wakes.",
+        ];
+    }
+    if chamber == 3 {
+        return [
+            "Read the referee trace with Watch.",
+            "The hearts follow the Lockheart borrowing rules.",
+            "Predict each event kind, including terminal accounting.",
+            "The seam: reproduce the computed twelve-event trace, then ask the judge.",
         ];
     }
     [

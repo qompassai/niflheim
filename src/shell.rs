@@ -8225,7 +8225,11 @@ fn build_floor8_chamber(
         fonts,
         stage,
         geom::desk(),
-        Color::srgb_u8(120, 130, 140),
+        if index == 2 && game.expedition.floor8.chambers[2].work.trial_walked {
+            Color::srgb_u8(55, 65, 75)
+        } else {
+            Color::srgb_u8(120, 130, 140)
+        },
         match index {
             0 => "THE COUNTDOWN BELL",
             1 => "THE PINNED TAPESTRY",
@@ -8288,7 +8292,7 @@ fn build_floor8_chamber(
         false,
         fonts,
     );
-    for (_, rect, label) in crate::game::floor8_controls(index) {
+    for (_, rect, label) in crate::game::floor8_controls(game, index) {
         spawn_button(commands, stage, rect, &label, pal, false, fonts);
     }
     let w = &progress.work;
@@ -8307,13 +8311,25 @@ fn build_floor8_chamber(
             "Torn: {} · pinned: {} · handle moved: {}. Referent: A; self-reference: A after rehang. Pin keeps this address invariant.",
             w.torn, w.pinned, w.moved
         ),
+        2 => {
+            let (sleeps, wakes, polls, spin) = crate::puzzles::hour_sleep_evidence();
+            format!(
+                "Parts {:?}; trial {}. Computed sleep/wake: {sleeps}/{wakes}, polls {polls}; twin polls {spin}. Sleep dims, never flashes.",
+                w.parts, w.trial_walked
+            )
+        }
+        3 => format!(
+            "Four errands borrow the Lockheart Pair. Computed events: {}; judged {}. Watch to read the full trace.",
+            crate::puzzles::hour_attendant_trace().len(),
+            w.judged
+        ),
         _ => "Work controls arrive with this chamber's step.".into(),
     };
     spawn_text(
         commands,
         stage,
         380.0,
-        310.0,
+        if index >= 2 { 410.0 } else { 310.0 },
         Some(380.0),
         &record,
         12.0,

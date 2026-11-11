@@ -162,4 +162,59 @@ ran outside the repository and failed; no gate claim relies on it.
 Later-step CONTENT/CANCELLATION remain for their steps; ARTIFACTS unchanged,
 no F7 prerequisite. Commit hash recorded externally after commit.
 
+## Step 3 — Hand-Built Waker and Single-Attendant Executor
+
+Base: cc3928e (Step 2). Added defaulted parts/trial_walked/roster/judged,
+ordered waker assembly, real sleep/spin trial, twelve prediction steppers,
+explicit roster judge and proof invalidation after edits. Added individual
+Read buttons to expose each full computed event with seal and generation;
+the real pointer test reads every event, predicts and seals both chambers.
+The sleep demonstration dims the desk without animation or flashing.
+Each chamber has its own four-rung hint ladder; proof mismatch names kind.
+
+REVIEW-F8-CONTENT derivations: four errands borrow alternate hearts 0/1
+using the existing F6 flag rules. Every started errand needs a Poll, terminal
+Completed and Accounting event, so four one-poll Ready drives give exactly
+the required twelve events, without filtering or omitting executor output.
+The roster is computed, never an answer table. The sleeper's two Pending
+states and final Ready produce two sleeps/two wakes and three polls.
+For the authored large spinning contrast, use a decimal hundred runnable
+polls per required sleep interval (200 Continue polls plus final Ready).
+This is an authored bounded drive, not a host measurement. Displayed 201
+polls, all wake/sleep counters and generation log are computed by run().
+No F7 queue mechanic, new prerequisite or executor-surface extension.
+
+Six shipped tests, 3 validation / 3 adversarial: assembly/trial and save/load,
+wrong part/early trial/forged proof, real twelve-event heart trace and reload,
+wrong predictions/invalid index/edited-proof invalidation, both chambers
+through pointer handlers and seals, pairwise control clearance/wrong-room
+refusals. Existing tests unchanged; suite grows 249 to 255. Prediction grid
+uses two columns of 140px steppers + 42px Read buttons with 4px gaps;
+44px row pitch, 36px height. Status text stands below, judge at y452.
+
+Incidents: a formatted multiline anchor refused the initial script's final
+call-site splice; resumed against the current exact call anchor. The partial
+intermediate clippy correctly failed on missing controls arguments; fixed.
+Initial 255/0 runs preceded the event-read and compact wake-log refinements;
+final full suite rerun on the finished source, with prior logs preserved.
+No custom skill; Markdown report not-LSP-validated (no configured route).
+Save remains v8; gate.rs / unsafe forbid untouched. Later CONTENT and
+CANCELLATION decisions remain for Step 4. Pin/stone/secondary rulings stand.
+
+| Gate | Result / evidence under /home/phaedrus/.local/share/pax/niflheim-floor8-step3-build-20261110 |
+|---|---|
+| fmt apply/check | PASS; fmt.log |
+| Full tests | PASS: 255 shipped, zero failed/ignored + 1 transient; final-test.log |
+| Clippy all-targets -D warnings | PASS; clippy.log |
+| Theodolite | PASS; producer-first, control 3 E0308, restore SHA 38c155a2f657a8a899eaded1aed514799a52c57cc5b5b8bcd7fe8384c41bdb4a, all five touched Rust files zero; theodolite.json |
+| Determinism/load-back | PASS; four earned repaired chambers, v8, identical SHA 87300a17f6616e91a04a863ca981a844a0a2f821c15cdefdd4def34dff78412c |
+| Android pinned lib | PASS; android.log; 1352490280 bytes |
+| Desktop/Xvfb | PASS; build.log, xvfb-smoke.log; cold_start_ms=838, expected exit 124, zero panics |
+
+Source and artifact SHA-256 manifests filed. Probe and producer files preserved
+in evidence and removed from worktree. Producer stopped before platform jobs.
+Corrected pinned/offline cargo route, shared target flag, nice 10 and foreign
+process checks throughout; no downloads/syncs/fresh target. Commit recorded
+externally after commit.
+
 <!-- END FLOOR 8 STEP REPORTS -->

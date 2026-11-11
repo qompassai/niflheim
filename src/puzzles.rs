@@ -3343,6 +3343,66 @@ pub mod executor;
 
 /// The authored state-box drive: loading and preparation are Pending;
 /// only the final state is Ready. Reports are computed from the executor.
+pub fn hour_event_kind(event: &executor::Event) -> u8 {
+    use executor::Event;
+    match event {
+        Event::Poll { .. } => 1,
+        Event::Sleep { .. } => 2,
+        Event::Wake { .. } => 3,
+        Event::TimerFired { .. } => 4,
+        Event::Completed { .. } => 5,
+        Event::CancelledWithCleanup { .. } => 6,
+        Event::Panicked { .. } => 7,
+        Event::StaleRefused { .. } => 8,
+        Event::Accounting { .. } => 9,
+    }
+}
+
+pub fn hour_sleep_evidence() -> (usize, usize, usize, usize) {
+    let sleep = executor::run(&crate::content::hour_sleep_roster(false));
+    let spin = executor::run(&crate::content::hour_sleep_roster(true));
+    (
+        sleep
+            .iter()
+            .filter(|e| matches!(e, executor::Event::Sleep { .. }))
+            .count(),
+        sleep
+            .iter()
+            .filter(|e| matches!(e, executor::Event::Wake { .. }))
+            .count(),
+        sleep
+            .iter()
+            .filter(|e| matches!(e, executor::Event::Poll { .. }))
+            .count(),
+        spin.iter()
+            .filter(|e| matches!(e, executor::Event::Poll { .. }))
+            .count(),
+    )
+}
+
+pub fn hour_waker_diagnosed(parts: &[u8; 4], trial: bool) -> bool {
+    trial
+        && parts
+            .iter()
+            .enumerate()
+            .all(|(i, &part)| usize::from(part) == i + 1)
+        && hour_sleep_evidence().0 == 2
+        && hour_sleep_evidence().1 == 2
+}
+
+pub fn hour_attendant_trace() -> Vec<executor::Event> {
+    executor::run(&crate::content::hour_attendant_roster())
+}
+
+pub fn hour_attendant_diagnosed(roster: &[u8; 12], judged: bool) -> bool {
+    judged
+        && roster.as_slice()
+            == hour_attendant_trace()
+                .iter()
+                .map(hour_event_kind)
+                .collect::<Vec<_>>()
+}
+
 pub fn hour_bell_trace() -> Vec<executor::Event> {
     use executor::{ErrandSpec, Outcome, State, Timer};
     executor::run(&[ErrandSpec {
