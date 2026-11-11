@@ -8889,7 +8889,7 @@ fn build_floor7_foe(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
     spawn_text(
         commands,
         stage,
-        380.0,
+        340.0,
         476.0,
         None,
         "THE POSTED ORDER — RANK EVERY CLAIMABLE",

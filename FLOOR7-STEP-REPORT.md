@@ -299,4 +299,72 @@ programme are now checked for cross-floor collisions before use.
 - Xvfb smoke: cold_start_ms=1049, zero panics.
 - `#![forbid(unsafe_code)]` intact.
 
+Commit: `9ff2c46` on `pax/floor2-build-20261109`.
+
+## Step 5 — Integration: Floor 7 complete
+
+**Built.** One whole-floor GUI playthrough test
+(`floor7_whole_floor_played_on_the_gui`): a single continuous run
+from a fresh expedition — the Scoped Loom joined [4,2,5,6,3,1], the
+Border Seals sealed [Send, Sync, Send, Sync, Neither, Send], the
+Charter Wall graded with the backwards pair left unchalked and the
+tide found, the book foretold to the model's own trace
+[2,1,2,1,1,1,0,2], the stack judged verdict by verdict with its
+witness named, every chamber through Prove → Seal → SealConfirm →
+Repaired — then the Standing Seamstress: exhibits in her order,
+chart drawn, deadlock run on the loom, three loads reconciled and
+the pressure shown, the order posted [1,2,3,4], the seal armed and
+confirmed — ending at `floor7_complete()`.
+
+**The integration test caught a real defect** (Step 4 geometry):
+the fourth claimable's order button (920–1088 × 500–530) overlapped
+the seal medallion (990–1066 × 514–590), and its center (1004, 515)
+fell inside the medallion — `hit_test` takes the last-pushed
+containing rect, so clicks there pressed the seal instead of
+cycling the rank. Proven by a temporary instrumented test (since
+removed): state showed `order: [1, 2, 3, 0]` after the full click
+sequence. Cured curatively: the order row moved to
+`340 + i×158, 500, 150×30` (last button ends x=964, clear of the
+medallion), the panel header aligned; both foe GUI tests and the
+playthrough then pass. Honest note: Step 4's gate runs reported the
+foe test passing with the defective geometry — the overlap depends
+on which element `layout` yields first for a point inside two
+rects, and the Step 5 sequence reaches the button by a path that
+exposed it. The defect was real in the shipped Step 4 tree either
+way; it is fixed and re-gated now.
+
+**Gates** (primo, rustc 1.99.0; evidence
+`~/.local/share/pax/niflheim-floor7-step5-build-20261110/`):
+- `cargo fmt --check` — clean.
+- `cargo test` — **229 passed / 0 failed** (191 at the Floor 6
+  boundary + 38 across Floor 7's five steps; no test deleted,
+  skipped, or weakened anywhere in the floor).
+- `cargo clippy --all-targets -- -D warnings` — exit 0.
+- Theodolite (cured protocol; bacon producer live): planted run —
+  game.rs count=3, E0308 from `theodolite_route_control` at line
+  10678, the other four files count=0 in the same session; restore
+  sha256 `da8a1435…` verified; clean run — all five files
+  (content, puzzles, state, game, shell) count=0. PASS both modes.
+- Determinism: the whole-floor state-level probe (transient,
+  removed after, DS-9) — two runs byte-identical, sha256
+  `84346cd774e7a193a486764db5f61bba4d6ae6f2d04981d91c1358e97495bca3`,
+  identical to Step 4's hash (the same earned state; the Step 5
+  cure touched shell geometry only). The save carries
+  `"version":7` and round-trips with all five chambers repaired
+  and the Seamstress seated.
+- Android: `cargo build --target aarch64-linux-android --lib` —
+  exit 0 (libniflheim.so 1,350,816,104 bytes).
+- Xvfb smoke: cold_start_ms=1158, zero panics.
+- `#![forbid(unsafe_code)]` intact (src/lib.rs:26).
+- `src/gate.rs` untouched all floor (DS-4), verified by the
+  per-step `git diff --stat` records: no step's commit names it.
+
+**Floor 7 boundary.** Commits on `pax/floor2-build-20261109`:
+Step 1 `d461754`, Step 2 `d042e9a`, Step 3 `d456574`, Step 4
+`9ff2c46`, Step 5 (this commit). Suite 229/0. Earned save v7,
+determinism sha256
+`84346cd774e7a193a486764db5f61bba4d6ae6f2d04981d91c1358e97495bca3`.
+Nothing pushed. The bacon producer session is stopped at this
+boundary, per the brief.
+
 Commit: (this commit)

@@ -1391,7 +1391,7 @@ pub mod geom {
 
     /// Floor 7's FOE: one claimable's order button.
     pub fn f7foe_order_btn(index: usize) -> Rect {
-        Rect::new(380.0 + index as f32 * 180.0, 500.0, 168.0, 30.0)
+        Rect::new(340.0 + index as f32 * 158.0, 500.0, 150.0, 30.0)
     }
 
     /// Floor 6 Chamber 5: one datum's housing row.
@@ -9071,6 +9071,169 @@ mod tests {
             game.expedition.floor6.chambers[1].state,
             ChamberState::Repaired
         );
+    }
+
+    /// Floor 7 Step 5 — the whole floor on the GUI surface,
+    /// one continuous playthrough from a fresh expedition:
+    /// all five chambers worked, judged, proven, and sealed
+    /// by clicks, then the Standing Seamstress demonstrated
+    /// to and seated at the seal. Ends at floor7_complete().
+    #[test]
+    fn floor7_whole_floor_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn to_floor7_hub(game: &mut Game) {
+            game.screen = Screen::Hub;
+            game.expedition.foe.state = FoeState::Fallen;
+            game.expedition.foe.gate_passed = true;
+            game.expedition.floor2.foe.state = FoeState::Fallen;
+            game.expedition.floor3.foe.gate_passed = true;
+            for chamber in game.expedition.floor2.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            for chamber in game.expedition.floor4.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor4.foe.state = FoeState::Fallen;
+            for chamber in game.expedition.floor5.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor5.foe.state = FoeState::Fallen;
+            click(game, El::DoorFloor4);
+            click(game, El::DoorFloor5);
+            click(game, El::DoorFloor7);
+            assert_eq!(game.screen, Screen::Floor7Hub);
+        }
+        fn seal_chamber(game: &mut Game) {
+            game.do_verb(Verb::Prove);
+            click(game, El::Seal);
+            click(game, El::SealConfirm);
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        to_floor7_hub(&mut game);
+        // Chamber 1 — the Scoped Loom: [4, 2, 5, 6, 3, 1].
+        click(&mut game, El::Floor7Door(0));
+        click(&mut game, El::F7Watch);
+        for (thread, clicks) in [(0u8, 4), (1, 2), (2, 5), (3, 6), (4, 3), (5, 1)] {
+            for _ in 0..clicks {
+                click(&mut game, El::F7JoinCycle(thread));
+            }
+        }
+        click(&mut game, El::F7ScopeJudge);
+        assert!(game.expedition.floor7_diagnosed(0));
+        seal_chamber(&mut game);
+        assert_eq!(
+            game.expedition.floor7.chambers[0].state,
+            ChamberState::Repaired
+        );
+        // Chamber 2 — the Border Seals: [1, 2, 1, 2, 3, 1].
+        click(&mut game, El::TabFloor);
+        to_floor7_hub(&mut game);
+        click(&mut game, El::Floor7Door(1));
+        click(&mut game, El::F7Watch);
+        for (tool, clicks) in [(0u8, 1), (1, 2), (2, 1), (3, 2), (4, 3), (5, 1)] {
+            for _ in 0..clicks {
+                click(&mut game, El::F7SealCycle(tool));
+            }
+        }
+        click(&mut game, El::F7SealJudge);
+        assert!(game.expedition.floor7_diagnosed(1));
+        seal_chamber(&mut game);
+        assert_eq!(
+            game.expedition.floor7.chambers[1].state,
+            ChamberState::Repaired
+        );
+        // Chamber 3 — the Charter Wall.
+        click(&mut game, El::TabFloor);
+        to_floor7_hub(&mut game);
+        click(&mut game, El::Floor7Door(2));
+        click(&mut game, El::F7Watch);
+        for edge in [0u8, 1, 2, 4] {
+            click(&mut game, El::F7EdgeToggle(edge));
+        }
+        click(&mut game, El::F7StaleWitness);
+        for _ in 0..3 {
+            click(&mut game, El::F7WeakCycle);
+        }
+        click(&mut game, El::F7WallGrade);
+        assert!(game.expedition.floor7_diagnosed(2));
+        seal_chamber(&mut game);
+        assert_eq!(
+            game.expedition.floor7.chambers[2].state,
+            ChamberState::Repaired
+        );
+        // Chamber 4 — Arc and Weak Echoes: [2, 1, 2, 1, 1, 1, 0, 2].
+        click(&mut game, El::TabFloor);
+        to_floor7_hub(&mut game);
+        click(&mut game, El::Floor7Door(3));
+        click(&mut game, El::F7Watch);
+        for (step, clicks) in [(0u8, 2), (1, 1), (2, 2), (3, 1), (4, 1), (5, 1), (7, 2)] {
+            for _ in 0..clicks {
+                click(&mut game, El::F7PredictCycle(step));
+            }
+        }
+        click(&mut game, El::F7ArcJudge);
+        assert!(game.expedition.floor7_diagnosed(3));
+        seal_chamber(&mut game);
+        assert_eq!(
+            game.expedition.floor7.chambers[3].state,
+            ChamberState::Repaired
+        );
+        // Chamber 5 — the Lock-Free Stack: [1, 1, 2, 1, 1, 1], witness 2.
+        click(&mut game, El::TabFloor);
+        to_floor7_hub(&mut game);
+        click(&mut game, El::Floor7Door(4));
+        click(&mut game, El::F7Watch);
+        for history in 0..6u8 {
+            click(&mut game, El::F7VerdictCycle(history));
+        }
+        click(&mut game, El::F7VerdictCycle(2));
+        click(&mut game, El::F7WitnessCycle);
+        click(&mut game, El::F7WitnessCycle);
+        assert!(game.expedition.floor7_diagnosed(4));
+        seal_chamber(&mut game);
+        assert_eq!(
+            game.expedition.floor7.chambers[4].state,
+            ChamberState::Repaired
+        );
+        assert_eq!(game.expedition.floor7_chambers_repaired(), 5);
+        assert!(!game.expedition.floor7_complete(), "she still stands");
+        // The Standing Seamstress.
+        click(&mut game, El::TabFloor);
+        to_floor7_hub(&mut game);
+        click(&mut game, El::DoorFoe7);
+        click(&mut game, El::F7Exhibit(0));
+        click(&mut game, El::F7Exhibit(1));
+        for edge in 0..4u8 {
+            click(&mut game, El::F7FoeEdge(edge));
+        }
+        click(&mut game, El::F7Exhibit(2));
+        assert!(game.expedition.floor7.foe.loom_run);
+        for load in 0..3u8 {
+            click(&mut game, El::F7Load(load));
+        }
+        click(&mut game, El::F7Pressure);
+        assert!(game.expedition.floor7.foe.gate_passed);
+        for (claimable, rank) in [(0u8, 1u8), (1, 2), (2, 3), (3, 4)] {
+            for _ in 0..rank {
+                click(&mut game, El::F7OrderCycle(claimable));
+            }
+        }
+        assert!(game.expedition.floor7_foe_proof_complete());
+        game.press_seal();
+        assert!(game.seal_armed());
+        click(&mut game, El::SealConfirm);
+        assert_eq!(game.expedition.floor7.foe.state, FoeState::Fallen);
+        assert!(game.expedition.floor7_complete());
     }
 
     /// Floor 7 Step 4, driven on the GUI surface: the
