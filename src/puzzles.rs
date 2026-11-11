@@ -2765,3 +2765,120 @@ pub mod loom {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Floor 7 — the Loom of Many Hands: the Scoped Loom and the
+// Border Seals. Both judges are pure checks over the
+// authored tables in content: the join order against the
+// threads' lives, the seals against the tools' truths.
+// ---------------------------------------------------------------------------
+
+/// The Scoped Loom's first fault, if the posted order has
+/// one — spoken by the judge press, in the day's terms.
+pub fn scoped_order_fault(order: &[u8; 6]) -> Option<&'static str> {
+    if order.contains(&0) {
+        return Some("a thread stands unassigned: every thread takes a slot");
+    }
+    for slot in 1..=6u8 {
+        if order.iter().filter(|taken| **taken == slot).count() > 1 {
+            return Some("two threads stand in one slot: a slot joins one thread");
+        }
+    }
+    for (index, thread) in crate::content::SCOPED_THREADS.iter().enumerate() {
+        if order[index] > thread.expiry {
+            return Some(if index == 1 {
+                "Bryn's thread is joined after its life ran out: it ends by slot 2"
+            } else {
+                "Elin's thread is joined after its life ran out: it ends by slot 3"
+            });
+        }
+    }
+    None
+}
+
+/// Whether the posted join order is a valid scoped order:
+/// a permutation of slots 1..=6 with every early thread
+/// joined before its expiry.
+pub fn scoped_order_valid(order: &[u8; 6]) -> bool {
+    scoped_order_fault(order).is_none()
+}
+
+/// Whether the six seals stand true: every tool sealed as
+/// it truly is (recorded value = the true seal + 1, with
+/// 0 unsealed).
+pub fn seals_complete(seals: &[u8; 6]) -> bool {
+    crate::content::SEAL_TOOLS
+        .iter()
+        .enumerate()
+        .all(|(index, tool)| seals[index] == tool.true_seal + 1)
+}
+
+#[cfg(test)]
+mod floor7_first_tests {
+    use super::*;
+
+    /// Validation: an order that homes the early threads
+    /// in time — Bryn in slot 2, Elin in slot 3 — proves.
+    #[test]
+    fn scoped_order_homes_early_threads() {
+        assert!(scoped_order_valid(&[4, 2, 5, 6, 3, 1]));
+        assert!(scoped_order_valid(&[1, 2, 4, 5, 3, 6]));
+    }
+
+    /// Adversarial: a tidy-looking permutation that
+    /// strands Bryn in the last slot is no scoped order.
+    #[test]
+    fn scoped_order_strands_the_early() {
+        assert!(!scoped_order_valid(&[1, 6, 2, 3, 4, 5]));
+        assert_eq!(
+            scoped_order_fault(&[1, 6, 2, 3, 4, 5]),
+            Some("Bryn's thread is joined after its life ran out: it ends by slot 2")
+        );
+        assert!(!scoped_order_valid(&[1, 2, 3, 4, 6, 5]));
+    }
+
+    /// Adversarial: unassigned and doubled slots fail,
+    /// each with its own named fault.
+    #[test]
+    fn scoped_order_faults_are_named() {
+        assert_eq!(
+            scoped_order_fault(&[0, 2, 3, 4, 5, 6]),
+            Some("a thread stands unassigned: every thread takes a slot")
+        );
+        assert_eq!(
+            scoped_order_fault(&[1, 1, 3, 4, 5, 6]),
+            Some("two threads stand in one slot: a slot joins one thread")
+        );
+        assert_eq!(scoped_order_fault(&[4, 2, 5, 6, 3, 1]), None);
+    }
+
+    /// Validation: the tools' true seals complete the
+    /// chamber — shuttle and hearts as their cards state.
+    #[test]
+    fn seals_key_completes() {
+        assert!(seals_complete(&[1, 2, 1, 2, 3, 1]));
+    }
+
+    /// Adversarial: the phantom-sealed kit under either
+    /// boasted seal fails — the raw pointer inside is
+    /// covered by neither — and an unsealed tool fails.
+    #[test]
+    fn phantom_seal_fails_both_ways() {
+        assert!(
+            !seals_complete(&[1, 2, 1, 2, 1, 1]),
+            "SEND does not cover it"
+        );
+        assert!(
+            !seals_complete(&[1, 2, 1, 2, 2, 1]),
+            "SYNC does not cover it"
+        );
+        assert!(
+            !seals_complete(&[1, 2, 1, 2, 0, 1]),
+            "unsealed is not a seal"
+        );
+        assert!(
+            !seals_complete(&[2, 2, 1, 2, 3, 1]),
+            "the shuttle is no wall board"
+        );
+    }
+}

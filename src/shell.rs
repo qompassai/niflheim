@@ -8252,11 +8252,138 @@ fn build_floor7_chamber(
         meta.slot_wants,
         progress.facet,
     );
+    match index {
+        0 => build_f7c1(commands, game, pal, fonts, stage),
+        1 => build_f7c2(commands, game, pal, fonts, stage),
+        _ => {}
+    }
 }
 
 /// Floor 7's hub: the Loom of Many Hands — five chamber
 /// doors, the camp stone, and the panel with the chambers
 /// and the FOE's standing.
+/// Chamber 1's panel: the six threads with their lives
+/// and their posted join slots, and the order's standing.
+fn build_f7c1(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor7.chambers[0].work;
+    for (index, thread) in content::SCOPED_THREADS.iter().enumerate() {
+        let rect = geom::f7_op_row(index);
+        let slot = work.join_order[index];
+        spawn_button(
+            commands,
+            stage,
+            rect,
+            &format!("THREAD {} — SLOT {}", index + 1, slot),
+            pal,
+            slot != 0,
+            fonts,
+        );
+        let life = if thread.expiry >= 6 {
+            "lives to the scope's end".to_string()
+        } else {
+            format!("ENDS EARLY — home by slot {}", thread.expiry)
+        };
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 34.0,
+            Some(400.0),
+            &format!("{} — {}; {life}", thread.name, thread.errand),
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    let standing = if work.scoped {
+        "The order stands judged true: the scope may close over it.".to_string()
+    } else {
+        match crate::puzzles::scoped_order_fault(&work.join_order) {
+            Some(fault) => format!("The order as posted: {fault}."),
+            None => "The order as posted is true, and waits on the judge.".to_string(),
+        }
+    };
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &standing,
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// Chamber 2's panel: the six tools with their cards and
+/// their seals as posted, and the desk's standing.
+fn build_f7c2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor7.chambers[1].work;
+    for (index, tool) in content::SEAL_TOOLS.iter().enumerate() {
+        let rect = geom::f7_tool_row(index);
+        let seal = work.seals[index];
+        spawn_button(
+            commands,
+            stage,
+            rect,
+            &format!(
+                "TOOL {} — {}",
+                index + 1,
+                if seal == 0 {
+                    "UNSEALED"
+                } else {
+                    content::SEAL_NAMES[(seal - 1) as usize]
+                }
+            ),
+            pal,
+            seal != 0,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 34.0,
+            Some(400.0),
+            &format!(
+                "{}: {} Fine print: {}",
+                tool.name, tool.card, tool.fine_print
+            ),
+            10.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    let sealed = work.seals.iter().filter(|seal| **seal != 0).count();
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &format!(
+            "Sealed: {sealed} of 6. {}",
+            if work.judged {
+                "The desk has judged the set true."
+            } else {
+                "The desk judges only a full set, and judges it whole."
+            }
+        ),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
 fn build_floor7_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
     build_header(commands, game, pal, fonts, stage);
     build_room_base(

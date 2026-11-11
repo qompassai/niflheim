@@ -350,6 +350,14 @@ pub enum El {
     F6Watch,
     /// Floor 7: watch the demonstration.
     F7Watch,
+    /// Floor 7 Chamber 1: cycle one thread's join slot.
+    F7JoinCycle(u8),
+    /// Floor 7 Chamber 1: call the scope judge.
+    F7ScopeJudge,
+    /// Floor 7 Chamber 2: cycle one tool's seal.
+    F7SealCycle(u8),
+    /// Floor 7 Chamber 2: call the border judge.
+    F7SealJudge,
     /// Floor 6 Chamber 1: walk one operation of the day.
     F6DayOp(u8),
     /// Floor 6 Chamber 2: make one call on the brazier.
@@ -1276,6 +1284,22 @@ pub mod geom {
     /// from 292), and the panel (x from 792).
     pub fn door_floor7() -> Rect {
         Rect::new(440.0, 150.0, 124.0, 124.0)
+    }
+
+    /// Floor 7 chambers: one thread row.
+    pub fn f7_op_row(index: usize) -> Rect {
+        Rect::new(380.0, 100.0 + index as f32 * 56.0, 300.0, 30.0)
+    }
+
+    /// Floor 7 Chamber 2: one tool row (taller spacing:
+    /// the card and its fine print stand beneath).
+    pub fn f7_tool_row(index: usize) -> Rect {
+        Rect::new(380.0, 96.0 + index as f32 * 62.0, 300.0, 30.0)
+    }
+
+    /// Floor 7 chambers: the judge's button.
+    pub fn f7_judge_btn() -> Rect {
+        Rect::new(380.0, 452.0, 220.0, 30.0)
     }
 
     /// Floor 6 chambers 1-4: one operation/call row.
@@ -4212,6 +4236,105 @@ impl Game {
                 }
             }
 
+            El::F7JoinCycle(thread) => {
+                if let Screen::Floor7Chamber(0) = self.screen {
+                    let thread = thread as usize;
+                    if let Some(work) = self.expedition.floor7.chambers[0]
+                        .work
+                        .join_order
+                        .get_mut(thread)
+                    {
+                        *work = (*work + 1) % 7;
+                    }
+                    self.expedition.floor7.chambers[0].work.scoped = false;
+                    let slot = self.expedition.floor7.chambers[0].work.join_order[thread];
+                    let meta = &content::SCOPED_THREADS[thread];
+                    self.say(
+                        StatusKind::Info,
+                        format!(
+                            "{} — join slot {}.",
+                            meta.name,
+                            if slot == 0 {
+                                "unassigned".to_string()
+                            } else {
+                                slot.to_string()
+                            }
+                        ),
+                    );
+                    self.changed();
+                }
+            }
+
+            El::F7ScopeJudge => {
+                if let Screen::Floor7Chamber(0) = self.screen {
+                    let order = self.expedition.floor7.chambers[0].work.join_order;
+                    match puzzles::scoped_order_fault(&order) {
+                        None => {
+                            self.expedition.floor7.chambers[0].work.scoped = true;
+                            self.say(
+                                StatusKind::Good,
+                                "The order stands: every thread joined inside \
+                                 the scope, the early threads home in time.",
+                            );
+                        }
+                        Some(fault) => {
+                            self.expedition.floor7.chambers[0].work.scoped = false;
+                            self.say(StatusKind::Refusal, format!("The order fails: {fault}."));
+                        }
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F7SealCycle(tool) => {
+                if let Screen::Floor7Chamber(1) = self.screen {
+                    let tool = tool as usize;
+                    if let Some(work) = self.expedition.floor7.chambers[1].work.seals.get_mut(tool)
+                    {
+                        *work = (*work + 1) % 4;
+                    }
+                    self.expedition.floor7.chambers[1].work.judged = false;
+                    let seal = self.expedition.floor7.chambers[1].work.seals[tool];
+                    let meta = &content::SEAL_TOOLS[tool];
+                    self.say(
+                        StatusKind::Info,
+                        format!(
+                            "{} — {}.",
+                            meta.name,
+                            if seal == 0 {
+                                "unsealed".to_string()
+                            } else {
+                                content::SEAL_NAMES[(seal - 1) as usize].to_string()
+                            }
+                        ),
+                    );
+                    self.changed();
+                }
+            }
+
+            El::F7SealJudge => {
+                if let Screen::Floor7Chamber(1) = self.screen {
+                    let seals = self.expedition.floor7.chambers[1].work.seals;
+                    if puzzles::seals_complete(&seals) {
+                        self.expedition.floor7.chambers[1].work.judged = true;
+                        self.say(
+                            StatusKind::Good,
+                            "The seals stand true: each tool sealed as it \
+                             is — and the phantom seal refused.",
+                        );
+                    } else {
+                        self.expedition.floor7.chambers[1].work.judged = false;
+                        self.say(
+                            StatusKind::Refusal,
+                            "The desk refuses the set: a seal does not match \
+                             its tool. Read the cards again — parts, then \
+                             fine print.",
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
             El::F7Watch => {
                 if let Screen::Floor7Chamber(index) = self.screen {
                     if let Some(progress) = self.expedition.floor7.chambers.get_mut(index) {
@@ -6698,8 +6821,22 @@ fn layout_floor6_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
 /// chamber's own controls land with its step.
 fn layout_floor7_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: usize) {
     let _ = game;
-    let _ = chamber;
     els.push((El::F7Watch, geom::f2_watch()));
+    match chamber {
+        0 => {
+            for thread in 0..6 {
+                els.push((El::F7JoinCycle(thread as u8), geom::f7_op_row(thread)));
+            }
+            els.push((El::F7ScopeJudge, geom::f7_judge_btn()));
+        }
+        1 => {
+            for tool in 0..6 {
+                els.push((El::F7SealCycle(tool as u8), geom::f7_tool_row(tool)));
+            }
+            els.push((El::F7SealJudge, geom::f7_judge_btn()));
+        }
+        _ => {}
+    }
 }
 
 /// The Floor 5 chambers' panel elements: the watch; each
@@ -8393,6 +8530,105 @@ mod tests {
         );
     }
 
+    /// Floor 7 Step 2, driven on the GUI surface: the Scoped
+    /// Loom's order is posted slot by slot and judged — a
+    /// stranded order refused first — and the Border Seals'
+    /// six tools are sealed and judged whole, phantom and
+    /// all; both chambers through the seal.
+    #[test]
+    fn floor7_chambers_one_and_two_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn to_floor7_hub(game: &mut Game) {
+            game.screen = Screen::Hub;
+            game.expedition.foe.state = FoeState::Fallen;
+            game.expedition.foe.gate_passed = true;
+            game.expedition.floor2.foe.state = FoeState::Fallen;
+            game.expedition.floor3.foe.gate_passed = true;
+            for chamber in game.expedition.floor2.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            for chamber in game.expedition.floor4.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor4.foe.state = FoeState::Fallen;
+            for chamber in game.expedition.floor5.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor5.foe.state = FoeState::Fallen;
+            click(game, El::DoorFloor4);
+            click(game, El::DoorFloor5);
+            assert_eq!(game.screen, Screen::Floor5Hub);
+            click(game, El::DoorFloor7);
+            assert_eq!(game.screen, Screen::Floor7Hub);
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        to_floor7_hub(&mut game);
+        // Chamber 1 — the Scoped Loom.
+        click(&mut game, El::Floor7Door(0));
+        click(&mut game, El::F7Watch);
+        click(&mut game, El::F7ScopeJudge);
+        assert!(!game.expedition.floor7.chambers[0].work.scoped);
+        // Post the order [4, 2, 5, 6, 3, 1] slot by slot.
+        for (thread, clicks) in [(0u8, 4), (1, 2), (2, 5), (3, 6), (4, 3), (5, 1)] {
+            for _ in 0..clicks {
+                click(&mut game, El::F7JoinCycle(thread));
+            }
+        }
+        assert_eq!(
+            game.expedition.floor7.chambers[0].work.join_order,
+            [4, 2, 5, 6, 3, 1]
+        );
+        click(&mut game, El::F7ScopeJudge);
+        assert!(game.expedition.floor7.chambers[0].work.scoped);
+        assert!(game.expedition.floor7_diagnosed(0));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor7.chambers[0].state,
+            ChamberState::Repaired
+        );
+        // Chamber 2 — the Border Seals.
+        click(&mut game, El::TabFloor);
+        to_floor7_hub(&mut game);
+        click(&mut game, El::Floor7Door(1));
+        click(&mut game, El::F7Watch);
+        // Seal the phantom kit SEND first: the desk refuses.
+        for (tool, clicks) in [(0u8, 1), (1, 2), (2, 1), (3, 2), (4, 1), (5, 1)] {
+            for _ in 0..clicks {
+                click(&mut game, El::F7SealCycle(tool));
+            }
+        }
+        click(&mut game, El::F7SealJudge);
+        assert!(!game.expedition.floor7.chambers[1].work.judged);
+        // Correct the phantom to NEITHER (two more cycles).
+        click(&mut game, El::F7SealCycle(4));
+        click(&mut game, El::F7SealCycle(4));
+        assert_eq!(
+            game.expedition.floor7.chambers[1].work.seals,
+            [1, 2, 1, 2, 3, 1]
+        );
+        click(&mut game, El::F7SealJudge);
+        assert!(game.expedition.floor7.chambers[1].work.judged);
+        assert!(game.expedition.floor7_diagnosed(1));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor7.chambers[1].state,
+            ChamberState::Repaired
+        );
+    }
     /// Floor 7's door answers the pointer when the Veilworks
     /// stands complete, and refuses it while the Thing still
     /// stands — the Lockheart, recommended though it is,

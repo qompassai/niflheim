@@ -770,6 +770,20 @@ pub struct LoomWork {
     /// The demonstration has been watched.
     #[serde(default)]
     pub watched: bool,
+    /// Chamber 1: each thread's posted join slot
+    /// (0 = unassigned, 1..=6).
+    #[serde(default)]
+    pub join_order: [u8; 6],
+    /// Chamber 1: the judge has stamped the order.
+    #[serde(default)]
+    pub scoped: bool,
+    /// Chamber 2: each tool's posted seal
+    /// (0 = unsealed, 1 = Send, 2 = Sync, 3 = Neither).
+    #[serde(default)]
+    pub seals: [u8; 6],
+    /// Chambers 2 and 4: the judge has stamped the work.
+    #[serde(default)]
+    pub judged: bool,
 }
 
 /// Floor 7, one chamber's progress.
@@ -3677,10 +3691,17 @@ impl Expedition {
     /// No chamber proves yet: the judges land with their
     /// chambers in Steps 2–4.
     pub fn floor7_diagnosed(&self, chamber: usize) -> bool {
-        let Some(_progress) = self.floor7.chambers.get(chamber) else {
+        let Some(progress) = self.floor7.chambers.get(chamber) else {
             return false;
         };
-        false
+        let work = &progress.work;
+        match chamber {
+            0 => {
+                work.watched && work.scoped && crate::puzzles::scoped_order_valid(&work.join_order)
+            }
+            1 => work.watched && work.judged && crate::puzzles::seals_complete(&work.seals),
+            _ => false,
+        }
     }
 
     /// File one Floor 7 chamber's proof once its work proves:
@@ -4940,6 +4961,74 @@ mod tests {
         assert_eq!(work.spin_annotations, [0; 4]);
     }
 
+    /// Floor 7 Step 2 state: the Scoped Loom judges on the
+    /// posted order and the judge's stamp; the Border Seals
+    /// on the true seals, judged whole.
+    #[test]
+    fn floor7_first_chambers_judged() {
+        let mut expedition = Expedition::new();
+        // A true order, unstamped: not proven.
+        {
+            let work = &mut expedition.floor7.chambers[0].work;
+            work.watched = true;
+            work.join_order = [4, 2, 5, 6, 3, 1];
+        }
+        assert!(!expedition.floor7_diagnosed(0));
+        assert!(expedition.floor7_file_proof(0).is_err());
+        expedition.floor7.chambers[0].work.scoped = true;
+        assert!(expedition.floor7_diagnosed(0));
+        assert!(expedition.floor7_file_proof(0).is_ok());
+        assert!(expedition.floor7_repair_chamber(0).is_ok());
+        // The seals: five true of six is not a set.
+        {
+            let work = &mut expedition.floor7.chambers[1].work;
+            work.watched = true;
+            work.seals = [1, 2, 1, 2, 1, 1];
+            work.judged = true;
+        }
+        assert!(
+            !expedition.floor7_diagnosed(1),
+            "the phantom under SEND fails"
+        );
+        expedition.floor7.chambers[1].work.seals = [1, 2, 1, 2, 3, 1];
+        assert!(expedition.floor7_diagnosed(1));
+        assert!(expedition.floor7_file_proof(1).is_ok());
+        assert!(expedition.floor7_repair_chamber(1).is_ok());
+    }
+
+    /// Adversarial: a stranded early thread under a judge's
+    /// stamp still proves nothing — the judge in state
+    /// recomputes the order — and a reset clears both
+    /// chambers' work.
+    #[test]
+    fn floor7_first_chambers_adversarial() {
+        let mut expedition = Expedition::new();
+        {
+            let work = &mut expedition.floor7.chambers[0].work;
+            work.watched = true;
+            work.join_order = [1, 6, 2, 3, 4, 5];
+            work.scoped = true;
+        }
+        assert!(
+            !expedition.floor7_diagnosed(0),
+            "Bryn stranded is not scoped"
+        );
+        assert!(expedition.floor7_repair_chamber(0).is_err());
+        expedition.floor7_reset_chamber(0);
+        let work = &expedition.floor7.chambers[0].work;
+        assert_eq!(work.join_order, [0; 6]);
+        assert!(!work.scoped);
+        {
+            let work = &mut expedition.floor7.chambers[1].work;
+            work.watched = true;
+            work.seals = [1, 2, 1, 2, 3, 1];
+            work.judged = true;
+        }
+        assert!(expedition.floor7_diagnosed(1));
+        expedition.floor7_reset_chamber(1);
+        assert_eq!(expedition.floor7.chambers[1].work.seals, [0; 6]);
+        assert!(!expedition.floor7_diagnosed(1));
+    }
     /// Validation: a version-6 save (no floor7 field at all)
     /// loads with a fresh Floor 7, and re-saves as version 7.
     /// Floor 6's records — the spin annotations included —

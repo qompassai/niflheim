@@ -4157,3 +4157,131 @@ pub fn floor7_chamber_hints(_chamber: usize) -> [&'static str; 4] {
          and for the single order that makes it impossible.",
     ]
 }
+
+/// One of the Scoped Loom's six threads: its name, and the
+/// last join slot at which it may be joined — a thread
+/// joined after its life has run out is not joined at all.
+/// Threads with expiry 6 live to the scope's end.
+pub struct ScopedThread {
+    /// The thread's name.
+    pub name: &'static str,
+    /// The thread's errand in the pattern.
+    pub errand: &'static str,
+    /// The last lawful join slot (1..=6).
+    pub expiry: u8,
+}
+
+/// Floor 7 Chamber 1's six threads. Two end early: Bryn's
+/// thread must be home by slot 2, Elin's by slot 3. The
+/// judge in puzzles checks the posted order against these
+/// lives — a permutation that strands an early thread is
+/// refused by name.
+pub const SCOPED_THREADS: [ScopedThread; 6] = [
+    ScopedThread {
+        name: "Ama's shuttle-thread",
+        errand: "carries the pattern's first row across",
+        expiry: 6,
+    },
+    ScopedThread {
+        name: "Bryn's short thread",
+        errand: "ties one quick knot and is spent",
+        expiry: 2,
+    },
+    ScopedThread {
+        name: "Cato's pattern-thread",
+        errand: "works the pattern's long middle",
+        expiry: 6,
+    },
+    ScopedThread {
+        name: "Dain's long thread",
+        errand: "holds the pattern's edge to the end",
+        expiry: 6,
+    },
+    ScopedThread {
+        name: "Elin's short thread",
+        errand: "sets two stitches and unravels",
+        expiry: 3,
+    },
+    ScopedThread {
+        name: "Fenn's tally-thread",
+        errand: "counts the rows as they land",
+        expiry: 6,
+    },
+];
+
+/// One of the Border Seals' six tools: its name, the card
+/// the desk shows, the card's fine print, and the seal
+/// that truly fits it (1 = Send, 2 = Sync, 3 = Neither).
+pub struct SealTool {
+    /// The tool's name.
+    pub name: &'static str,
+    /// The tool's card, as posted.
+    pub card: &'static str,
+    /// The card's fine print.
+    pub fine_print: &'static str,
+    /// The true seal (see SEAL_NAMES; index + 1).
+    pub true_seal: u8,
+}
+
+/// The seals a tool may carry, in cycle order.
+pub const SEAL_NAMES: [&str; 3] = ["SEND", "SYNC", "NEITHER"];
+
+/// Floor 7 Chamber 2's six tools. Five are honest; the
+/// fifth is phantom-sealed — its card boasts both seals,
+/// and its fine print names a raw pointer inside, which
+/// no seal can cover: it is Neither.
+pub const SEAL_TOOLS: [SealTool; 6] = [
+    SealTool {
+        name: "The Brass Shuttle",
+        card: "A plain token of turned brass, all of a piece: \
+               one hand carries it across, one hand works it \
+               at the far side.",
+        fine_print: "Parts: brass, whole. Nothing else inside.",
+        true_seal: 0,
+    },
+    SealTool {
+        name: "The Posted Notice",
+        card: "A board lettered large and nailed to the hall \
+               wall: every hand reads it where it hangs, all \
+               day, at once.",
+        fine_print: "Parts: oak, iron nails, paint. It never moves.",
+        true_seal: 1,
+    },
+    SealTool {
+        name: "The Borrow-Flag Heart",
+        card: "The Lockheart's own heart, lent down the hall: \
+               carried whole from hand to hand, but worked by \
+               one holder at a time under its flags.",
+        fine_print: "Parts: the heart, its flag-staff. Its flags \
+                     forbid two holders at once.",
+        true_seal: 0,
+    },
+    SealTool {
+        name: "The Spin Heart",
+        card: "The Lockheart's second heart: its watchman \
+               stands guard in posted order, so the flag may \
+               be read by many hands at once.",
+        fine_print: "Parts: the heart, the watchman, his cord. \
+                     The watchman's order is the guard.",
+        true_seal: 1,
+    },
+    SealTool {
+        name: "The Phantom-Sealed Kit",
+        card: "A handsome kit from the maker's fair, stamped \
+               with both seals in bright wax: SEND, and SYNC \
+               besides.",
+        fine_print: "Parts: the clasp, the trays — and, wired \
+                     to the clasp, a raw pointer, bare and \
+                     unguarded.",
+        true_seal: 2,
+    },
+    SealTool {
+        name: "The Porter's Ledger",
+        card: "A bound book of plain paper and ink: a porter \
+               carries it across the border and works it alone \
+               at the far desk.",
+        fine_print: "Parts: paper, ink, thread binding. One \
+                     hand at a time, by its nature.",
+        true_seal: 0,
+    },
+];
