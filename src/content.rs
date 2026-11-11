@@ -4597,3 +4597,77 @@ pub fn floor7_foe_hints() -> [&'static str; 4] {
          deadlock. A global order forbids cycles.",
     ]
 }
+
+/// Floor 8 — The Suspended Hour, in the Stillroom of Hours.
+pub const FLOOR8_NAME: &str = "The Suspended Hour";
+pub const FLOOR8_KEEPER: &str = "Pinwright";
+pub const FLOOR8_INTRO: &str = "The Stillroom of Hours: suspended bells, sleeping messengers, time kept in jars. Pinwright keeps the Lockheart hearts under their old borrowing rules. A future is a state machine you could write by hand.";
+pub const HOUR_CHAMBERS: [ChamberMeta; 5] = [
+    ChamberMeta {
+        name: "The Countdown Bell",
+        room: "The Countdown Bell",
+        inscription_title: "Poll the State",
+        inscription: "Five states: begin loading, wait, load arrives at poll three, prepare the bell, complete. A wrong report leaves the state untouched.",
+        demonstration: "Pinwright polls each state. The load arrives at the third poll; the future still has its bell to prepare. Ring only when the whole future completes.",
+        slot_wants: "POLL TRACE + COMPLETION",
+        prove_label: "File the trace",
+    },
+    ChamberMeta {
+        name: "The Pinned Tapestry",
+        room: "The Pinned Tapestry",
+        inscription_title: "Keep the Referent Still",
+        inscription: "First move the unpinned self-reference and see the tear. Then pin it. The later move carries only its owning handle; the referent's address stays fixed.",
+        demonstration: "An unpinned referent relocates and tears. The pinned referent stays at its address while its owning handle moves. Pin never licenses moving the pinned self-reference.",
+        slot_wants: "MOVEMENT RECORD",
+        prove_label: "File the hanging",
+    },
+    ChamberMeta {
+        name: "The Hand-Built Waker",
+        room: "The Hand-Built Waker",
+        inscription_title: "Sleep, Then Signal",
+        inscription: "Assemble counter, errand name, generation stamp, wake face, in that order. Walk two sleeps and two wakes.",
+        demonstration: "The attendant sleeps between signals; its spinning twin keeps polling. Both counters come from their authored simulations, not the host clock.",
+        slot_wants: "ASSEMBLY + WAKE LOG",
+        prove_label: "File the waker",
+    },
+    ChamberMeta {
+        name: "The Single-Attendant Executor",
+        room: "The Single-Attendant Executor",
+        inscription_title: "One Attendant, Four Errands",
+        inscription: "Four errands borrow the Lockheart hearts exclusively under Floor 6's rules. Predict twelve events, including each errand's final accounting.",
+        demonstration: "The attendant polls each errand, records completion and reconciles all four by name. The real executor supplies the roster.",
+        slot_wants: "EVENT ROSTER",
+        prove_label: "File the roster",
+    },
+    ChamberMeta {
+        name: "The Cancellation Ledger",
+        room: "The Cancellation Ledger",
+        inscription_title: "Every Started Errand Counts",
+        inscription: "Six errands: completed, cancelled with cleanup, or retained running by name. Reconcile every started errand exactly once.",
+        demonstration: "Completion ends a task; cancellation releases its borrowed hearts; quiescence retains a never-waking task by name. No implicit cleanup of a retained task.",
+        slot_wants: "TERMINAL ACCOUNTING",
+        prove_label: "File the ledger",
+    },
+];
+pub const FLOOR8_CHAMBER_INTROS: [&str; 5] = [
+    "The Countdown Bell: choose Pending or Ready at each of five states; load arrives at poll three.",
+    "The Pinned Tapestry: exhibit the unpinned tear first, then pin and move only the owning handle.",
+    "The Hand-Built Waker: assemble the four parts in order, then walk the sleep trial.",
+    "The Single-Attendant Executor: predict the real twelve-event roster.",
+    "The Cancellation Ledger: account for all six started errands exactly once.",
+];
+pub const F8_EXAMINE_TEXTS: [&str; 5] = [
+    "Five state boxes beside a countdown load and a completion bell.",
+    "A self-referential hanging with separate referent and handle address markers.",
+    "Four loose waker parts beside a sleeping attendant and a spinning twin.",
+    "The Lockheart Pair on loan, four errand seals, twelve event slots.",
+    "Six started errands and six terminal accounting lines.",
+];
+pub fn floor8_chamber_hints(_chamber: usize) -> [&'static str; 4] {
+    [
+        "Read the state and its next report before acting.",
+        "A wake is a signal, not completion. Read its provenance.",
+        "Every refusal names the missing evidence; the work survives a refusal.",
+        "The seam: carry errand and generation in the signal, and refuse stale generations at the face.",
+    ]
+}

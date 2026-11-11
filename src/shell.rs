@@ -1015,6 +1015,7 @@ fn rebuild_now(
         Screen::Floor5Hub => build_floor5_hub(commands, game, &pal, fonts, stage),
         Screen::Floor6Hub => build_floor6_hub(commands, game, &pal, fonts, stage),
         Screen::Floor7Hub => build_floor7_hub(commands, game, &pal, fonts, stage),
+        Screen::Floor8Hub => build_floor8_hub(commands, game, &pal, fonts, stage),
         Screen::Floor2Chamber(index) => {
             build_floor2_chamber(commands, game, &pal, fonts, stage, index)
         }
@@ -1032,6 +1033,9 @@ fn rebuild_now(
         }
         Screen::Floor7Chamber(index) => {
             build_floor7_chamber(commands, game, &pal, fonts, stage, index)
+        }
+        Screen::Floor8Chamber(index) => {
+            build_floor8_chamber(commands, game, &pal, fonts, stage, index)
         }
         Screen::Floor3Foe => build_floor3_foe(commands, game, &pal, fonts, stage),
         Screen::Floor4Foe => build_floor4_foe(commands, game, &pal, fonts, stage),
@@ -1195,6 +1199,7 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         Screen::Floor5Hub => "Niflheim — Floor 5 · The Veilworks".to_string(),
         Screen::Floor6Hub => "Niflheim — Floor 6 · The Lockheart".to_string(),
         Screen::Floor7Hub => "Niflheim — Floor 7 · The Loom of Many Hands".to_string(),
+        Screen::Floor8Hub => "Niflheim — Floor 8 · The Suspended Hour".to_string(),
         Screen::Floor2Chamber(index) => format!(
             "Floor 2 · Chamber {} — {}",
             index + 1,
@@ -1224,6 +1229,12 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
             "Floor 7 · Chamber {} — {}",
             index + 1,
             content::LOOM_CHAMBERS[index].name
+        ),
+
+        Screen::Floor8Chamber(index) => format!(
+            "Floor 8 · Chamber {} — {}",
+            index + 1,
+            content::HOUR_CHAMBERS[index].name
         ),
 
         Screen::Floor3Foe => "Floor 3 · The Gatehouse Release".to_string(),
@@ -8175,6 +8186,108 @@ fn build_floor6_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
         Justify::Left,
         fonts,
     );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::door_floor8(),
+        pal.card,
+        content::FLOOR8_NAME,
+        if game.expedition.floor8_reachable() {
+            "OPEN"
+        } else {
+            "BARRED"
+        },
+    );
+}
+
+fn build_floor8_chamber(
+    commands: &mut Commands,
+    game: &Game,
+    pal: &Pal,
+    fonts: &Fonts,
+    stage: Entity,
+    index: usize,
+) {
+    let meta = &content::HOUR_CHAMBERS[index];
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        &format!("Chamber {} — {} · {}", index + 1, meta.name, meta.room),
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        Color::srgb_u8(120, 130, 140),
+        match index {
+            0 => "THE COUNTDOWN BELL",
+            1 => "THE PINNED TAPESTRY",
+            2 => "THE WAKER",
+            3 => "THE EXECUTOR",
+            _ => "THE LEDGER",
+        },
+        "the demonstration",
+    );
+    let stone = geom::stone();
+    spawn_box(
+        commands,
+        stage,
+        stone,
+        Some(Color::srgb_u8(140, 140, 148)),
+        Some((2.0, pal.ink_dim)),
+        0.0,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 12.0,
+        stone.w,
+        "THE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    spawn_text_centered(
+        commands,
+        stage,
+        stone.cx(),
+        stone.y + 26.0,
+        stone.w,
+        "RULE",
+        11.0,
+        true,
+        pal.ink,
+        fonts,
+    );
+    build_panel_header(commands, pal, fonts, stage, meta.name, meta.room);
+    let progress = &game.expedition.floor8.chambers[index];
+    build_slot(
+        commands,
+        pal,
+        fonts,
+        stage,
+        progress.state,
+        meta.slot_wants,
+        progress.facet,
+    );
+    spawn_button(
+        commands,
+        stage,
+        Rect::new(380.0, 100.0, 300.0, 36.0),
+        "Watch",
+        pal,
+        false,
+        fonts,
+    );
 }
 
 fn build_floor7_chamber(
@@ -9238,6 +9351,65 @@ fn build_floor7_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
         pal.ink,
         Justify::Left,
         fonts,
+    );
+}
+fn build_floor8_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Stillroom of Hours — suspended bells and sleeping messengers",
+    );
+    for (index, meta) in content::HOUR_CHAMBERS.iter().enumerate() {
+        let rect = geom::door_chamber(index);
+        spawn_box(
+            commands,
+            stage,
+            rect,
+            Some(pal.card),
+            Some((2.0, pal.edge)),
+            0.0,
+        );
+        spawn_text_centered(
+            commands,
+            stage,
+            rect.cx(),
+            rect.y + 4.0,
+            rect.w - 8.0,
+            meta.name,
+            10.0,
+            false,
+            pal.ink,
+            fonts,
+        );
+        spawn_text_centered(
+            commands,
+            stage,
+            rect.cx(),
+            rect.y + 42.0,
+            rect.w,
+            &format!(
+                "{} · {:?}",
+                index + 1,
+                game.expedition.floor8.chambers[index].state
+            ),
+            9.0,
+            true,
+            pal.ink_dim,
+            fonts,
+        );
+    }
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::camp_stone(),
+        pal.card,
+        "CAMP",
+        "rest and save",
     );
 }
 
@@ -10623,6 +10795,43 @@ fn build_map(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, sta
                     floor.class,
                     &floor7_status,
                     game.expedition.floor7.foe.state == FoeState::Fallen,
+                );
+            } else if index == 7 {
+                let repaired8 = game.expedition.floor8_chambers_repaired();
+                let floor8_status = match game.expedition.floor8.foe.state {
+                    FoeState::Fallen => format!(
+                        "FOE FALLEN — {}",
+                        game.expedition
+                            .floor8
+                            .foe
+                            .fallen_date
+                            .clone()
+                            .unwrap_or_default()
+                    ),
+                    _ if !game.expedition.floor8_reachable() => "BARRED".to_string(),
+                    _ if repaired8 > 0
+                        || game
+                            .expedition
+                            .floor8
+                            .chambers
+                            .iter()
+                            .any(|c| c.state == ChamberState::Diagnosed) =>
+                    {
+                        format!("CHARTING ({repaired8}/5)")
+                    }
+                    _ => "UNCHARTED".to_string(),
+                };
+                build_square(
+                    commands,
+                    pal,
+                    fonts,
+                    stage,
+                    rect,
+                    8,
+                    floor.domain,
+                    floor.class,
+                    &floor8_status,
+                    game.expedition.floor8.foe.state == FoeState::Fallen,
                 );
             } else {
                 build_square(

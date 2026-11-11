@@ -3337,3 +3337,6 @@ mod floor7_third_tests {
         assert_eq!(queue_at_capacity(1), (1, true));
     }
 }
+
+/// Frozen turn-stepped executor for Floor 8 and Part B.
+pub mod executor;
