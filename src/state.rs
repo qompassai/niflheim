@@ -1043,6 +1043,18 @@ pub struct HoardWork {
     pub slots: [u8; 6],
     #[serde(default)]
     pub nexts: [u8; 6],
+    #[serde(default)]
+    pub probes: [u8; 5],
+    #[serde(default)]
+    pub flood_cost: u8,
+    #[serde(default)]
+    pub predicted: u8,
+    #[serde(default)]
+    pub misses_explained: [bool; 10],
+    #[serde(default)]
+    pub ran: bool,
+    #[serde(default)]
+    pub steward_missed: bool,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Floor9ChamberProgress {
@@ -4744,11 +4756,22 @@ impl Expedition {
                 let (slots, nexts) = crate::puzzles::hoard_chain_indices();
                 p.work.slots == slots && p.work.nexts == nexts
             }
+            2 => {
+                let (probes, flood) = crate::puzzles::hoard_cellar_trace();
+                p.work.judged && p.work.probes == probes && p.work.flood_cost == flood
+            }
+            3 => {
+                let missed = p.work.steward_missed || p.work.misses_explained.iter().any(|&v| v);
+                p.work.predicted == crate::puzzles::hoard_steward_run().1
+                    && p.work.ran
+                    && !p.work.steward_missed
+                    && (!missed || p.work.misses_explained[crate::content::STEWARD_TRAP_OP])
+            }
             _ => false,
         }
     }
     pub fn floor9_file_proof(&mut self, chamber: usize) -> Result<String, Refusal> {
-        if chamber > 1
+        if chamber > 3
             || (chamber > 0 && self.floor9.chambers[chamber - 1].state != ChamberState::Repaired)
         {
             return Err(Refusal(
@@ -4756,10 +4779,19 @@ impl Expedition {
             ));
         }
         if !self.floor9_diagnosed(chamber) {
-            let mismatch = if chamber == 0 {
-                "LENGTH + CAPACITY TRACE mismatch: judge all eight exact pairs against the real shelf, including its capacity boundary."
-            } else {
-                "SLOTS + NEXT INDICES mismatch: use first-visit arena slots, preserve the one shared tail and end chains with 255; cycles are not chains."
+            let mismatch = match chamber {
+                0 => {
+                    "LENGTH + CAPACITY TRACE mismatch: judge all eight exact pairs against the real shelf, including its capacity boundary."
+                }
+                1 => {
+                    "SLOTS + NEXT INDICES mismatch: use first-visit arena slots, preserve the one shared tail and end chains with 255; cycles are not chains."
+                }
+                2 => {
+                    "PROBE TRACE + FLOOD COST mismatch: place the five keys, flood a fresh cellar with the four flood keys, and judge exact counts including landing slots."
+                }
+                _ => {
+                    "ALLOCATION COUNT + EXPLANATION mismatch: run the filed prediction; explain a pending miss by naming the growth operation before re-predicting, then run the exact count."
+                }
             };
             return Err(Refusal(mismatch.into()));
         }
@@ -8220,5 +8252,164 @@ mod floor9_step2_tests {
         assert!(e.floor9_repair_chamber(0).is_err());
         e.floor9.chambers[0].work.predictions[4][1] -= 1;
         assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod floor9_step3_tests {
+    use super::*;
+    use crate::{content, puzzles};
+    fn through_two() -> Expedition {
+        let mut e = Expedition::new();
+        e.floor9.chambers[0].work.predictions = puzzles::hoard_shelf_trace().0;
+        e.floor9.chambers[0].work.judged = true;
+        e.floor9_file_proof(0).unwrap();
+        e.floor9_repair_chamber(0).unwrap();
+        let (slots, nexts) = puzzles::hoard_chain_indices();
+        e.floor9.chambers[1].work.slots = slots;
+        e.floor9.chambers[1].work.nexts = nexts;
+        e.floor9_file_proof(1).unwrap();
+        e.floor9_repair_chamber(1).unwrap();
+        e
+    }
+    fn cellar(e: &mut Expedition) {
+        let w = &mut e.floor9.chambers[2].work;
+        (w.probes, w.flood_cost) = puzzles::hoard_cellar_trace();
+        w.judged = true;
+    }
+    fn through_three() -> Expedition {
+        let mut e = through_two();
+        cellar(&mut e);
+        e.floor9_file_proof(2).unwrap();
+        e.floor9_repair_chamber(2).unwrap();
+        e
+    }
+    fn exact(e: &mut Expedition) {
+        let w = &mut e.floor9.chambers[3].work;
+        w.predicted = puzzles::hoard_steward_run().1;
+        w.ran = true;
+    }
+    #[test]
+    fn cellar_exact_repair_and_facet_roundtrip() {
+        let mut e = through_two();
+        cellar(&mut e);
+        e.floor9.chambers[2].hints_used = 3;
+        e.floor9_file_proof(2).unwrap();
+        assert!(
+            e.floor9_repair_chamber(2)
+                .unwrap()
+                .contains("The Hoardstone")
+        );
+        assert!(e.floor9.chambers[2].facet);
+        assert_eq!(Expedition::load_json(&e.save_json().unwrap()).unwrap(), e);
+    }
+    #[test]
+    fn steward_first_exact_needs_no_miss_flags() {
+        let mut e = through_three();
+        exact(&mut e);
+        assert!(e.floor9_diagnosed(3));
+        e.floor9_file_proof(3).unwrap();
+        e.floor9_repair_chamber(3).unwrap();
+        assert!(
+            e.floor9.chambers[3]
+                .work
+                .misses_explained
+                .iter()
+                .all(|&v| !v)
+        );
+        assert_eq!(Expedition::load_json(&e.save_json().unwrap()).unwrap(), e);
+    }
+    #[test]
+    fn steward_accepted_history_is_sticky_and_fourth_hint_loses_facet() {
+        let mut e = through_three();
+        exact(&mut e);
+        e.floor9.chambers[3].work.misses_explained[content::STEWARD_TRAP_OP] = true;
+        e.floor9.chambers[3].hints_used = 4;
+        e.floor9_file_proof(3).unwrap();
+        e.floor9_repair_chamber(3).unwrap();
+        assert!(!e.floor9.chambers[3].facet);
+        let loaded = Expedition::load_json(&e.save_json().unwrap()).unwrap();
+        assert!(loaded.floor9.chambers[3].work.misses_explained[content::STEWARD_TRAP_OP]);
+    }
+    #[test]
+    fn step3_fields_default_and_ladders_name_seam() {
+        let w: HoardWork = serde_json::from_str(r#"{"watched":true}"#).unwrap();
+        assert_eq!(w.probes, [0; 5]);
+        assert_eq!(w.flood_cost, 0);
+        assert_eq!(w.predicted, 0);
+        assert!(!w.ran);
+        assert!(!w.steward_missed);
+        assert_eq!(w.misses_explained, [false; 10]);
+        for c in 2..4 {
+            assert!(content::floor9_chamber_hints(c)[3].contains("seam"));
+        }
+    }
+    #[test]
+    fn cellar_off_by_one_flood_undercount_and_premature_proofs_refuse() {
+        let mut e = through_two();
+        cellar(&mut e);
+        e.floor9.chambers[2].work.judged = false;
+        assert!(e.floor9_file_proof(2).is_err());
+        e.floor9.chambers[2].work.judged = true;
+        for i in 0..5 {
+            let original = e.floor9.chambers[2].work.probes[i];
+            for wrong in [original - 1, original + 1] {
+                e.floor9.chambers[2].work.probes[i] = wrong;
+                assert!(
+                    e.floor9_file_proof(2)
+                        .unwrap_err()
+                        .0
+                        .contains("PROBE TRACE")
+                );
+            }
+            e.floor9.chambers[2].work.probes[i] = original;
+        }
+        e.floor9.chambers[2].work.flood_cost -= 1;
+        assert!(!e.floor9_diagnosed(2));
+    }
+    #[test]
+    fn steward_pending_miss_survives_correction_and_load() {
+        let mut e = through_three();
+        exact(&mut e);
+        e.floor9.chambers[3].work.steward_missed = true;
+        assert!(!e.floor9_diagnosed(3));
+        assert!(e.floor9_file_proof(3).is_err());
+        let loaded = Expedition::load_json(&e.save_json().unwrap()).unwrap();
+        assert!(loaded.floor9.chambers[3].work.steward_missed);
+        assert!(!loaded.floor9_diagnosed(3));
+        e.floor9.chambers[3].work.misses_explained[content::STEWARD_TRAP_OP] = true;
+        assert!(!e.floor9_diagnosed(3));
+    }
+    #[test]
+    fn steward_wrong_flag_unrun_and_wrong_total_refuse() {
+        let mut e = through_three();
+        exact(&mut e);
+        e.floor9.chambers[3].work.ran = false;
+        assert!(!e.floor9_diagnosed(3));
+        e.floor9.chambers[3].work.ran = true;
+        e.floor9.chambers[3].work.misses_explained[(content::STEWARD_TRAP_OP + 1) % 10] = true;
+        assert!(!e.floor9_diagnosed(3));
+        e.floor9.chambers[3].work.misses_explained[content::STEWARD_TRAP_OP] = true;
+        let total = puzzles::hoard_steward_run().1;
+        for wrong in [total - 1, total + 1] {
+            e.floor9.chambers[3].work.predicted = wrong;
+            assert!(!e.floor9_diagnosed(3));
+        }
+    }
+    #[test]
+    fn step3_order_bypass_and_forged_saved_proofs_refuse() {
+        let mut e = through_two();
+        cellar(&mut e);
+        exact(&mut e);
+        assert!(e.floor9_file_proof(3).is_err());
+        assert!(e.floor9_repair_chamber(3).is_err());
+        e.floor9.chambers[3].state = ChamberState::Diagnosed;
+        assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
+        let mut e = through_three();
+        exact(&mut e);
+        e.floor9_file_proof(3).unwrap();
+        e.floor9.chambers[3].work.steward_missed = true;
+        assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
+        assert!(!e.floor9_diagnosed(4));
     }
 }

@@ -3970,3 +3970,182 @@ mod hoard_step2_tests {
         assert_ne!(trace, hoard_shelf_trace().0);
     }
 }
+
+/// Place five authored colliders; flood a separate fresh cellar with four.
+pub fn hoard_cellar_trace() -> ([u8; 5], u8) {
+    let mut map = CellarMap::new(crate::content::F9_CELLAR_CAPACITY);
+    let mut probes = [0; 5];
+    for (i, key) in crate::content::F9_CELLAR_KEYS.into_iter().enumerate() {
+        probes[i] = u8::try_from(map.insert(key, i).unwrap()).unwrap();
+    }
+    let mut flood = CellarMap::new(crate::content::F9_CELLAR_CAPACITY);
+    for key in crate::content::F9_FLOOD_KEYS {
+        assert!(flood.insert(key, ()).is_some());
+    }
+    (probes, u8::try_from(flood.probes_total()).unwrap())
+}
+
+/// Lantern paths use the map's own hash start and real per-insert probe count.
+pub fn hoard_cellar_lantern() -> String {
+    let mut map = CellarMap::new(crate::content::F9_CELLAR_CAPACITY);
+    crate::content::F9_CELLAR_KEYS
+        .into_iter()
+        .map(|key| {
+            let start = map.start(&key);
+            let probes = map.insert(key, ()).unwrap();
+            let path: Vec<_> = (0..probes)
+                .map(|n| (start + n) % crate::content::F9_CELLAR_CAPACITY)
+                .collect();
+            format!("Key {key}: {path:?} ({probes} probes)")
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// R-F9-7: new element claims, growth buffers, slot claims and block issues.
+/// Construction itself is outside the stated ten-operation workload.
+pub fn hoard_steward_run() -> ([u8; 10], u8) {
+    use crate::content::{self, StewardOp};
+    let mut shelf = ShelfVec::new(content::STEWARD_RESERVE);
+    let mut cellar = CellarMap::new(content::STEWARD_CELLAR_CAPACITY);
+    let mut hoard = Hoard::new(content::STEWARD_HOARD_BYTES);
+    let mut costs = [0; 10];
+    for (i, (op, _, _)) in content::STEWARD_WORKLOAD.into_iter().enumerate() {
+        costs[i] = match op {
+            StewardOp::Push(value) => {
+                let (len, cap) = (shelf.len(), shelf.cap());
+                assert!(shelf.push(value));
+                u8::try_from(shelf.len() - len).unwrap() + u8::from(shelf.cap() != cap)
+            }
+            StewardOp::Insert(key) => {
+                let len = cellar.len();
+                assert!(cellar.insert(key, ()).is_some());
+                u8::try_from(cellar.len() - len).unwrap()
+            }
+            StewardOp::Issue(bytes) => {
+                let blocks = hoard.blocks_used();
+                assert!(hoard.issue(bytes).is_some());
+                u8::try_from(hoard.blocks_used() - blocks).unwrap()
+            }
+            StewardOp::ShelfGet(index) => {
+                assert!(shelf.get(index).is_some());
+                0
+            }
+            StewardOp::CellarGet(key) => {
+                assert!(cellar.get(&key).is_some());
+                0
+            }
+        };
+    }
+    (costs, costs.iter().sum())
+}
+
+#[cfg(test)]
+mod hoard_step3_tests {
+    use super::*;
+    use crate::content::*;
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    fn slot(key: u16) -> usize {
+        let mut h = DefaultHasher::new();
+        key.hash(&mut h);
+        h.finish() as usize % F9_CELLAR_CAPACITY
+    }
+    #[test]
+    fn authored_colliders_and_flood_are_real_map_facts() {
+        assert!(
+            F9_CELLAR_KEYS
+                .iter()
+                .all(|&k| slot(k) == slot(F9_CELLAR_KEYS[0]))
+        );
+        assert!(
+            F9_FLOOD_KEYS
+                .iter()
+                .all(|&k| slot(k) == slot(F9_FLOOD_KEYS[0]))
+        );
+        let mut m = CellarMap::new(F9_CELLAR_CAPACITY);
+        let expected = F9_CELLAR_KEYS.map(|k| u8::try_from(m.insert(k, k).unwrap()).unwrap());
+        for k in F9_CELLAR_KEYS {
+            assert_eq!(m.get(&k), Some(&k));
+        }
+        let mut flood = CellarMap::new(F9_CELLAR_CAPACITY);
+        let sum: usize = F9_FLOOD_KEYS
+            .into_iter()
+            .map(|k| flood.insert(k, ()).unwrap())
+            .sum();
+        assert_eq!(flood.probes_total(), sum as u64);
+        assert_eq!(hoard_cellar_trace(), (expected, sum as u8));
+    }
+    #[test]
+    fn steward_faces_have_exactly_one_real_growth_trap() {
+        let (costs, total) = hoard_steward_run();
+        assert_eq!(total, costs.iter().sum::<u8>());
+        let differences: Vec<_> = costs
+            .iter()
+            .zip(STEWARD_WORKLOAD)
+            .enumerate()
+            .filter(|(_, (actual, (_, _, face)))| **actual != *face)
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(differences, vec![STEWARD_TRAP_OP]);
+        assert_eq!(
+            costs[STEWARD_TRAP_OP],
+            STEWARD_WORKLOAD[STEWARD_TRAP_OP].2 + 1
+        );
+        let mut shelf = ShelfVec::new(STEWARD_RESERVE);
+        let mut cellar = CellarMap::new(STEWARD_CELLAR_CAPACITY);
+        let mut hoard = Hoard::new(STEWARD_HOARD_BYTES);
+        for (i, (op, _, _)) in STEWARD_WORKLOAD.into_iter().enumerate() {
+            let before = (shelf.len(), shelf.cap(), cellar.len(), hoard.blocks_used());
+            match op {
+                StewardOp::Push(v) => {
+                    assert!(shelf.push(v));
+                }
+                StewardOp::Insert(k) => {
+                    assert!(cellar.insert(k, ()).is_some());
+                }
+                StewardOp::Issue(b) => {
+                    assert!(hoard.issue(b).is_some());
+                }
+                StewardOp::ShelfGet(n) => {
+                    assert!(shelf.get(n).is_some());
+                }
+                StewardOp::CellarGet(k) => {
+                    assert!(cellar.get(&k).is_some());
+                }
+            }
+            let actual =
+                shelf.len() - before.0 + usize::from(shelf.cap() != before.1) + cellar.len()
+                    - before.2
+                    + (hoard.blocks_used() - before.3) as usize;
+            assert_eq!(usize::from(costs[i]), actual);
+        }
+    }
+    #[test]
+    fn collision_probes_cannot_be_replaced_by_slot_claims() {
+        let (probes, flood) = hoard_cellar_trace();
+        assert!(probes.iter().skip(1).all(|&p| p > probes[0]));
+        let mut map = CellarMap::new(F9_CELLAR_CAPACITY);
+        for k in F9_FLOOD_KEYS {
+            map.insert(k, ()).unwrap();
+        }
+        assert!(usize::from(flood) > map.len());
+        assert_ne!(flood, map.len() as u8);
+    }
+    #[test]
+    fn face_sum_and_probe_charges_are_false_allocation_totals() {
+        let (_, total) = hoard_steward_run();
+        let face_sum: u8 = STEWARD_WORKLOAD.iter().map(|(_, _, f)| f).sum();
+        assert_ne!(total, face_sum);
+        let mut map = CellarMap::new(STEWARD_CELLAR_CAPACITY);
+        for (op, _, _) in STEWARD_WORKLOAD {
+            if let StewardOp::Insert(k) = op {
+                map.insert(k, ()).unwrap();
+            }
+        }
+        assert!(map.probes_total() > map.len() as u64);
+        assert_ne!(
+            u64::from(total),
+            u64::from(total) + map.probes_total() - map.len() as u64
+        );
+    }
+}

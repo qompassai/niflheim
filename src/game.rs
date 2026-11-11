@@ -363,6 +363,14 @@ pub enum El {
     F9Next(u8),
     F9Judge,
     F9Watch,
+    F9Probe(u8),
+    F9FloodCost,
+    F9Place,
+    F9Flood,
+    F9StewardPrediction,
+    F9StewardRun,
+    F9StewardCycle,
+    F9StewardName,
     /// A Floor 7 chamber door.
     Floor7Door(u8),
     Floor8Door(u8),
@@ -879,6 +887,8 @@ pub struct Game {
     selected_record: Option<usize>,
     /// Visible-state revision; the shell rebuilds when it moves.
     revision: u64,
+    /// Floor 9's ephemeral attribution cursor, never part of the proof.
+    f9_operation: u8,
 }
 
 impl Default for Game {
@@ -921,6 +931,7 @@ impl Game {
             c5_page: 0,
             selected_record: None,
             revision: 1,
+            f9_operation: 0,
         }
     }
 
@@ -3117,7 +3128,94 @@ impl Game {
                     self.changed();
                 }
             }
+            El::F9Probe(_) | El::F9FloodCost | El::F9Place | El::F9Flood => {
+                if self.screen == Screen::Floor9Chamber(2)
+                    && self.expedition.floor9.chambers[1].state == ChamberState::Repaired
+                    && self.expedition.floor9.chambers[2].state != ChamberState::Repaired
+                {
+                    let p = &mut self.expedition.floor9.chambers[2];
+                    match el {
+                        El::F9Probe(row) if row < 5 => {
+                            p.work.probes[usize::from(row)] =
+                                p.work.probes[usize::from(row)].wrapping_add(1);
+                        }
+                        El::F9FloodCost => p.work.flood_cost = p.work.flood_cost.wrapping_add(1),
+                        El::F9Place => {
+                            // The real replay places the authored set; watched opens the flood.
+                            p.work.watched = true;
+                            self.say(
+                                StatusKind::Info,
+                                format!(
+                                    "Real probe-lantern walks (landing slots included):\n{}",
+                                    puzzles::hoard_cellar_lantern()
+                                ),
+                            );
+                        }
+                        El::F9Flood if p.work.watched => {
+                            let (_, cost) = puzzles::hoard_cellar_trace();
+                            p.work.judged = true;
+                            self.say(StatusKind::Info, format!("Four-key flood {:?} on a fresh cellar: real total probe cost {cost}. File your prediction with Judge.", content::F9_FLOOD_KEYS));
+                        }
+                        _ => return,
+                    }
+                    let p = &mut self.expedition.floor9.chambers[2];
+                    if matches!(el, El::F9Probe(_) | El::F9FloodCost) {
+                        p.work.judged = false;
+                    }
+                    p.state = ChamberState::Unworked;
+                    self.changed();
+                }
+            }
+            El::F9StewardPrediction | El::F9StewardRun | El::F9StewardCycle | El::F9StewardName => {
+                if self.screen == Screen::Floor9Chamber(3)
+                    && self.expedition.floor9.chambers[2].state == ChamberState::Repaired
+                    && self.expedition.floor9.chambers[3].state != ChamberState::Repaired
+                {
+                    let p = &mut self.expedition.floor9.chambers[3];
+                    match el {
+                        El::F9StewardPrediction if !p.work.steward_missed => {
+                            p.work.predicted = p.work.predicted.wrapping_add(1);
+                            p.work.ran = false;
+                            p.state = ChamberState::Unworked;
+                        }
+                        El::F9StewardRun if !p.work.steward_missed => {
+                            let (costs, total) = puzzles::hoard_steward_run();
+                            p.work.ran = true;
+                            p.work.steward_missed = p.work.predicted != total;
+                            p.state = ChamberState::Unworked;
+                            let pending = p.work.steward_missed;
+                            self.say(StatusKind::Info, format!("Real costs {costs:?}; total {total}. {}", if pending { "Miss pending: name the growth operation before re-predicting (under or over)." } else { "Exact count; file the accounting." }));
+                        }
+                        El::F9StewardCycle if p.work.steward_missed => {
+                            self.f9_operation = (self.f9_operation + 1) % 10;
+                        }
+                        El::F9StewardName if p.work.steward_missed => {
+                            if usize::from(self.f9_operation) == content::STEWARD_TRAP_OP {
+                                p.work.misses_explained[content::STEWARD_TRAP_OP] = true;
+                                p.work.steward_missed = false;
+                                self.say(StatusKind::Good, "Growth buffer attributed. Re-predict, then run the exact count.");
+                            } else {
+                                self.say(StatusKind::Refusal, "Wrong operation: this face cost matches its real cost. The miss remains pending; prediction stays locked.");
+                            }
+                        }
+                        _ => {
+                            self.say(StatusKind::Refusal, "A miss is pending: name the growth operation before re-predicting or running again.");
+                            return;
+                        }
+                    }
+                    self.changed();
+                }
+            }
             El::F9Judge => {
+                if self.screen == Screen::Floor9Chamber(2)
+                    && self.expedition.floor9.chambers[1].state == ChamberState::Repaired
+                    && self.expedition.floor9.chambers[2].state != ChamberState::Repaired
+                {
+                    // A flood is the real run; edits invalidate it and require another flood.
+                    let ok = self.expedition.floor9_diagnosed(2);
+                    self.say(if ok { StatusKind::Good } else { StatusKind::Refusal }, if ok { "Real probe trace and flood cost match." } else { "PROBE TRACE + FLOOD COST mismatch: place, predict, flood and judge exact counts." });
+                    self.changed();
+                }
                 if self.screen == Screen::Floor9Chamber(0) {
                     self.expedition.floor9.chambers[0].work.judged = true;
                     let ok = self.expedition.floor9_diagnosed(0);
@@ -12212,57 +12310,119 @@ mod floor9_scaffolding_tests {
 /// One geometry source for drawing and hit-testing. Work is in the side panel.
 pub fn floor9_controls(game: &Game, chamber: usize) -> Vec<(El, Rect, String)> {
     let mut out = vec![];
-    if chamber > 1 {
+    if chamber > 3 {
         return out;
     }
     let w = &game.expedition.floor9.chambers[chamber].work;
-    out.push((
-        El::F9Watch,
-        Rect::new(380.0, 100.0, 376.0, 32.0),
-        "Read the exhibit".into(),
-    ));
-    if chamber == 0 {
-        for row in 0..8u8 {
-            for field in 0..2u8 {
-                out.push((
-                    El::F9Prediction(row, field),
-                    Rect::new(
-                        808.0 + f32::from(field) * 222.0,
-                        194.0 + f32::from(row) * 32.0,
-                        214.0,
-                        28.0,
-                    ),
-                    format!(
-                        "Push {} {}: {}",
-                        row + 1,
-                        if field == 0 { "len" } else { "cap" },
-                        w.predictions[usize::from(row)][usize::from(field)]
-                    ),
-                ));
-            }
+    if chamber == 2 {
+        out.push((
+            El::F9Place,
+            Rect::new(380.0, 100.0, 376.0, 32.0),
+            "Place five keys".into(),
+        ));
+        for row in 0..5u8 {
+            out.push((
+                El::F9Probe(row),
+                Rect::new(808.0, 194.0 + f32::from(row) * 40.0, 436.0, 34.0),
+                format!(
+                    "Key {} probes: {}",
+                    content::F9_CELLAR_KEYS[usize::from(row)],
+                    w.probes[usize::from(row)]
+                ),
+            ));
         }
+        out.push((
+            El::F9FloodCost,
+            Rect::new(808.0, 394.0, 436.0, 34.0),
+            format!("Flood total cost: {}", w.flood_cost),
+        ));
+        out.push((
+            El::F9Flood,
+            Rect::new(380.0, 450.0, 376.0, 32.0),
+            "Run four-key flood".into(),
+        ));
         out.push((
             El::F9Judge,
             Rect::new(808.0, 454.0, 214.0, 30.0),
-            "Judge trace".into(),
+            "Judge probe record".into(),
         ));
-    } else {
-        for row in 0..6u8 {
-            let y = 194.0 + f32::from(row) * 40.0;
+    } else if chamber == 3 {
+        out.push((
+            El::F9StewardPrediction,
+            Rect::new(808.0, 194.0, 436.0, 34.0),
+            format!(
+                "Predict allocations: {}{}",
+                w.predicted,
+                if w.steward_missed { " (locked)" } else { "" }
+            ),
+        ));
+        out.push((
+            El::F9StewardRun,
+            Rect::new(808.0, 234.0, 436.0, 34.0),
+            "Run / check prediction".into(),
+        ));
+        if w.steward_missed {
             out.push((
-                El::F9Slot(row),
-                Rect::new(808.0, y, 214.0, 34.0),
-                format!(
-                    "{} slot: {}",
-                    content::F9_NODES[usize::from(row)],
-                    w.slots[usize::from(row)]
-                ),
+                El::F9StewardCycle,
+                Rect::new(808.0, 294.0, 436.0, 34.0),
+                format!("Name operation: {} (cycle)", game.f9_operation + 1),
             ));
             out.push((
-                El::F9Next(row),
-                Rect::new(1030.0, y, 214.0, 34.0),
-                format!("Slot {row} next: {}", w.nexts[usize::from(row)]),
+                El::F9StewardName,
+                Rect::new(808.0, 334.0, 436.0, 34.0),
+                "File attribution".into(),
             ));
+        }
+    }
+    if chamber < 2 {
+        out.push((
+            El::F9Watch,
+            Rect::new(380.0, 100.0, 376.0, 32.0),
+            "Read the exhibit".into(),
+        ));
+        if chamber == 0 {
+            for row in 0..8u8 {
+                for field in 0..2u8 {
+                    out.push((
+                        El::F9Prediction(row, field),
+                        Rect::new(
+                            808.0 + f32::from(field) * 222.0,
+                            194.0 + f32::from(row) * 32.0,
+                            214.0,
+                            28.0,
+                        ),
+                        format!(
+                            "Push {} {}: {}",
+                            row + 1,
+                            if field == 0 { "len" } else { "cap" },
+                            w.predictions[usize::from(row)][usize::from(field)]
+                        ),
+                    ));
+                }
+            }
+            out.push((
+                El::F9Judge,
+                Rect::new(808.0, 454.0, 214.0, 30.0),
+                "Judge trace".into(),
+            ));
+        } else {
+            for row in 0..6u8 {
+                let y = 194.0 + f32::from(row) * 40.0;
+                out.push((
+                    El::F9Slot(row),
+                    Rect::new(808.0, y, 214.0, 34.0),
+                    format!(
+                        "{} slot: {}",
+                        content::F9_NODES[usize::from(row)],
+                        w.slots[usize::from(row)]
+                    ),
+                ));
+                out.push((
+                    El::F9Next(row),
+                    Rect::new(1030.0, y, 214.0, 34.0),
+                    format!("Slot {row} next: {}", w.nexts[usize::from(row)]),
+                ));
+            }
         }
     }
     out.push((
@@ -12431,5 +12591,210 @@ mod floor9_step2_gui_tests {
         click(&mut g, El::ResetChamber);
         assert_eq!(g.expedition.floor9.chambers[0].hints_used, 3);
         assert_eq!(g.expedition.floor9.chambers[0].work, Default::default());
+    }
+}
+
+#[cfg(test)]
+mod floor9_step3_gui_tests {
+    use super::*;
+    fn click(g: &mut Game, el: El) {
+        let r = layout(g).into_iter().find(|(e, _)| *e == el).unwrap().1;
+        assert_eq!(hit_test(g, r.cx(), r.cy()), Some(el));
+        g.pointer_down(r.cx(), r.cy());
+        g.pointer_up(r.cx(), r.cy());
+    }
+    fn repair(g: &mut Game) {
+        click(g, El::Chip(Verb::Prove));
+        click(g, El::Seal);
+        assert!(g.seal_armed());
+        click(g, El::SealConfirm);
+    }
+    fn three() -> Game {
+        let mut g = Game::new();
+        g.begin();
+        g.io = None;
+        super::floor9_step2_gui_tests::earn(&mut g);
+        click(&mut g, El::F9Return);
+        click(&mut g, El::Floor9Door(2));
+        click(&mut g, El::F9Place);
+        let (probes, flood) = puzzles::hoard_cellar_trace();
+        for (i, n) in probes.into_iter().enumerate() {
+            for _ in 0..n {
+                click(&mut g, El::F9Probe(i as u8));
+            }
+        }
+        for _ in 0..flood {
+            click(&mut g, El::F9FloodCost);
+        }
+        click(&mut g, El::F9Flood);
+        click(&mut g, El::F9Judge);
+        repair(&mut g);
+        g
+    }
+    fn four_room() -> Game {
+        let mut g = three();
+        click(&mut g, El::F9Return);
+        click(&mut g, El::Floor9Door(3));
+        g
+    }
+    fn set_prediction(g: &mut Game, n: u8) {
+        while g.expedition.floor9.chambers[3].work.predicted != n {
+            click(g, El::F9StewardPrediction);
+        }
+    }
+    fn name_trap(g: &mut Game) {
+        while usize::from(g.f9_operation) != content::STEWARD_TRAP_OP {
+            click(g, El::F9StewardCycle);
+        }
+        click(g, El::F9StewardName);
+    }
+    #[test]
+    fn chambers_three_four_earned_by_real_pointer_handlers() {
+        let mut g = four_room();
+        set_prediction(&mut g, puzzles::hoard_steward_run().1);
+        click(&mut g, El::F9StewardRun);
+        repair(&mut g);
+        assert_eq!(g.expedition.floor9_chambers_repaired(), 4);
+        assert!(g.expedition.floor9.chambers[..4].iter().all(|p| p.facet));
+        assert_eq!(
+            Expedition::load_json(&g.expedition.save_json().unwrap()).unwrap(),
+            g.expedition
+        );
+    }
+    #[test]
+    fn steward_both_miss_directions_resolve_by_true_name() {
+        let total = puzzles::hoard_steward_run().1;
+        for wrong in [total - 1, total + 1] {
+            let mut g = four_room();
+            set_prediction(&mut g, wrong);
+            click(&mut g, El::F9StewardRun);
+            assert!(g.expedition.floor9.chambers[3].work.ran);
+            assert!(g.expedition.floor9.chambers[3].work.steward_missed);
+            name_trap(&mut g);
+            set_prediction(&mut g, total);
+            click(&mut g, El::F9StewardRun);
+            repair(&mut g);
+            assert_eq!(g.expedition.floor9_chambers_repaired(), 4);
+        }
+    }
+    #[test]
+    fn step3_all_control_rectangles_clear_including_pending_and_armed() {
+        let mut g = four_room();
+        for c in 2..4 {
+            for pending in [false, true] {
+                for armed in [false, true] {
+                    g.screen = Screen::Floor9Chamber(c);
+                    g.expedition.floor9.chambers[c].work.steward_missed = pending;
+                    g.armed = if armed {
+                        Some(ArmedFor::Floor9Chamber(c))
+                    } else {
+                        None
+                    };
+                    let all = layout(&g);
+                    for (i, (el, a)) in all.iter().enumerate() {
+                        assert_eq!(hit_test(&g, a.cx(), a.cy()), Some(*el));
+                        for (other, b) in &all[i + 1..] {
+                            assert!(
+                                !(a.x < b.x + b.w
+                                    && b.x < a.x + a.w
+                                    && a.y < b.y + b.h
+                                    && b.y < a.y + a.h),
+                                "{el:?} overlaps {other:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn step3_reset_clears_pending_and_downstream_keeps_hints() {
+        let mut g = four_room();
+        click(&mut g, El::F9StewardRun);
+        g.expedition.floor9.chambers[3].hints_used = 3;
+        g.screen = Screen::Floor9Chamber(2);
+        click(&mut g, El::ResetChamber);
+        assert_eq!(g.expedition.floor9.chambers[3].work, Default::default());
+        assert_eq!(g.expedition.floor9.chambers[3].hints_used, 3);
+        assert_eq!(g.expedition.floor9_chambers_repaired(), 2);
+        assert!(Expedition::load_json(&g.expedition.save_json().unwrap()).is_ok());
+    }
+    #[test]
+    fn wrong_operation_cannot_unlock_or_set_any_flag_even_after_load() {
+        let mut g = four_room();
+        click(&mut g, El::F9StewardRun);
+        click(&mut g, El::F9StewardName);
+        assert_eq!(
+            g.expedition.floor9.chambers[3].work.misses_explained,
+            [false; 10]
+        );
+        let before = g.expedition.floor9.chambers[3].work.clone();
+        click(&mut g, El::F9StewardPrediction);
+        click(&mut g, El::F9StewardRun);
+        assert_eq!(before, g.expedition.floor9.chambers[3].work);
+        g.expedition = Expedition::load_json(&g.expedition.save_json().unwrap()).unwrap();
+        click(&mut g, El::F9StewardPrediction);
+        assert_eq!(before, g.expedition.floor9.chambers[3].work);
+        click(&mut g, El::Chip(Verb::Prove));
+        click(&mut g, El::Seal);
+        assert!(!g.seal_armed());
+    }
+    #[test]
+    fn cellar_premature_flood_and_edited_record_cannot_prove() {
+        let mut g = three();
+        g.screen = Screen::Floor9Chamber(2);
+        click(&mut g, El::ResetChamber);
+        click(&mut g, El::F9Flood);
+        assert!(!g.expedition.floor9.chambers[2].work.judged);
+        click(&mut g, El::F9Place);
+        click(&mut g, El::F9Flood);
+        click(&mut g, El::F9Probe(0));
+        assert!(!g.expedition.floor9.chambers[2].work.judged);
+        click(&mut g, El::Chip(Verb::Prove));
+        assert_eq!(
+            g.expedition.floor9.chambers[2].state,
+            ChamberState::Unworked
+        );
+    }
+    #[test]
+    fn step3_wrong_room_out_of_range_and_repaired_edits_do_nothing() {
+        let mut g = three();
+        let before = g.expedition.floor9.clone();
+        for el in [
+            El::F9Probe(255),
+            El::F9Probe(0),
+            El::F9Flood,
+            El::F9Place,
+            El::F9FloodCost,
+            El::F9Judge,
+            El::F9StewardRun,
+            El::F9StewardPrediction,
+            El::F9StewardCycle,
+            El::F9StewardName,
+        ] {
+            g.activate(el);
+        }
+        assert_eq!(before, g.expedition.floor9);
+        g.screen = Screen::Floor9Hub;
+        for el in [El::F9Probe(0), El::F9StewardRun, El::F9StewardPrediction] {
+            g.activate(el);
+        }
+        assert_eq!(before, g.expedition.floor9);
+    }
+    #[test]
+    fn repeated_miss_retains_explanation_but_still_requires_new_attribution() {
+        let mut g = four_room();
+        click(&mut g, El::F9StewardRun);
+        name_trap(&mut g);
+        click(&mut g, El::F9StewardRun);
+        assert!(g.expedition.floor9.chambers[3].work.misses_explained[content::STEWARD_TRAP_OP]);
+        assert!(g.expedition.floor9.chambers[3].work.steward_missed);
+        assert!(!g.expedition.floor9_diagnosed(3));
+        click(&mut g, El::F9StewardPrediction);
+        assert_eq!(g.expedition.floor9.chambers[3].work.predicted, 0);
+        name_trap(&mut g);
+        set_prediction(&mut g, puzzles::hoard_steward_run().1);
+        assert!(!g.expedition.floor9.chambers[3].work.ran);
+        assert!(!g.expedition.floor9_diagnosed(3));
     }
 }

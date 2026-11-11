@@ -5042,6 +5042,22 @@ pub fn floor9_chamber_hints(chamber: usize) -> [&'static str; 4] {
             "The seam: identity is shared, not copied. Assign first-visit slots and next indices; 255 ends a chain.",
         ];
     }
+    if chamber == 2 {
+        return [
+            "Place the five keys and read their probe-lantern walks.",
+            "A collision advances to the next slot, wrapping at capacity.",
+            "Flood a fresh cellar with four keys on the same probe line; count landing slots too.",
+            "The seam: each occupied slot costs a probe and the landing slot costs one more; predict the real trace and flood total, then judge.",
+        ];
+    }
+    if chamber == 3 {
+        return [
+            "Read all ten operations and their face costs before running.",
+            "A shelf push can claim both an element and a new buffer.",
+            "A miss locks prediction; cycle and name the one growth operation for either direction of miss.",
+            "The seam: the sole hidden cost is the growth buffer. Attribute it truly, re-predict the real allocation total, then run and file.",
+        ];
+    }
     [
         "Read the posted claim and identify what must be counted.",
         "Follow the real structure one operation at a time.",
@@ -5056,4 +5072,36 @@ pub const F9_CRATES: [u16; 8] = [101, 102, 103, 104, 105, 106, 107, 108];
 pub const F9_NODES: [&str; 6] = ["Ash", "Birch", "Copper", "Bell", "Dusk", "Ember"];
 pub const F9_LINKS: [u8; 6] = [1, 3, 3, 255, 5, 255];
 pub const F9_HEADS: [u8; 3] = [0, 2, 4];
+
+// REVIEW-F9-CONTENT: first five u16 keys hashing to slot 0 at capacity 11.
+pub const F9_CELLAR_CAPACITY: usize = 11;
+pub const F9_CELLAR_KEYS: [u16; 5] = [5, 10, 51, 63, 66];
+pub const F9_FLOOD_KEYS: [u16; 4] = [5, 10, 51, 63];
+
+#[derive(Clone, Copy, Debug)]
+pub enum StewardOp {
+    Push(u16),
+    Insert(u16),
+    Issue(u32),
+    ShelfGet(usize),
+    CellarGet(u16),
+}
+pub const STEWARD_RESERVE: usize = 3;
+pub const STEWARD_CELLAR_CAPACITY: usize = 11;
+pub const STEWARD_HOARD_BYTES: u32 = 32;
+pub const STEWARD_TRAP_OP: usize = 8;
+pub const STEWARD_WORKLOAD: [(StewardOp, &str, u8); 10] = [
+    (StewardOp::Push(101), "Shelf: claim crate 101", 1),
+    (StewardOp::Insert(5), "Cellar: claim key 5", 1),
+    (StewardOp::Issue(4), "Hoard: issue 4 bytes", 1),
+    (StewardOp::Push(102), "Shelf: claim crate 102", 1),
+    (StewardOp::ShelfGet(0), "Shelf: read index 0", 0),
+    (StewardOp::Insert(10), "Cellar: claim key 10", 1),
+    (StewardOp::Push(103), "Shelf: claim crate 103", 1),
+    (StewardOp::CellarGet(5), "Cellar: probe/read key 5", 0),
+    (StewardOp::Push(104), "Shelf: claim crate 104", 1),
+    (StewardOp::Issue(8), "Hoard: issue 8 bytes", 1),
+];
+pub const STEWARD_RULE: &str = "Reserve 3; cellar 11 slots; hoard 32 bytes. Count NEW allocations: shelf claim + buffer on growth; cellar slot claim (not probes); hoard block; reads zero. Face costs omit one growth buffer. For ANY miss, under or over, name that growth operation; a wrong name keeps prediction locked.";
+
 pub const F9_CHAIN_WALL: &str = "Twin Bells: Birch and Copper ring one Bell, one tail with two referrers. The hand-linked chain fights the ledger: a live loan bars the hand that rewrites a link. It fights the road: scattered crates force pointer-chasing instead of a contiguous walk. Arena indices preserve identity; they do not pretend the nodes were adjacent.";

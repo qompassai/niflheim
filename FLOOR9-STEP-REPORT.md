@@ -252,3 +252,144 @@ are retained solely for that producer and excluded from the commit; they
 were absent at entry. A diagnostic `bacon --help | head` invocation printed
 a broken-pipe panic after head closed stdout; it did not affect the producer
 or any gate (the Xvfb log itself has zero panics).
+
+## Step 3 — The Cellar and The Counting Steward
+
+Actual base: `57e1dce042f3a7bffb518835ac52b9e8099d6f4d`, designated
+worktree `/home/phaedrus/.local/share/pax/niflheim-floor9-wt-20261110`,
+branch `pax/floor9-build-20261110`. Re-read the live tip and Steps 1–2
+before writing. Entry tracked/staged diffs were empty; the running
+niflheim-bacon producer's untracked bacon.toml and .bacon-locations remain
+in place and excluded from the commit. This is Step 3 only; C5 and FOE
+implementation are deferred to Step 4. No push or merge.
+
+Built: C3 serde-defaulted probes/flood_cost (shared judged already landed),
+C4 predicted/misses_explained/ran and the one R-F9-7-authorized additional
+serde-defaulted field steward_missed. Pure judges replay real structures;
+proof refusals name PROBE TRACE + FLOOD COST or ALLOCATION COUNT +
+EXPLANATION. Four-rung chamber ladders end by naming the seam. Shared
+seal repair, ordered doors/proofs, hint <=3 facets naming The Hoardstone,
+and RESET-ORDER all use the landed flow. Save stays v9, Trio APIs unchanged,
+core.rs and gate.rs unchanged, unsafe forbid intact.
+
+**REVIEW-F9-CONTENT — C3 settled by commissioned derivation:** capacity
+11, keys typed u16: [5,10,51,63,66]. Enumerated ascending u16 values under
+the landed DefaultHasher::new hashing and selected the first five whose
+hash modulo 11 is zero; derivation source is derive-keys.rs in evidence.
+The real CellarMap tests independently verify all five share a starting
+slot and replay inserts/get reads. Flood keys are the first four of that
+same colliding set, inserted in a separate fresh capacity-11 map. Neither
+trace nor flood outputs are authored: per-insert counts come from insert,
+flood cost from probes_total, independently reconciled against the sum of
+real inserts. The lantern uses the real map's own private hash-start helper
+and its real insert counts to show every examined slot, including landing.
+Place opens the lantern/flood; running the flood sets judged; any changed
+prediction invalidates judged and requires another flood. Judge reports
+whether that record is exact. No additional persistence field is needed.
+
+**R-F9-7 / REVIEW-F9-C4-MISS-PROVENANCE — resolved:** workload in content.rs
+is ten operations across the whole Trio. Shelf reserve 3 (u16 elements),
+cellar capacity 11, hoard capacity 32 bytes. Operations in order: push101,
+insert5, issue4, push102, shelf-get0, insert10, push103, cellar-get5,
+push104, issue8. STEWARD_TRAP_OP=8 (zero-based; operation 9 on the slate).
+Faces are authored statements, not computed answers. Tests replay the real
+wrapper and an independent real-Trio run, verifying faces match every
+operation except this sole growth push, whose real cost is face+1.
+
+Counting rule in puzzles.rs, exactly R-F9-7: one shelf element claim
+(measured len delta) plus one if its real capacity changed; a cellar slot
+claim (measured len delta), never its probes; a hoard block issue (measured
+blocks_used delta); read/get/probe zero. Initial construction precedes the
+ten operations and is not a workload charge. The returned per-operation
+counts and summed total are computed, never authored. On either under- or
+overprediction the run sets ran and steward_missed, locking prediction and
+another run. A transient Game cursor cycles the displayed operation index;
+only naming STEWARD_TRAP_OP sets its sticky misses_explained flag and clears
+the pending bool. Wrong naming sets nothing and retains the lock. Prediction
+edits clear ran but never clear pending/history. A later miss, even after
+an accepted attribution, creates a fresh pending duty. The pure judge
+requires computed exact total, ran, no pending miss, and the trap's flag
+if any flag or pending miss records history. First exact runs pass with
+all explanation flags false. Save/load preserves both pending and accepted
+history. The slate explicitly says attribution is the same for under and
+over misses. The preserved run-1 stop report is untouched.
+
+Geometry: one floor9_controls source drives drawing and hit-testing.
+C3 probes x808/y194+40*r, 436x34; flood-cost y394; place x380/y100,
+376x32; flood x380/y450,376x32; judge/file x808/1030,y454,214x30.
+C4 prediction/run x808,y194/234,436x34; pending cycle/name y294/334.
+File at x1030,y454; seal begins y514, confirm/cancel y604. Existing
+return/reset/desk/stone remain. Pairwise rectangle and hit-centre tests
+cover C3/C4, pending/nonpending and armed/unarmed states. Slate and rule
+text are drawn in separate left/middle columns; proof slots show KIND.
+
+20 new tests: 10 validation / 10 adversarial (puzzles 2/2, state 4/4,
+GUI 4/4). Validation includes real colliders and flood, sole growth trap,
+independent accounting, exact first-pass and explained repairs, facets,
+serde defaults, save roundtrips, pointer-earned C1–4, geometry and reset.
+Adversarial includes each probe off-by-one in both directions, flood
+undercount, premature proofs/flood/run, order bypass, forged saves, wrong
+flags and wrong operation, both directions of allocation miss, repeated
+misses, pending duties across correction/load, and invalid-room/index or
+repaired edits. Existing tests are neither removed, renamed, skipped nor
+weakened; exact bodies in touched files are byte-preserved (diff audit).
+The DS-9 transient probe enters through the real Floor 5 door from the
+shipped earned F7 fixture, earns C1–4 using real pointer handlers, exercises
+wrong-name refusal and pending-miss load-back, attributes/re-predicts,
+repairs and saves, then validates load-back equality. Removed after both
+runs; source and logs preserved in evidence.
+
+Evidence: `/home/phaedrus/.local/share/pax/niflheim-floor9-step3-build-20261110/`.
+Gate paths below are relative to that directory.
+
+| Gate | Result / evidence |
+|---|---|
+| fmt apply + check | PASS exit 0; fmt-final.log, fmt-check.log |
+| cargo test | PASS exit 0; test-final.log: 323 unit + 1 compile-fail doctest, zero failed/ignored (303+1 baseline; +20 unit tests) |
+| clippy --all-targets -- -D warnings | PASS exit 0; clippy-shipped.log |
+| Theodolite | PASS; existing niflheim-bacon producer first, current clean locations; same-session 3 E0308, clean 0 on all five touched .rs; theodolite.json/.log, bacon.log, producer-bacon.toml, producer-.bacon-locations; restored shell SHA c4bebfe027928331269c4917fdc4eedb92225dd7d1d38f60606c544df294671e |
+| DS-9 determinism/load-back | PASS both runs exit 0, byte-identical; floor9_probe.rs, probe1.log, probe2.log, save-run1.json, save-run2.json, save.sha256; SHA 7c5d0da43e1c60b51f890cc66ae5c161574326c312d1c2462c52ebb24326cd22; transient removed |
+| Android aarch64 debug lib | PASS exit 0; android.log, android-size.txt: 1,354,086,392 bytes |
+| Desktop/Xvfb | PASS build exit 0, smoke exit 124 expected, cold_start_ms=673, zero panics; build.log, xvfb-smoke.log, xvfb-exit.txt, platform.log |
+| Scope/safety/test preservation | PASS; diff-audit.json, working.diff, diff-stat.txt; 20 added tests, existing tests byte-preserved; core.rs/gate.rs and Trio API block unchanged; v9 and forbid intact; stop-copy SHA 0c8ebe9b8669fc654712035960b4118fc9433a40490e6fcd2b147564e7241431 |
+
+
+Incidents: exact-once splice assertion rejected a constructor revision
+anchor before that write; resumed against revision 1. Initial compilation
+caught overlapping mutable borrows while formatting a status message;
+made the pending value local before calling say. The next compile caught
+an ambiguous test iterator sum; specified u8. These preparatory compile
+logs (test-initial.log, test.log) are retained. Expanded suites then passed
+323 unit +1 doctest, with zero failed/ignored. No test failure was hidden
+or a gate weakened. Cargo route wrappers sleep-waited for foreign
+cargo/rustc jobs, use nice 10, pinned offline/locked toolchain and shared
+target FLAG; no downloads/channel syncs/fresh target. The running producer
+retains its existing Step 2 wrapper (same commissioned route); this step's
+bridge uses the evidence-local route. Producer left running for coordinator
+boundary shutdown. Formatter uses the verified cargo --offline --locked
+fmt form; no build-only target flag is passed to cargo-fmt.
+
+Variances retained, built to SPEC: The Hoard Beneath / The Deep Hoard;
+The Hoardstone / The Toll Stone; Trio consumers F12 C1/F13 C5/F16 /
+FULL-DESIGN F12/F13/F14. R-F9-1..7 remain boundary-reviewable before
+Step 5 freeze. REVIEW-F9-RESET-ORDER remains as landed: reset current and
+later chambers' work/proofs/facets, retain hints. No new unresolved Step 3
+design REVIEW. C5/FOE content remains outside scope. No custom skill
+materially used; no skill-trust recorder invented. Markdown is
+not-LSP-validated (no configured route). Local commit hash is recorded
+externally in REPORT-STEP3.md only.
+
+Computed earned-save observations (save-run1.json, never authored outputs): C3 probes [1, 2, 3, 4, 5], flood 10; C4 total 9.
+
+An audit invoked while the transient probe was still present correctly refused its removal check; the final post-probe audit passed.
+
+Source diff:
+
+```text
+ src/content.rs |  48 +++++++
+ src/game.rs    | 443 ++++++++++++++++++++++++++++++++++++++++++++++++++++-----
+ src/puzzles.rs | 179 +++++++++++++++++++++++
+ src/shell.rs   |  85 +++++++++++
+ src/state.rs   | 201 +++++++++++++++++++++++++-
+ 5 files changed, 912 insertions(+), 44 deletions(-)
+```

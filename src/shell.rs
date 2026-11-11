@@ -9769,6 +9769,91 @@ fn build_floor9_chamber(
             fonts,
         );
     }
+    if index == 2 {
+        let (_, flood) = crate::puzzles::hoard_cellar_trace();
+        let record = if progress.work.watched {
+            format!(
+                "{}\nFlood total {}",
+                crate::puzzles::hoard_cellar_lantern(),
+                if progress.work.judged {
+                    flood.to_string()
+                } else {
+                    "not run / record changed".into()
+                }
+            )
+        } else {
+            "Place the keys to light the real probe walks.".into()
+        };
+        spawn_text(
+            commands,
+            stage,
+            40.0,
+            150.0,
+            Some(330.0),
+            &format!(
+                "Capacity {} slots; keys {:?}.\nFlood: {:?} in a separate fresh cellar. Each lands on the same probe line.\n{record}",
+                content::F9_CELLAR_CAPACITY,
+                content::F9_CELLAR_KEYS,
+                content::F9_FLOOD_KEYS
+            ),
+            14.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+    } else if index == 3 {
+        let slate = content::STEWARD_WORKLOAD
+            .iter()
+            .enumerate()
+            .map(|(i, (_, name, face))| format!("{}. {name} · face {face}", i + 1))
+            .collect::<Vec<_>>()
+            .join("\n");
+        spawn_text(
+            commands,
+            stage,
+            40.0,
+            146.0,
+            Some(330.0),
+            &slate,
+            14.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            150.0,
+            Some(376.0),
+            content::STEWARD_RULE,
+            14.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            380.0,
+            Some(436.0),
+            &format!(
+                "Run: {} · pending miss: {}\nAccepted attribution: {}",
+                progress.work.ran,
+                progress.work.steward_missed,
+                progress.work.misses_explained[content::STEWARD_TRAP_OP]
+            ),
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+    }
     build_seal(
         commands,
         game,
