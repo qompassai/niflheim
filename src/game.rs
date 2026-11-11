@@ -214,6 +214,7 @@ pub enum Screen {
     Floor8Chamber(usize),
     /// Floor 7's FOE: the Standing Seamstress.
     Floor7Foe,
+    Floor8Foe,
 }
 
 /// What a reading overlay is showing.
@@ -291,6 +292,21 @@ impl Verb {
 /// An interactive element. Layout produces these with rectangles;
 /// pointer and keyboard both activate them.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HourAction {
+    Page(u8),
+    Exhibit(u8),
+    Pressure,
+    Select(u8),
+    Read,
+    Predict(u8),
+    Identify,
+    Policy,
+    Card(u8),
+    SignalSeal,
+    SignalGeneration,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum El {
     /// Title: begin a fresh expedition.
     Begin,
@@ -342,6 +358,10 @@ pub enum El {
     Floor8Door(u8),
     F8Poll(u8),
     F8Ring,
+    DoorFoe8,
+    F8Ledger(u8),
+    F8LedgerRead(u8),
+    F8Foe(HourAction),
     F8Part(u8),
     F8Trial,
     F8Predict(u8),
@@ -775,6 +795,7 @@ enum ArmedFor {
     /// Floor 6 FOE's strike.
     Foe6,
     Foe7,
+    Foe8,
     /// The FOE's strike.
     Foe,
     /// Floor 2 FOE's strike.
@@ -946,6 +967,7 @@ impl Game {
                 | Screen::Floor4Foe
                 | Screen::Floor5Foe
                 | Screen::Floor6Foe
+                | Screen::Floor8Foe
                 | Screen::Floor7Foe
                 | Screen::Foe
                 | Screen::Floor2Foe
@@ -1003,6 +1025,7 @@ impl Game {
             Screen::Floor4Foe => self.expedition.floor4.foe.strike == StrikePhase::Armed,
             Screen::Floor5Foe => self.expedition.floor5.foe.strike == StrikePhase::Armed,
             Screen::Floor6Foe => self.expedition.floor6.foe.strike == StrikePhase::Armed,
+            Screen::Floor8Foe => self.expedition.floor8.foe.strike == StrikePhase::Armed,
             Screen::Floor7Foe => self.expedition.floor7.foe.strike == StrikePhase::Armed,
             _ => false,
         }
@@ -1175,6 +1198,7 @@ impl Game {
 
     /// Enter a room screen, resetting per-room session state.
     fn enter_screen(&mut self, screen: Screen) {
+        self.expedition.floor8.foe.strike = StrikePhase::Idle;
         self.screen = screen;
         self.overlay = Overlay::None;
         self.armed = None;
@@ -1237,6 +1261,7 @@ impl Game {
             | Screen::Floor4Foe
             | Screen::Floor5Foe
             | Screen::Floor6Foe
+            | Screen::Floor8Foe
             | Screen::Floor7Foe => vec![
                 Verb::Examine,
                 Verb::Read,
@@ -2025,6 +2050,7 @@ impl Game {
             | Screen::Floor4Foe
             | Screen::Floor5Foe
             | Screen::Floor6Foe
+            | Screen::Floor8Foe
             | Screen::Floor7Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
             Screen::Title => true,
         }
@@ -2229,6 +2255,7 @@ impl Game {
     /// Stand down any armed strike, silently.
     fn disarm(&mut self) {
         self.armed = None;
+        self.expedition.floor8.foe.strike = StrikePhase::Idle;
         if self.expedition.foe.strike == StrikePhase::Armed {
             self.expedition.foe_disarm_strike();
         }
@@ -2285,6 +2312,9 @@ impl Game {
                          shared and exclusive, and a counter beside it \
                          reading a number the state does not hold."
                     }
+                    Screen::Floor8Foe => {
+                        "The state box stays at state 1 while previous-watch bells ring. Inspect seal and generation, never sound alone."
+                    }
                     Screen::Floor7Foe => {
                         "The standing loom: two servants frozen mid-claim \
                          on two stairs, each holding one stair and \
@@ -2340,7 +2370,14 @@ impl Game {
                 self.bump();
             }
             Verb::Enumerate => {
-                if self.screen == Screen::Floor7Foe {
+                if self.screen == Screen::Floor8Foe {
+                    let result = self.expedition.floor8_foe_exhibit(0);
+                    match result {
+                        Ok(s) => self.say(StatusKind::Info, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
+                } else if self.screen == Screen::Floor7Foe {
                     let first = !self.expedition.floor7.foe.exhibits[0];
                     match self.expedition.floor7_foe_show_exhibit(0) {
                         Ok(()) => {
@@ -2502,6 +2539,15 @@ impl Game {
                     }
                     self.changed();
                 }
+                if self.screen == Screen::Floor8Foe {
+                    let result = self.expedition.floor8_foe_prove();
+                    match result {
+                        Ok(s) => self.say(StatusKind::Good, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
+                    return;
+                }
                 if let Screen::Floor8Chamber(index) = self.screen {
                     match self.expedition.floor8_file_proof(index) {
                         Ok(text) => {
@@ -2610,6 +2656,12 @@ impl Game {
                         self.expedition.floor2_foe_view_hint();
                     }
                     self.hint_showing = self.expedition.floor2_foe_hints_used().max(1);
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                } else if self.screen == Screen::Floor8Foe {
+                    self.expedition.floor8.foe_hints_used =
+                        self.expedition.floor8.foe_hints_used.max(1);
+                    self.hint_showing = self.expedition.floor8.foe_hints_used;
                     self.overlay = Overlay::Reading(ReadingKind::Hint);
                     self.changed();
                 } else if self.screen == Screen::Floor7Foe {
@@ -2966,6 +3018,132 @@ impl Game {
                         StatusKind::Refusal,
                         format!("The Stillroom is barred: {}.", missing.join("; ")),
                     );
+                }
+            }
+            El::DoorFoe8 => {
+                self.enter_screen(Screen::Floor8Foe);
+                self.say(StatusKind::Info, "The Suspended Hour: a previous watch rings completion for an errand still in state 1.");
+            }
+            El::F8Ledger(line) => {
+                if self.screen == Screen::Floor8Chamber(4) {
+                    let result = self.expedition.floor8_ledger_cycle(usize::from(line));
+                    match result {
+                        Ok(s) => self.say(StatusKind::Info, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
+                }
+            }
+            El::F8LedgerRead(line) => {
+                if self.screen == Screen::Floor8Chamber(4) {
+                    if let Some(entry) = crate::puzzles::hour::ledger().get(usize::from(line)) {
+                        let trace = crate::puzzles::executor::run(&content::hour_ledger_roster());
+                        let events: Vec<_> = trace
+                            .iter()
+                            .filter(|e| match e {
+                                crate::puzzles::executor::Event::Accounting { seal, .. }
+                                | crate::puzzles::executor::Event::CancelledWithCleanup {
+                                    seal,
+                                    ..
+                                } => *seal == entry.0,
+                                _ => false,
+                            })
+                            .collect();
+                        self.say(StatusKind::Info, format!("Steward scope-guard witness, turn-stepped timer and cleanup: {events:?}"));
+                    } else {
+                        self.say(StatusKind::Refusal, "No such ledger line.");
+                    }
+                }
+            }
+            El::F8Foe(action) => {
+                if self.screen == Screen::Floor8Foe {
+                    use HourAction::*;
+                    let read_only = matches!(action, Page(_) | Select(_) | Read);
+                    if self.expedition.floor8.foe.state == FoeState::Fallen && !read_only {
+                        self.say(StatusKind::Info, "The Suspended Hour remains fallen.");
+                        return;
+                    }
+                    if !read_only {
+                        self.armed = None;
+                        self.expedition.floor8.foe.strike = StrikePhase::Idle;
+                    }
+                    let result: Result<String, crate::state::Refusal> = match action {
+                        Page(page) if page < 3 => {
+                            self.expedition.floor8.foe.page = page;
+                            Ok("Choose evidence, roster walk or typed rewrite.".into())
+                        }
+                        Select(index) if index < 4 => {
+                            self.expedition.floor8.foe.selected = index;
+                            Ok(content::HOUR_ROSTERS[usize::from(index)].into())
+                        }
+                        Exhibit(index) => self.expedition.floor8_foe_exhibit(usize::from(index)),
+                        Pressure => {
+                            let signals = crate::puzzles::hour::stale_signals();
+                            let f = &mut self.expedition.floor8.foe;
+                            let event = &signals[usize::from(f.pressure).min(signals.len() - 1)];
+                            f.pressure = (f.pressure + 1).min(3);
+                            Ok(format!(
+                                "Misleading bell (bounded {}/3): {event:?}. Evidence preserved; no completion published.",
+                                f.pressure
+                            ))
+                        }
+                        Read => {
+                            let f = &self.expedition.floor8.foe;
+                            let i = usize::from(f.selected);
+                            let events = crate::puzzles::hour::presentation(i);
+                            Ok(events
+                                .get(f.predictions[i].len())
+                                .map(|event| {
+                                    format!("Next event {}: {event:?}", f.predictions[i].len() + 1)
+                                })
+                                .unwrap_or_else(|| "This computed roster is fully walked.".into()))
+                        }
+                        Predict(kind) => self.expedition.floor8_foe_predict(kind),
+                        Identify => {
+                            let i = usize::from(self.expedition.floor8.foe.selected);
+                            if i != content::HOUR_UNSEQUENCED {
+                                Err(crate::state::Refusal("This roster preserves canonical arrival order. Find the presentation permutation.".into()))
+                            } else {
+                                self.expedition.floor8.foe.unsequenced = Some(i);
+                                Ok("The Unsequenced Bell identified: presentation reversed; canonical executor events unchanged, timer order intact.".into())
+                            }
+                        }
+                        Policy => {
+                            self.expedition.floor8.foe.policy_seen =
+                                crate::puzzles::hour::policy_holds();
+                            self.overlay = Overlay::Reading(ReadingKind::Demonstration);
+                            Ok(format!(
+                                "{} Panic cleanup and surviving completion verified; never-waking state retained by name. Read policy via the inscription.",
+                                content::HOUR_POLICY
+                            ))
+                        }
+                        Card(line) if line < 3 => {
+                            let slot =
+                                &mut self.expedition.floor8.foe.card_lines[usize::from(line)];
+                            *slot = (*slot + 1) % 3;
+                            Ok(content::HOUR_CARD[usize::from(line)][usize::from(*slot)].into())
+                        }
+                        SignalSeal => {
+                            self.expedition.floor8.foe.signal_seal ^= 1;
+                            Ok("Match the living errand's seal; a previous watch's seal is refused.".into())
+                        }
+                        SignalGeneration => {
+                            let f = &mut self.expedition.floor8.foe;
+                            f.signal_generation = (f.signal_generation + 1) % 4;
+                            Ok(format!(
+                                "Signal generation {}; living {:?}. Stale signals cannot publish.",
+                                f.signal_generation,
+                                crate::puzzles::hour::living_signal()
+                            ))
+                        }
+                        _ => Err(crate::state::Refusal("No such Hour control.".into())),
+                    };
+                    self.expedition.floor8_refresh_gate();
+                    match result {
+                        Ok(s) => self.say(StatusKind::Info, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
                 }
             }
             El::F8Part(part) => {
@@ -6028,6 +6206,13 @@ impl Game {
                 self.bump();
             }
             El::HintDeeper => {
+                if self.screen == Screen::Floor8Foe {
+                    self.expedition.floor8.foe_hints_used =
+                        (self.expedition.floor8.foe_hints_used + 1).min(4);
+                    self.hint_showing = self.expedition.floor8.foe_hints_used;
+                    self.changed();
+                    return;
+                }
                 if let Screen::Floor8Chamber(index) = self.screen {
                     self.expedition.floor8_view_hint(index);
                     self.hint_showing = self.expedition.floor8_hints_used(index);
@@ -6283,6 +6468,16 @@ impl Game {
                 Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
             },
 
+            Screen::Floor8Foe => match self.expedition.floor8_foe_arm_strike() {
+                Ok(()) => {
+                    self.armed = Some(ArmedFor::Foe8);
+                    self.say(
+                        StatusKind::Info,
+                        "Typed signal repair proven. Confirm the strike or stand down.",
+                    );
+                }
+                Err(e) => self.say(StatusKind::Refusal, e.0),
+            },
             Screen::Floor7Foe => match self.expedition.floor7_foe_arm_strike() {
                 Ok(()) => {
                     self.armed = Some(ArmedFor::Foe7);
@@ -6523,6 +6718,15 @@ impl Game {
                 self.changed();
             }
 
+            Some(ArmedFor::Foe8) => {
+                self.armed = None;
+                let result = self.expedition.floor8_foe_confirm_strike(&self.today);
+                match result {
+                    Ok(s) => self.say(StatusKind::Good, s),
+                    Err(e) => self.say(StatusKind::Refusal, e.0),
+                }
+                self.changed();
+            }
             Some(ArmedFor::Foe7) => {
                 self.armed = None;
                 let date = if self.today.is_empty() {
@@ -6864,6 +7068,7 @@ impl Game {
                 Screen::Floor4Foe => "The Foundation's Inscription".to_string(),
                 Screen::Floor5Foe => "The Thing's Inscription".to_string(),
                 Screen::Floor6Foe => "The Heart's Inscription".to_string(),
+                Screen::Floor8Foe => "The Pinstone".into(),
                 Screen::Floor7Foe => "The Loomstone".to_string(),
                 _ => "The Inscription".to_string(),
             },
@@ -6904,6 +7109,12 @@ impl Game {
                 Screen::Floor4Foe => content::FOE4_INSCRIPTION.to_string(),
                 Screen::Floor5Foe => content::FOE5_INSCRIPTION.to_string(),
                 Screen::Floor6Foe => content::FOE6_INSCRIPTION.to_string(),
+                Screen::Floor8Foe => format!(
+                    "{}\n{}\nState / wake / generation exhibits (computed): {:?}",
+                    content::PINSTONE_TEXT,
+                    content::HOUR_POLICY,
+                    crate::puzzles::hour::stale_trace()
+                ),
                 Screen::Floor7Foe => content::FOE7_INSCRIPTION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
@@ -6940,6 +7151,11 @@ impl Game {
                 Screen::Floor4Foe => content::FOE4_DEMONSTRATION.to_string(),
                 Screen::Floor5Foe => content::FOE5_DEMONSTRATION.to_string(),
                 Screen::Floor6Foe => content::FOE6_DEMONSTRATION.to_string(),
+                Screen::Floor8Foe => format!(
+                    "{}\nComputed policy events: {:?}\nDistinct message kinds prevent wrong-meaning handling; seal and generation tokens prevent stale completion publishing.",
+                    content::HOUR_POLICY,
+                    crate::puzzles::hour::policy_trace()
+                ),
                 Screen::Floor7Foe => content::FOE7_DEMONSTRATION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
@@ -6958,6 +7174,7 @@ impl Game {
                     Screen::Floor4Foe => content::floor4_foe_hints()[rung - 1],
                     Screen::Floor5Foe => content::floor5_foe_hints()[rung - 1],
                     Screen::Floor6Foe => content::floor6_foe_hints()[rung - 1],
+                    Screen::Floor8Foe => content::floor8_foe_hints()[rung - 1],
                     Screen::Floor7Foe => content::floor7_foe_hints()[rung - 1],
                     _ => {
                         let challenge = self.current_challenge().unwrap_or(0);
@@ -7175,6 +7392,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor4Foe
         | Screen::Floor5Foe
         | Screen::Floor6Foe
+        | Screen::Floor8Foe
         | Screen::Floor7Foe
         | Screen::Floor3Hub
         | Screen::Floor4Hub
@@ -7232,6 +7450,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             els.push((El::DoorFoe7, geom::door_foe7()));
         }
         Screen::Floor8Hub => {
+            els.push((El::DoorFoe8, geom::door_foe()));
             els.push((El::CampStone, geom::camp_stone()));
             for index in 0..5 {
                 els.push((El::Floor8Door(index as u8), geom::door_chamber(index)));
@@ -7431,6 +7650,16 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             layout_seal(&mut els, game);
         }
 
+        Screen::Floor8Foe => {
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.extend(
+                floor8_foe_controls(game)
+                    .into_iter()
+                    .map(|(el, rect, _)| (el, rect)),
+            );
+            layout_seal(&mut els, game);
+        }
         Screen::Floor7Foe => {
             els.push((El::Desk, geom::desk()));
             els.push((El::Stone, geom::stone()));
@@ -7542,6 +7771,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         Screen::Floor4Foe => game.expedition.floor4.foe.strike == StrikePhase::Armed,
         Screen::Floor5Foe => game.expedition.floor5.foe.strike == StrikePhase::Armed,
         Screen::Floor6Foe => game.expedition.floor6.foe.strike == StrikePhase::Armed,
+        Screen::Floor8Foe => game.expedition.floor8.foe.strike == StrikePhase::Armed,
         Screen::Floor7Foe => game.expedition.floor7.foe.strike == StrikePhase::Armed,
         _ => false,
     };
@@ -7594,7 +7824,148 @@ fn layout_floor6_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
 
 /// The Floor 7 chambers' panel elements: the watch; each
 /// chamber's own controls land with its step.
+pub fn floor8_foe_controls(game: &Game) -> Vec<(El, Rect, String)> {
+    use HourAction::*;
+    let f = &game.expedition.floor8.foe;
+    let mut controls = Vec::new();
+    for (i, title) in ["Evidence", "Roster gate", "Typed repair"]
+        .iter()
+        .enumerate()
+    {
+        controls.push((
+            El::F8Foe(Page(i as u8)),
+            Rect::new(380.0 + i as f32 * 128.0, 100.0, 120.0, 36.0),
+            title.to_string(),
+        ));
+    }
+    let mut row = |action, y, label: String| {
+        controls.push((El::F8Foe(action), Rect::new(380.0, y, 376.0, 36.0), label))
+    };
+    match f.page {
+        0 => {
+            for (i, name) in content::HOUR_EXHIBITS.iter().enumerate() {
+                row(
+                    Exhibit(i as u8),
+                    154.0 + i as f32 * 44.0,
+                    format!(
+                        "{}: {} {}",
+                        i + 1,
+                        name,
+                        if f.exhibits[i] { "SEEN" } else { "" }
+                    ),
+                );
+            }
+            row(
+                Pressure,
+                286.0,
+                format!("Hear misleading stale bell {}/3", f.pressure),
+            );
+        }
+        1 => {
+            for (i, title) in content::HOUR_ROSTERS.iter().enumerate() {
+                row(
+                    Select(i as u8),
+                    144.0 + i as f32 * 40.0,
+                    format!("{} · {} events walked", title, f.predictions[i].len()),
+                );
+            }
+            row(
+                Read,
+                310.0,
+                "Read next computed event (seal + generation)".into(),
+            );
+            row(
+                Identify,
+                354.0,
+                "Name selected roster as unsequenced".into(),
+            );
+            row(
+                Policy,
+                398.0,
+                format!("Demonstrate panic / shutdown: {}", f.policy_seen),
+            );
+        }
+        _ => {
+            for i in 0..3 {
+                row(
+                    Card(i as u8),
+                    154.0 + i as f32 * 44.0,
+                    content::HOUR_CARD[i][usize::from(f.card_lines[i]).min(2)].into(),
+                );
+            }
+            row(
+                SignalSeal,
+                286.0,
+                format!(
+                    "Signal seal: {}",
+                    if f.signal_seal == 1 {
+                        "living errand"
+                    } else {
+                        "previous watch"
+                    }
+                ),
+            );
+            row(
+                SignalGeneration,
+                330.0,
+                format!(
+                    "Signal generation: {} (read living provenance)",
+                    f.signal_generation
+                ),
+            );
+        }
+    }
+    if f.page == 1 {
+        for kind in 1..=9 {
+            let i = kind - 1;
+            controls.push((
+                El::F8Foe(Predict(kind)),
+                Rect::new(
+                    380.0 + f32::from(i % 3) * 128.0,
+                    450.0 + f32::from(i / 3) * 40.0,
+                    120.0,
+                    32.0,
+                ),
+                content::F8_EVENT_KINDS[usize::from(kind)].into(),
+            ));
+        }
+    }
+    controls
+}
+
 pub fn floor8_controls(game: &Game, chamber: usize) -> Vec<(El, Rect, String)> {
+    if chamber == 4 {
+        let names = [
+            "unentered",
+            "completed",
+            "cancelled + cleanup",
+            "running by name",
+        ];
+        let mut controls = Vec::new();
+        for (i, &state) in game.expedition.floor8.chambers[4]
+            .work
+            .ledger
+            .iter()
+            .enumerate()
+        {
+            let y = 154.0 + i as f32 * 44.0;
+            controls.push((
+                El::F8Ledger(i as u8),
+                Rect::new(380.0, y, 278.0, 36.0),
+                format!(
+                    "Line {}: {}",
+                    i + 1,
+                    names.get(usize::from(state)).unwrap_or(&"invalid")
+                ),
+            ));
+            controls.push((
+                El::F8LedgerRead(i as u8),
+                Rect::new(666.0, y, 94.0, 36.0),
+                format!("Read {}", i + 1),
+            ));
+        }
+        return controls;
+    }
     if chamber == 3 {
         let mut controls: Vec<_> = game.expedition.floor8.chambers[3]
             .work
@@ -9888,6 +10259,84 @@ mod tests {
         assert_eq!(game.screen, Screen::Floor8Hub);
         game.activate(El::Floor8Door(255));
         assert_eq!(game.screen, Screen::Floor8Hub);
+    }
+
+    #[test]
+    fn floor8_foe_pages_and_ledger_are_real_pointer_controls() {
+        fn click(g: &mut Game, el: El) {
+            let r = layout(g).into_iter().find(|(e, _)| *e == el).unwrap().1;
+            g.pointer_down(r.cx(), r.cy());
+            g.pointer_up(r.cx(), r.cy());
+        }
+        let mut g = Game::new();
+        g.begin();
+        g.io = None;
+        g.screen = Screen::Floor8Hub;
+        click(&mut g, El::DoorFoe8);
+        assert_eq!(g.screen, Screen::Floor8Foe);
+        for i in 0..3 {
+            click(&mut g, El::F8Foe(HourAction::Exhibit(i)));
+        }
+        g.do_verb(Verb::Prove);
+        assert_eq!(g.expedition.floor8.foe.state, FoeState::Exposed);
+        click(&mut g, El::F8Foe(HourAction::Page(2)));
+        for i in 0..3 {
+            click(&mut g, El::F8Foe(HourAction::Card(i)));
+        }
+        click(&mut g, El::F8Foe(HourAction::SignalSeal));
+        for _ in 0..crate::puzzles::hour::living_signal().1 {
+            click(&mut g, El::F8Foe(HourAction::SignalGeneration));
+        }
+        assert!(g.expedition.floor8_foe_rewrite());
+        g.screen = Screen::Floor8Chamber(4);
+        for (i, (_, state)) in crate::puzzles::hour::ledger().iter().enumerate() {
+            click(&mut g, El::F8LedgerRead(i as u8));
+            for _ in 0..*state {
+                click(&mut g, El::F8Ledger(i as u8));
+            }
+        }
+        g.do_verb(Verb::Prove);
+        click(&mut g, El::Seal);
+        click(&mut g, El::SealConfirm);
+        assert_eq!(
+            g.expedition.floor8.chambers[4].state,
+            ChamberState::Repaired
+        );
+    }
+    #[test]
+    fn floor8_foe_controls_never_overlap_or_bypass_gate() {
+        let mut g = Game::new();
+        g.begin();
+        g.io = None;
+        g.screen = Screen::Floor8Foe;
+        for page in 0..3 {
+            g.activate(El::F8Foe(HourAction::Page(page)));
+            let controls = floor8_foe_controls(&g);
+            for (i, (_, a, _)) in controls.iter().enumerate() {
+                for (_, b, _) in &controls[i + 1..] {
+                    assert!(
+                        a.x + a.w <= b.x
+                            || b.x + b.w <= a.x
+                            || a.y + a.h <= b.y
+                            || b.y + b.h <= a.y
+                    );
+                }
+                let b = rects::SEAL;
+                assert!(
+                    a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y
+                );
+            }
+        }
+        g.activate(El::F8Foe(HourAction::Identify));
+        assert_eq!(g.expedition.floor8.foe.unsequenced, None);
+        g.activate(El::Seal);
+        g.activate(El::SealConfirm);
+        assert_eq!(g.expedition.floor8.foe.state, FoeState::Standing);
+        g.screen = Screen::Floor8Chamber(0);
+        let before = g.expedition.clone();
+        g.activate(El::F8Foe(HourAction::Policy));
+        g.activate(El::F8Ledger(0));
+        assert_eq!(before, g.expedition);
     }
 
     #[test]

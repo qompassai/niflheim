@@ -4663,6 +4663,167 @@ pub const F8_EXAMINE_TEXTS: [&str; 5] = [
     "The Lockheart Pair on loan, four errand seals, twelve event slots.",
     "Six started errands and six terminal accounting lines.",
 ];
+pub const HOUR_UNSEQUENCED: usize = 2;
+/// Authored presentation property of the four named roster definitions.
+pub const HOUR_ROSTER_REVERSED: [bool; 4] = [false, false, true, false];
+pub const HOUR_ROSTERS: [&str; 4] = [
+    "The Ordered Watch",
+    "The Timer Jars",
+    "The Unsequenced Bell",
+    "The Stale Watch",
+];
+pub const HOUR_EXHIBITS: [&str; 3] = [
+    "state box never left state 1",
+    "wake log: previous watch rings",
+    "signal and living generation mismatch",
+];
+pub const PINSTONE_TEXT: &str = "The Pinstone — Let the type carry the errand.";
+pub const HOUR_POLICY: &str = "Panic is contained at the errand boundary and releases borrowed hearts by cancellation cleanup; neighbors continue. Shutdown is quiescence: never-waking errands remain running by name, without implicit cancellation or cleanup.";
+pub const HOUR_CARD: [[&str; 3]; 3] = [
+    [
+        "seal unentered",
+        "Every signal carries its errand seal",
+        "Any bell means completion",
+    ],
+    [
+        "generation unentered",
+        "Every signal carries its generation",
+        "Discard the generation",
+    ],
+    [
+        "refusal rule unentered",
+        "Stale signals are refused at the face",
+        "Publish stale completion",
+    ],
+];
+pub fn floor8_foe_hints() -> [&'static str; 4] {
+    [
+        "Trace the stuck state before believing the bell.",
+        "Read the wake's generation against the living errand.",
+        "Walk all four real rosters; identify the presentation permutation.",
+        "The seam: errand seal plus current generation; refuse stale signals at the face, then seal the proven repair.",
+    ]
+}
+
+pub fn hour_ledger_roster() -> Vec<crate::puzzles::executor::ErrandSpec> {
+    use crate::puzzles::executor::{ErrandSpec, Outcome, State, Timer};
+    [
+        "ledger one",
+        "ledger two",
+        "ledger three",
+        "ledger four",
+        "ledger five",
+        "ledger six",
+    ]
+    .into_iter()
+    .enumerate()
+    .map(|(i, seal)| {
+        let outcome = match i % 3 {
+            0 => Outcome::Ready,
+            1 => Outcome::Cancel,
+            _ => Outcome::Pending,
+        };
+        let cancel = outcome == Outcome::Cancel;
+        ErrandSpec {
+            seal,
+            states: vec![
+                State {
+                    name: "started",
+                    outcome: if cancel { Outcome::Pending } else { outcome },
+                    heart: if !cancel && outcome == Outcome::Pending {
+                        None
+                    } else {
+                        Some(i % 2)
+                    },
+                },
+                State {
+                    name: "mid-flight",
+                    outcome: Outcome::Cancel,
+                    heart: Some(i % 2),
+                },
+            ],
+            drive: if cancel { vec![0, 1] } else { vec![0] },
+            timers: if cancel {
+                vec![Timer {
+                    tick: 1,
+                    generation: 0,
+                }]
+            } else {
+                vec![]
+            },
+        }
+    })
+    .collect()
+}
+
+pub fn hour_stale_roster() -> Vec<crate::puzzles::executor::ErrandSpec> {
+    use crate::puzzles::executor::{ErrandSpec, Outcome, State, Timer};
+    vec![ErrandSpec {
+        seal: "living errand",
+        states: vec![State {
+            name: "state 1",
+            outcome: Outcome::Pending,
+            heart: None,
+        }],
+        drive: vec![0, 0],
+        timers: vec![
+            Timer {
+                tick: 1,
+                generation: 0,
+            },
+            Timer {
+                tick: 2,
+                generation: 1,
+            },
+            Timer {
+                tick: 3,
+                generation: 1,
+            },
+            Timer {
+                tick: 4,
+                generation: 1,
+            },
+        ],
+    }]
+}
+
+pub fn hour_policy_roster() -> Vec<crate::puzzles::executor::ErrandSpec> {
+    use crate::puzzles::executor::{ErrandSpec, Outcome, State};
+    [
+        ("panicking errand", Outcome::Panic(1), 0),
+        ("survivor", Outcome::Ready, 0),
+        ("never waking", Outcome::Pending, 1),
+    ]
+    .into_iter()
+    .map(|(seal, outcome, heart)| ErrandSpec {
+        seal,
+        states: vec![State {
+            name: "state 1",
+            outcome,
+            heart: Some(heart),
+        }],
+        drive: vec![0],
+        timers: vec![],
+    })
+    .collect()
+}
+
+pub fn hour_foe_roster(index: usize) -> Vec<crate::puzzles::executor::ErrandSpec> {
+    match index {
+        0 => hour_attendant_roster(),
+        1 => hour_sleep_roster(false),
+        2 => {
+            let mut tasks = hour_sleep_roster(false);
+            let mut twin = tasks[0].clone();
+            twin.seal = "second sleeper";
+            tasks.push(twin);
+            tasks
+        }
+        3 => hour_stale_roster(),
+        _ => vec![],
+    }
+}
+
 pub const F8_WAKER_PARTS: [&str; 4] = ["counter", "errand name", "generation stamp", "wake face"];
 pub const F8_EVENT_KINDS: [&str; 10] = [
     "unentered",
@@ -4781,6 +4942,14 @@ pub fn floor8_chamber_hints(chamber: usize) -> [&'static str; 4] {
             "The hearts follow the Lockheart borrowing rules.",
             "Predict each event kind, including terminal accounting.",
             "The seam: reproduce the computed twelve-event trace, then ask the judge.",
+        ];
+    }
+    if chamber == 4 {
+        return [
+            "Every started errand has one accounting line.",
+            "Cancellation releases loans; retained running tasks are not implicitly cancelled.",
+            "Read the timer and cleanup witnesses before choosing a state.",
+            "The seam: reconcile each of the six computed Accounting events once, including running-by-name.",
         ];
     }
     [

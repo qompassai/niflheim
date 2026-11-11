@@ -217,4 +217,87 @@ Corrected pinned/offline cargo route, shared target flag, nice 10 and foreign
 process checks throughout; no downloads/syncs/fresh target. Commit recorded
 externally after commit.
 
+## Step 4 — Cancellation Ledger and The Suspended Hour
+
+Base: 610bd84. Added defaulted six-line ledger, guarded assignment edits,
+computed accounting judge and four-rung hints; each line has a Read witness.
+The FOE has a new screen, hub door, three control pages sharing drawn/hit-test
+definitions, sequenced exhibits, bounded stale-bell pressure, four real
+roster walks, per-event Read + prediction, secondary identification, actual
+panic/shutdown demonstration, three-line typed card, seal/generation match,
+shared two-step strike, Pinstone and Pinwright's Executor rewards. The FOE
+has its own hint ladder/reading routes. New own-floor invariants recompute
+prefixes, gate and repair before accepting exposure/armed/fallen claims.
+Standing-down/leaving clears this floor's armed flag; prior floors untouched.
+
+REVIEW-F8-CONTENT derivations: named suites Ordered Watch (C4 four-errand
+roster), Timer Jars (C3 sleeper), Unsequenced Bell (two independent sleepers
+with timer ties), Stale Watch (state 1 re-armed, old generation signals).
+The roster definition records presentation reversal solely for Unsequenced;
+canonical run() output stays unchanged. Reverse is a total, deterministic
+permutation with no event lost. Players predict every presented event kind;
+each Read retains its full seal/generation. Both timer tie ordering and
+sleep/wake evidence come from the unchanged executor. The stuck errand
+polls the same state box twice, rearming from generation 1 to 2; three
+previous-watch generation-1 signals at subsequent ticks are refused. Three
+is the existing exhibit count, giving bounded diagnosis pressure without
+new timing/damage/proof-loss mechanics. Every refusal is real event evidence.
+Signal repair requires the living seal AND computed current generation;
+wrong seal or stale generation never publishes completion.
+
+REVIEW-F8-CANCELLATION: six lines use two repetitions of the three mandated
+terminal categories, with actual outcomes/timers as authored inputs. Each
+mid-flight cancellation first Pending-borrows one of the two Lockheart
+hearts, then the turn-1 timer wakes it to Cancel; cleanup is the F6 flag
+transition path. Running entries sleep without a loan, remain by name,
+and are never implicitly cancelled. The F1 steward returns as the scope-
+guard witness label on the computed cleanup record, with no new prerequisite
+or real-time gate. All six have actual Poll and exactly one Accounting;
+no hand-typed terminal answer table. Panic demonstration uses authored code
+1, releases heart 0, lets the neighbor finish, retains never-waking on heart
+1. This is D-1262 containment/quiescence, not an OS-runtime measurement.
+
+ARTIFACTS: no F7 Arc/Queue gate or new queue mechanic. Stone/secondary/name
+and F14 destination variances remain the SPEC choices already recorded.
+No pending design choice is deferred in executor behavior.
+
+Twelve new shipped tests (6 validation / 6 adversarial): six-start accounting,
+real cleanup/timers, duplicate/missing/swapped ledger lines, canonical vs
+presentation order, no stale/wrong-room completion, earned ledger reload,
+wrong ledger/forged proof, complete FOE strike/rewards/reload, skipped
+exhibits/wrong prediction/premature strike, typed identity+generation,
+forged exposure/armed/prefix/gate/secondary claims, pointer controls and
+pairwise per-page/strike-seal clearance. Suite grows 255 to 267; no old test
+removed/ignored/weakened. Current-step probe earns all five repairs + fallen
+FOE through state operations, writes v8 and reloads it; GUI whole-floor
+playthrough remains Step 5.
+
+Incidents: initial enum-insertion anchor was non-unique and refused the
+write; a precise derive+enum anchor fixed it. Clippy on the partial source
+correctly reported missing type/exhaustiveness, then passed after assembly.
+Initial ledger draft used indices beyond the Pair; corrected before tests
+to hearts 0/1, leaving retained sleepers loan-free so all six actually start.
+Review found the new floor needed its own stand-down reset; fixed and full
+suite rerun. Moved reversal property into authored roster definitions to
+meet the ruling literally and reran all source gates. Intermediate 267/0
+logs are retained; final gates refer to the final tree. No custom skill.
+Markdown report not-LSP-validated (no configured route). Save remains v8;
+gate.rs and unsafe forbid unchanged. Commit hash recorded externally.
+
+| Gate | Result / evidence under /home/phaedrus/.local/share/pax/niflheim-floor8-step4-build-20261110 |
+|---|---|
+| fmt apply/check | PASS; fmt.log |
+| Full tests | PASS: 267 shipped, zero failed/ignored + 1 transient; final-test.log |
+| Clippy all-targets -D warnings | PASS; clippy.log |
+| Theodolite | PASS; producer-first, control 3 E0308, restore SHA 789388ef6d458a974ce757849da747ed81abba2a3ad09c63ae4a1a6cbf501025, all six touched Rust files zero; theodolite.json |
+| Determinism/load-back | PASS; five earned repaired chambers + fallen FOE, v8, identical SHA 6c7d2ed6247d73f5c6316c0cdcd44ea769744b1b8e77735865ed596208f08973 |
+| Android pinned lib | PASS; android.log; 1353169336 bytes |
+| Desktop/Xvfb | PASS; build.log, xvfb-smoke.log; cold_start_ms=680, expected exit 124, zero panics |
+
+Source and artifact SHA-256 manifests filed. Probe and producer files preserved
+in evidence and removed from worktree. Producer stopped before platform jobs.
+Corrected pinned/offline cargo route, shared target flag, nice 10 and foreign
+process checks throughout; no downloads/syncs/fresh target. Commit recorded
+externally after commit.
+
 <!-- END FLOOR 8 STEP REPORTS -->

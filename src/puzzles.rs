@@ -3340,6 +3340,7 @@ mod floor7_third_tests {
 
 /// Frozen turn-stepped executor for Floor 8 and Part B.
 pub mod executor;
+pub mod hour;
 
 /// The authored state-box drive: loading and preparation are Pending;
 /// only the final state is Ready. Reports are computed from the executor.

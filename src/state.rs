@@ -910,6 +910,8 @@ impl Default for Floor7Progress {
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct HourWork {
     #[serde(default)]
+    pub ledger: [u8; 6],
+    #[serde(default)]
     pub parts: [u8; 4],
     #[serde(default)]
     pub trial_walked: bool,
@@ -948,6 +950,26 @@ pub struct Floor8ChamberProgress {
 /// Floor 8, the FOE's progress: the Suspended Hour.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Floor8FoeProgress {
+    #[serde(default)]
+    pub exhibits: [bool; 3],
+    #[serde(default)]
+    pub predictions: [Vec<u8>; 4],
+    #[serde(default)]
+    pub unsequenced: Option<usize>,
+    #[serde(default)]
+    pub policy_seen: bool,
+    #[serde(default)]
+    pub pressure: u8,
+    #[serde(default)]
+    pub card_lines: [u8; 3],
+    #[serde(default)]
+    pub signal_seal: u8,
+    #[serde(default)]
+    pub signal_generation: u8,
+    #[serde(default)]
+    pub page: u8,
+    #[serde(default)]
+    pub selected: u8,
     /// Resolution state.
     pub state: FoeState,
     /// The safety case is assembled.
@@ -982,6 +1004,16 @@ impl Floor8Progress {
                 })
                 .collect(),
             foe: Floor8FoeProgress {
+                exhibits: [false; 3],
+                predictions: std::array::from_fn(|_| Vec::new()),
+                unsequenced: None,
+                policy_seen: false,
+                pressure: 0,
+                card_lines: [0; 3],
+                signal_seal: 0,
+                signal_generation: 0,
+                page: 0,
+                selected: 0,
                 state: FoeState::Standing,
                 gate_passed: false,
                 strike: StrikePhase::Idle,
@@ -4264,8 +4296,134 @@ impl Expedition {
             1 => crate::puzzles::hour_tapestry_diagnosed(work.torn, work.pinned, work.moved),
             2 => crate::puzzles::hour_waker_diagnosed(&work.parts, work.trial_walked),
             3 => crate::puzzles::hour_attendant_diagnosed(&work.roster, work.judged),
+            4 => crate::puzzles::hour::ledger_holds(&work.ledger),
             _ => false,
         }
+    }
+
+    pub fn floor8_ledger_cycle(&mut self, line: usize) -> Result<String, Refusal> {
+        let progress = &mut self.floor8.chambers[4];
+        let Some(slot) = progress.work.ledger.get_mut(line) else {
+            return Err(Refusal("No such ledger line.".into()));
+        };
+        *slot = *slot % 3 + 1;
+        progress.state = ChamberState::Unworked;
+        progress.facet = false;
+        Ok("Accounting changed; file the reconciled ledger again.".into())
+    }
+
+    pub fn floor8_foe_exhibit(&mut self, index: usize) -> Result<String, Refusal> {
+        if index >= 3 {
+            return Err(Refusal("No such exhibit.".into()));
+        }
+        if index > 0 && !self.floor8.foe.exhibits[index - 1] {
+            return Err(Refusal(format!(
+                "First exhibit the {}.",
+                crate::content::HOUR_EXHIBITS[index - 1]
+            )));
+        }
+        self.floor8.foe.exhibits[index] = true;
+        self.floor8.foe.pressure = (self.floor8.foe.pressure + 1).min(3);
+        let trace = crate::puzzles::hour::stale_trace();
+        let evidence: Vec<_> = trace
+            .into_iter()
+            .filter(|e| match index {
+                0 => matches!(e, crate::puzzles::executor::Event::Poll { .. }),
+                _ => matches!(e, crate::puzzles::executor::Event::StaleRefused { .. }),
+            })
+            .take(if index == 0 { 2 } else { 1 })
+            .collect();
+        Ok(format!(
+            "{}: {evidence:?}. Bounded misleading bell: {:?}; no completion published, proof preserved.",
+            crate::content::HOUR_EXHIBITS[index],
+            crate::puzzles::hour::stale_signals()[index]
+        ))
+    }
+
+    pub fn floor8_foe_predict(&mut self, kind: u8) -> Result<String, Refusal> {
+        let foe = &mut self.floor8.foe;
+        let selected = usize::from(foe.selected);
+        let Some(predictions) = foe.predictions.get_mut(selected) else {
+            return Err(Refusal("No such roster.".into()));
+        };
+        let events = crate::puzzles::hour::presentation(selected);
+        let Some(event) = events.get(predictions.len()) else {
+            return Err(Refusal("This roster is already fully walked.".into()));
+        };
+        if crate::puzzles::hour_event_kind(event) != kind {
+            return Err(Refusal(format!(
+                "Event {} mismatch; read its provenance and retry. The walk does not advance.",
+                predictions.len() + 1
+            )));
+        }
+        predictions.push(kind);
+        self.floor8_refresh_gate();
+        Ok("Prediction matches the computed event; walk advanced.".into())
+    }
+
+    pub fn floor8_refresh_gate(&mut self) {
+        let foe = &self.floor8.foe;
+        let gate = foe.predictions.iter().enumerate().all(|(i, p)| {
+            p.as_slice()
+                == crate::puzzles::hour::presentation(i)
+                    .iter()
+                    .map(crate::puzzles::hour_event_kind)
+                    .collect::<Vec<_>>()
+        }) && foe.unsequenced == Some(crate::content::HOUR_UNSEQUENCED)
+            && foe.policy_seen
+            && crate::puzzles::hour::policy_holds();
+        self.floor8.foe.gate_passed = gate;
+    }
+
+    pub fn floor8_foe_rewrite(&self) -> bool {
+        let f = &self.floor8.foe;
+        f.card_lines == [1; 3]
+            && f.signal_seal == 1
+            && crate::puzzles::hour::accepts_signal("living errand", u32::from(f.signal_generation))
+    }
+
+    pub fn floor8_foe_prove(&mut self) -> Result<String, Refusal> {
+        if !self.floor8.foe.exhibits.iter().all(|v| *v) {
+            return Err(Refusal("File all three exhibits in sequence first.".into()));
+        }
+        if self.floor8.foe.state != FoeState::Fallen {
+            self.floor8.foe.state = FoeState::Exposed;
+        }
+        Ok("The wrong-room herald is exposed: a wake does not publish completion.".into())
+    }
+
+    pub fn floor8_foe_arm_strike(&mut self) -> Result<(), Refusal> {
+        self.floor8_refresh_gate();
+        if self.floor8.foe.state != FoeState::Exposed
+            || !self.floor8.foe.exhibits.iter().all(|v| *v)
+            || !self.floor8.foe.gate_passed
+            || !self.floor8_foe_rewrite()
+        {
+            return Err(Refusal("The seal requires exposed proof, all four rosters and policy demonstrations, Unsequenced Bell identified, and the typed signal rewrite matching the living seal/generation.".into()));
+        }
+        self.floor8.foe.strike = StrikePhase::Armed;
+        Ok(())
+    }
+
+    pub fn floor8_foe_confirm_strike(&mut self, date: &str) -> Result<String, Refusal> {
+        if self.floor8.foe.strike != StrikePhase::Armed {
+            return Err(Refusal("Press the proven seal first.".into()));
+        }
+        self.floor8_foe_arm_strike()?;
+        self.floor8.foe.strike = StrikePhase::Idle;
+        self.floor8.foe.state = FoeState::Fallen;
+        self.floor8.foe.fallen_date = Some(date.into());
+        if !self
+            .codex
+            .iter()
+            .any(|s| s == crate::content::PINSTONE_TEXT)
+        {
+            self.codex.push(crate::content::PINSTONE_TEXT.into());
+        }
+        if !self.pack.iter().any(|s| s == "The Pinwright's Executor") {
+            self.pack.push("The Pinwright's Executor".into());
+        }
+        Ok("The Suspended Hour falls. The Pinstone enters the codex; The Pinwright's Executor enters the pack. Distinct message kinds prevent wrong-meaning handling; generation tokens refuse stale completions at the face.".into())
     }
 
     pub fn floor8_add_part(&mut self, part: u8) -> Result<String, Refusal> {
@@ -4405,6 +4563,9 @@ impl Expedition {
                     "WAKER mismatch: four ordered parts and the two-sleep/two-wake trial are required."
                 }
                 3 => "ROSTER mismatch: predict and explicitly judge every computed event.",
+                4 => {
+                    "TERMINAL ACCOUNTING mismatch: every one of the six started errands must match its computed completed, cancelled-with-cleanup or running-by-name accounting."
+                }
                 _ => "The chamber's work does not yet prove its claim.",
             };
             return Err(Refusal(mismatch.into()));
@@ -5017,6 +5178,47 @@ impl Expedition {
                     "the save claims a Floor 8 proof its work does not hold",
                 ));
             }
+        }
+        let f = &self.floor8.foe;
+        if f.page > 2
+            || f.selected > 3
+            || f.pressure > 3
+            || f.signal_seal > 1
+            || f.signal_generation > 3
+            || f.card_lines.iter().any(|&v| v > 2)
+            || f.unsequenced.is_some_and(|i| i >= 4)
+            || f.exhibits
+                .iter()
+                .enumerate()
+                .any(|(i, &seen)| seen && f.exhibits[..i].iter().any(|v| !*v))
+            || f.predictions.iter().enumerate().any(|(i, p)| {
+                let events = crate::puzzles::hour::presentation(i);
+                p.len() > events.len()
+                    || p.iter()
+                        .zip(events.iter())
+                        .any(|(&kind, event)| kind != crate::puzzles::hour_event_kind(event))
+            })
+        {
+            return Err(corrupt("invalid Floor 8 evidence or roster prefix"));
+        }
+        let real_gate = f
+            .predictions
+            .iter()
+            .enumerate()
+            .all(|(i, p)| p.len() == crate::puzzles::hour::presentation(i).len())
+            && f.unsequenced == Some(crate::content::HOUR_UNSEQUENCED)
+            && f.policy_seen
+            && crate::puzzles::hour::policy_holds();
+        if f.gate_passed && !real_gate {
+            return Err(corrupt("Floor 8 gate lacks computed roster evidence"));
+        }
+        if f.state != FoeState::Standing && !f.exhibits.iter().all(|v| *v) {
+            return Err(corrupt("Floor 8 exposure lacks sequenced exhibits"));
+        }
+        if (f.state == FoeState::Fallen || f.strike == StrikePhase::Armed)
+            && (!real_gate || !self.floor8_foe_rewrite() || f.state == FoeState::Standing)
+        {
+            return Err(corrupt("Floor 8 strike lacks proven typed repair"));
         }
         if self.floor2.foe.audited.len() != ADMISSION_SERVICES.len() {
             return Err(corrupt("the audit record is the wrong size"));
@@ -5890,6 +6092,116 @@ mod tests {
         assert_eq!(loaded.floor8, Floor8Progress::new());
         assert_eq!(loaded.floor6, e.floor6);
         assert!(loaded.save_json().unwrap().contains("\"version\":8"));
+    }
+
+    fn hour_test_walk_gate(e: &mut Expedition) {
+        for i in 0..4 {
+            e.floor8.foe.selected = i;
+            for event in crate::puzzles::hour::presentation(usize::from(i)) {
+                e.floor8_foe_predict(crate::puzzles::hour_event_kind(&event))
+                    .unwrap();
+            }
+        }
+        e.floor8.foe.unsequenced = Some(crate::content::HOUR_UNSEQUENCED);
+        e.floor8.foe.policy_seen = crate::puzzles::hour::policy_holds();
+        e.floor8_refresh_gate();
+    }
+
+    #[test]
+    fn hour_ledger_repairs_and_loads_with_real_timer_cleanup() {
+        let mut e = Expedition::new();
+        for (i, (_, state)) in crate::puzzles::hour::ledger().iter().enumerate() {
+            for _ in 0..*state {
+                e.floor8_ledger_cycle(i).unwrap();
+            }
+        }
+        assert!(e.floor8_diagnosed(4));
+        e.floor8_file_proof(4).unwrap();
+        e.floor8_repair_chamber(4).unwrap();
+        assert!(
+            Expedition::load_json(&e.save_json().unwrap())
+                .unwrap()
+                .floor8_diagnosed(4)
+        );
+    }
+    #[test]
+    fn hour_ledger_invalid_index_wrong_lines_and_forgery_fail() {
+        let mut e = Expedition::new();
+        assert!(e.floor8_ledger_cycle(6).is_err());
+        for i in 0..6 {
+            e.floor8_ledger_cycle(i).unwrap();
+        }
+        assert!(e.floor8_file_proof(4).is_err());
+        e.floor8.chambers[4].state = ChamberState::Repaired;
+        assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
+    }
+    #[test]
+    fn hour_foe_sequenced_pressure_gate_and_proven_strike_load() {
+        let mut e = Expedition::new();
+        for i in 0..3 {
+            e.floor8_foe_exhibit(i).unwrap();
+        }
+        for _ in 0..5 {
+            e.floor8_foe_exhibit(2).unwrap();
+        }
+        assert_eq!(e.floor8.foe.pressure, 3);
+        assert!(e.floor8.foe.exhibits.iter().all(|v| *v));
+        e.floor8_foe_prove().unwrap();
+        hour_test_walk_gate(&mut e);
+        assert!(e.floor8.foe.gate_passed);
+        e.floor8.foe.card_lines = [1; 3];
+        e.floor8.foe.signal_seal = 1;
+        e.floor8.foe.signal_generation = crate::puzzles::hour::living_signal().1 as u8;
+        e.floor8_foe_arm_strike().unwrap();
+        e.floor8_foe_confirm_strike("2026-11-10").unwrap();
+        assert_eq!(e.floor8.foe.state, FoeState::Fallen);
+        assert!(e.codex.iter().any(|s| s == crate::content::PINSTONE_TEXT));
+        assert!(e.pack.iter().any(|s| s == "The Pinwright's Executor"));
+        assert_eq!(e, Expedition::load_json(&e.save_json().unwrap()).unwrap());
+        assert!(e.floor8_foe_confirm_strike("2026-11-10").is_err());
+    }
+    #[test]
+    fn hour_foe_refuses_skipped_exhibits_wrong_predictions_and_premature_strikes() {
+        let mut e = Expedition::new();
+        let before = e.floor8.foe.clone();
+        assert!(e.floor8_foe_exhibit(2).unwrap_err().0.contains("wake log"));
+        assert_eq!(e.floor8.foe, before);
+        assert!(e.floor8_foe_exhibit(3).is_err());
+        assert!(e.floor8_foe_prove().is_err());
+        assert!(e.floor8_foe_arm_strike().is_err());
+        assert!(e.floor8_foe_confirm_strike("today").is_err());
+        assert!(e.floor8_foe_predict(9).is_err());
+        assert!(e.floor8.foe.predictions[0].is_empty());
+        e.floor8.foe.gate_passed = true;
+        assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
+        e.floor8.foe.gate_passed = false;
+        e.floor8.foe.predictions[0].push(9);
+        assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
+    }
+    #[test]
+    fn hour_foe_typed_rewrite_requires_both_identity_and_generation() {
+        let mut e = Expedition::new();
+        e.floor8.foe.card_lines = [1; 3];
+        e.floor8.foe.signal_generation = crate::puzzles::hour::living_signal().1 as u8;
+        assert!(!e.floor8_foe_rewrite());
+        e.floor8.foe.signal_seal = 1;
+        assert!(e.floor8_foe_rewrite());
+        e.floor8.foe.signal_generation -= 1;
+        assert!(!e.floor8_foe_rewrite());
+    }
+    #[test]
+    fn hour_foe_forged_exposure_strike_and_secondary_are_rejected() {
+        let mut e = Expedition::new();
+        e.floor8.foe.state = FoeState::Exposed;
+        assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
+        e.floor8.foe.state = FoeState::Standing;
+        e.floor8.foe.strike = StrikePhase::Armed;
+        assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
+        e.floor8.foe.strike = StrikePhase::Idle;
+        hour_test_walk_gate(&mut e);
+        e.floor8.foe.unsequenced = Some(0);
+        e.floor8_refresh_gate();
+        assert!(!e.floor8.foe.gate_passed);
     }
 
     #[test]

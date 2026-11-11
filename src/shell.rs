@@ -1041,6 +1041,7 @@ fn rebuild_now(
         Screen::Floor4Foe => build_floor4_foe(commands, game, &pal, fonts, stage),
         Screen::Floor5Foe => build_floor5_foe(commands, game, &pal, fonts, stage),
         Screen::Floor6Foe => build_floor6_foe(commands, game, &pal, fonts, stage),
+        Screen::Floor8Foe => build_floor8_foe(commands, game, &pal, fonts, stage),
         Screen::Floor7Foe => build_floor7_foe(commands, game, &pal, fonts, stage),
         Screen::Chamber(index) => build_chamber(commands, game, &pal, fonts, stage, index),
         Screen::Foe => build_foe(commands, game, &pal, fonts, stage),
@@ -1241,6 +1242,7 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         Screen::Floor4Foe => "Floor 4 · The Crooked Foundation".to_string(),
         Screen::Floor5Foe => "Floor 5 · The Thing Behind the Veil".to_string(),
         Screen::Floor6Foe => "Floor 6 · The Heart Locked Twice".to_string(),
+        Screen::Floor8Foe => "Floor 8 · The Suspended Hour".into(),
         Screen::Floor7Foe => "Floor 7 · The Standing Seamstress".to_string(),
 
         Screen::Title => "Niflheim".to_string(),
@@ -8202,6 +8204,58 @@ fn build_floor6_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
     );
 }
 
+fn build_floor8_foe(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Suspended Hour — a completion believed in the wrong room",
+    );
+    build_panel_header(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Pinstone",
+        "Let the type carry the errand.",
+    );
+    for (_, rect, label) in crate::game::floor8_foe_controls(game) {
+        spawn_button(commands, stage, rect, &label, pal, false, fonts);
+    }
+    let f = &game.expedition.floor8.foe;
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        154.0,
+        Some(380.0),
+        &format!(
+            "{:?} · gate {} · typed repair {}\nLiving signal {:?}\nSelected roster: {}\nDistinct message kinds prevent wrong-meaning handling. Generation tokens prevent stale completions publishing.",
+            f.state,
+            f.gate_passed,
+            game.expedition.floor8_foe_rewrite(),
+            crate::puzzles::hour::living_signal(),
+            content::HOUR_ROSTERS[usize::from(f.selected).min(3)]
+        ),
+        13.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    build_seal(
+        commands,
+        game,
+        pal,
+        fonts,
+        stage,
+        f.state == FoeState::Exposed && f.gate_passed && game.expedition.floor8_foe_rewrite(),
+        "Typed completion signal",
+    );
+}
+
 fn build_floor8_chamber(
     commands: &mut Commands,
     game: &Game,
@@ -8323,7 +8377,8 @@ fn build_floor8_chamber(
             crate::puzzles::hour_attendant_trace().len(),
             w.judged
         ),
-        _ => "Work controls arrive with this chamber's step.".into(),
+        4 => "Six started errands, six accounting lines. Read each computed final state and cleanup witness; assign every line exactly once.".into(),
+        _ => "No such chamber.".into(),
     };
     spawn_text(
         commands,
@@ -9451,6 +9506,16 @@ fn build_floor8_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fon
             fonts,
         );
     }
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::door_foe(),
+        pal.wax,
+        "THE SUSPENDED HOUR",
+        &format!("{:?}", game.expedition.floor8.foe.state),
+    );
     build_block(
         commands,
         pal,
