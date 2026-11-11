@@ -358,6 +358,11 @@ pub enum El {
     DoorFloor9,
     Floor9Door(u8),
     F9Return,
+    F9Prediction(u8, u8),
+    F9Slot(u8),
+    F9Next(u8),
+    F9Judge,
+    F9Watch,
     /// A Floor 7 chamber door.
     Floor7Door(u8),
     Floor8Door(u8),
@@ -792,6 +797,7 @@ enum ArmedFor {
     /// A Floor 7 chamber's repair.
     Floor7Chamber(usize),
     Floor8Chamber(usize),
+    Floor9Chamber(usize),
     /// Floor 3 FOE's strike.
     Foe3,
     /// Floor 4 FOE's strike.
@@ -1027,6 +1033,7 @@ impl Game {
             Screen::Floor6Chamber(index) => self.armed == Some(ArmedFor::Floor6Chamber(index)),
             Screen::Floor7Chamber(index) => self.armed == Some(ArmedFor::Floor7Chamber(index)),
             Screen::Floor8Chamber(index) => self.armed == Some(ArmedFor::Floor8Chamber(index)),
+            Screen::Floor9Chamber(index) => self.armed == Some(ArmedFor::Floor9Chamber(index)),
             Screen::Foe => self.expedition.foe.strike == StrikePhase::Armed,
             Screen::Floor2Foe => self.expedition.floor2.foe.strike == StrikePhase::Armed,
             Screen::Floor3Foe => self.expedition.floor3.foe.strike == StrikePhase::Armed,
@@ -2523,13 +2530,6 @@ impl Game {
                 }
             }
             Verb::Prove => {
-                if matches!(self.screen, Screen::Floor9Chamber(_)) {
-                    self.say(
-                        StatusKind::Refusal,
-                        "The chamber's work does not yet prove its claim.",
-                    );
-                    return;
-                }
                 if let Screen::Chamber(index) = self.screen {
                     match self.expedition.file_proof(index) {
                         Ok(text) => {
@@ -2588,6 +2588,13 @@ impl Game {
                     }
                     self.changed();
                     return;
+                }
+                if let Screen::Floor9Chamber(index) = self.screen {
+                    match self.expedition.floor9_file_proof(index) {
+                        Ok(text) => self.say(StatusKind::Good, text),
+                        Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                    }
+                    self.changed();
                 }
                 if let Screen::Floor8Chamber(index) = self.screen {
                     match self.expedition.floor8_file_proof(index) {
@@ -3072,6 +3079,71 @@ impl Game {
                 }
                 self.enter_screen(Screen::Floor9Chamber(index));
                 self.say(StatusKind::Info, content::FLOOR9_CHAMBER_INTROS[index]);
+            }
+            El::F9Prediction(row, field) => {
+                if self.screen == Screen::Floor9Chamber(0)
+                    && row < 8
+                    && field < 2
+                    && self.expedition.floor9.chambers[0].state != ChamberState::Repaired
+                {
+                    let p = &mut self.expedition.floor9.chambers[0];
+                    p.work.predictions[usize::from(row)][usize::from(field)] =
+                        p.work.predictions[usize::from(row)][usize::from(field)].wrapping_add(1);
+                    p.work.judged = false;
+                    p.state = ChamberState::Unworked;
+                    self.changed();
+                }
+            }
+            El::F9Slot(row) | El::F9Next(row) => {
+                if self.screen == Screen::Floor9Chamber(1)
+                    && row < 6
+                    && self.expedition.floor9.chambers[1].state != ChamberState::Repaired
+                {
+                    let p = &mut self.expedition.floor9.chambers[1];
+                    if matches!(el, El::F9Slot(_)) {
+                        p.work.slots[usize::from(row)] =
+                            p.work.slots[usize::from(row)].wrapping_add(1) % 6;
+                    } else {
+                        let n = &mut p.work.nexts[usize::from(row)];
+                        *n = if *n == 255 {
+                            0
+                        } else if *n >= 5 {
+                            255
+                        } else {
+                            *n + 1
+                        };
+                    }
+                    p.state = ChamberState::Unworked;
+                    self.changed();
+                }
+            }
+            El::F9Judge => {
+                if self.screen == Screen::Floor9Chamber(0) {
+                    self.expedition.floor9.chambers[0].work.judged = true;
+                    let ok = self.expedition.floor9_diagnosed(0);
+                    self.say(if ok { StatusKind::Good } else { StatusKind::Refusal }, if ok { "All eight real shelf pairs match." } else { "LENGTH + CAPACITY mismatch at the real shelf; inspect every pair and boundary." });
+                    self.changed();
+                }
+            }
+            El::F9Watch => {
+                if let Screen::Floor9Chamber(index @ 0..=1) = self.screen {
+                    self.expedition.floor9.chambers[index].work.watched = true;
+                    let text = if index == 0 {
+                        let (_, costs) = puzzles::hoard_shelf_trace();
+                        format!(
+                            "Reserve {}. Crate seals {:?}. Copy costs {:?}; total {}. {}",
+                            content::F9_RESERVE,
+                            content::F9_CRATES,
+                            costs,
+                            costs.iter().sum::<usize>(),
+                            puzzles::hoard_boundary_exhibit()
+                        )
+                    } else {
+                        content::F9_CHAIN_WALL.into()
+                    };
+                    self.say(StatusKind::Info, text);
+                    self.changed();
+                }
             }
             El::F9Return => {
                 if matches!(self.screen, Screen::Floor9Chamber(_)) {
@@ -6184,6 +6256,19 @@ impl Game {
                     );
                     self.changed();
                 }
+                Screen::Floor9Chamber(index) => {
+                    // Later proofs depend on this repair; keep the ordered save valid.
+                    for p in self.expedition.floor9.chambers.iter_mut().skip(index) {
+                        p.work = Default::default();
+                        p.state = ChamberState::Unworked;
+                        p.facet = false;
+                    }
+                    self.say(
+                        StatusKind::Info,
+                        "This chamber and its dependent proofs are reset. Hint records stay.",
+                    );
+                    self.changed();
+                }
                 Screen::Floor8Chamber(index) => {
                     self.expedition.floor8_reset_chamber(index);
                     self.say(
@@ -6474,6 +6559,22 @@ impl Game {
                     );
                 }
             },
+            Screen::Floor9Chamber(index) => {
+                if self.expedition.floor9.chambers[index].state == ChamberState::Diagnosed
+                    && self.expedition.floor9_diagnosed(index)
+                {
+                    self.armed = Some(ArmedFor::Floor9Chamber(index));
+                    self.say(
+                        StatusKind::Info,
+                        "The seal is pressed. Confirm the repair or stand down.",
+                    );
+                } else {
+                    self.say(
+                        StatusKind::Refusal,
+                        "The seal sleeps until the proof is complete.",
+                    );
+                }
+            }
             Screen::Floor8Chamber(index) => match self.expedition.floor8.chambers[index].state {
                 ChamberState::Diagnosed => {
                     self.armed = Some(ArmedFor::Floor8Chamber(index));
@@ -6698,6 +6799,14 @@ impl Game {
                             .log_push(format!("{} repaired.", content::LOOM_CHAMBERS[index].name));
                         self.say(StatusKind::Good, text);
                     }
+                    Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
+                }
+                self.changed();
+            }
+            Some(ArmedFor::Floor9Chamber(index)) => {
+                self.armed = None;
+                match self.expedition.floor9_repair_chamber(index) {
+                    Ok(text) => self.say(StatusKind::Good, text),
                     Err(refusal) => self.say(StatusKind::Refusal, refusal.message()),
                 }
                 self.changed();
@@ -7557,8 +7666,17 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
                 els.push((El::Floor9Door(index as u8), geom::door_chamber(index)));
             }
         }
-        Screen::Floor9Chamber(_) => {
+        Screen::Floor9Chamber(index) => {
             els.push((El::F9Return, geom::floor9_return()));
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.push((El::ResetChamber, rects::RESET_BTN));
+            els.extend(
+                floor9_controls(game, index)
+                    .into_iter()
+                    .map(|(el, rect, _)| (el, rect)),
+            );
+            layout_seal(&mut els, game);
         }
         Screen::Floor8Hub => {
             els.push((El::DoorFoe8, geom::door_foe()));
@@ -7876,6 +7994,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         Screen::Floor6Chamber(index) => game.armed == Some(ArmedFor::Floor6Chamber(index)),
         Screen::Floor7Chamber(index) => game.armed == Some(ArmedFor::Floor7Chamber(index)),
         Screen::Floor8Chamber(index) => game.armed == Some(ArmedFor::Floor8Chamber(index)),
+        Screen::Floor9Chamber(index) => game.armed == Some(ArmedFor::Floor9Chamber(index)),
         Screen::Foe => game.expedition.foe.strike == StrikePhase::Armed,
         Screen::Floor2Foe => game.expedition.floor2.foe.strike == StrikePhase::Armed,
         Screen::Floor3Foe => game.expedition.floor3.foe.strike == StrikePhase::Armed,
@@ -12087,5 +12206,230 @@ mod floor9_scaffolding_tests {
         );
         assert_eq!(game.expedition.floor9.foe.state, FoeState::Standing);
         assert!(!game.expedition.floor9.chambers[0].facet);
+    }
+}
+
+/// One geometry source for drawing and hit-testing. Work is in the side panel.
+pub fn floor9_controls(game: &Game, chamber: usize) -> Vec<(El, Rect, String)> {
+    let mut out = vec![];
+    if chamber > 1 {
+        return out;
+    }
+    let w = &game.expedition.floor9.chambers[chamber].work;
+    out.push((
+        El::F9Watch,
+        Rect::new(380.0, 100.0, 376.0, 32.0),
+        "Read the exhibit".into(),
+    ));
+    if chamber == 0 {
+        for row in 0..8u8 {
+            for field in 0..2u8 {
+                out.push((
+                    El::F9Prediction(row, field),
+                    Rect::new(
+                        808.0 + f32::from(field) * 222.0,
+                        194.0 + f32::from(row) * 32.0,
+                        214.0,
+                        28.0,
+                    ),
+                    format!(
+                        "Push {} {}: {}",
+                        row + 1,
+                        if field == 0 { "len" } else { "cap" },
+                        w.predictions[usize::from(row)][usize::from(field)]
+                    ),
+                ));
+            }
+        }
+        out.push((
+            El::F9Judge,
+            Rect::new(808.0, 454.0, 214.0, 30.0),
+            "Judge trace".into(),
+        ));
+    } else {
+        for row in 0..6u8 {
+            let y = 194.0 + f32::from(row) * 40.0;
+            out.push((
+                El::F9Slot(row),
+                Rect::new(808.0, y, 214.0, 34.0),
+                format!(
+                    "{} slot: {}",
+                    content::F9_NODES[usize::from(row)],
+                    w.slots[usize::from(row)]
+                ),
+            ));
+            out.push((
+                El::F9Next(row),
+                Rect::new(1030.0, y, 214.0, 34.0),
+                format!("Slot {row} next: {}", w.nexts[usize::from(row)]),
+            ));
+        }
+    }
+    out.push((
+        El::Chip(Verb::Prove),
+        Rect::new(1030.0, 454.0, 214.0, 30.0),
+        "File proof".into(),
+    ));
+    out
+}
+
+#[cfg(test)]
+mod floor9_step2_gui_tests {
+    use super::*;
+    fn click(g: &mut Game, el: El) {
+        let r = layout(g).into_iter().find(|(e, _)| *e == el).unwrap().1;
+        assert_eq!(hit_test(g, r.cx(), r.cy()), Some(el));
+        g.pointer_down(r.cx(), r.cy());
+        g.pointer_up(r.cx(), r.cy());
+    }
+    fn repair(g: &mut Game) {
+        click(g, El::Chip(Verb::Prove));
+        click(g, El::Seal);
+        assert!(g.seal_armed());
+        click(g, El::SealConfirm);
+    }
+    pub fn earn(g: &mut Game) {
+        g.screen = Screen::Floor9Hub;
+        click(g, El::Floor9Door(0));
+        click(g, El::F9Watch);
+        for (i, pair) in puzzles::hoard_shelf_trace().0.iter().enumerate() {
+            for (f, n) in pair.iter().enumerate() {
+                for _ in 0..*n {
+                    click(g, El::F9Prediction(i as u8, f as u8));
+                }
+            }
+        }
+        click(g, El::F9Judge);
+        repair(g);
+        click(g, El::F9Return);
+        click(g, El::Floor9Door(1));
+        click(g, El::F9Watch);
+        let (slots, nexts) = puzzles::hoard_chain_indices();
+        for i in 0..6 {
+            for _ in 0..slots[i] {
+                click(g, El::F9Slot(i as u8));
+            }
+            while g.expedition.floor9.chambers[1].work.nexts[i] != nexts[i] {
+                click(g, El::F9Next(i as u8));
+            }
+        }
+        repair(g);
+    }
+    #[test]
+    fn both_chambers_earned_by_pointer_handlers() {
+        let mut g = Game::new();
+        g.begin();
+        g.io = None;
+        earn(&mut g);
+        assert_eq!(g.expedition.floor9_chambers_repaired(), 2);
+        assert!(g.expedition.floor9.chambers[..2].iter().all(|c| c.facet));
+    }
+    #[test]
+    fn resetting_prior_repair_preserves_ordered_loadable_state() {
+        let mut g = Game::new();
+        g.begin();
+        g.io = None;
+        earn(&mut g);
+        g.expedition.floor9.chambers[1].hints_used = 3;
+        g.screen = Screen::Floor9Chamber(0);
+        click(&mut g, El::ResetChamber);
+        assert_eq!(g.expedition.floor9_chambers_repaired(), 0);
+        assert_eq!(g.expedition.floor9.chambers[1].hints_used, 3);
+        assert_eq!(
+            crate::state::Expedition::load_json(&g.expedition.save_json().unwrap()).unwrap(),
+            g.expedition
+        );
+    }
+    #[test]
+    fn controls_share_draw_and_hit_geometry_without_overlap() {
+        let mut g = Game::new();
+        g.begin();
+        g.io = None;
+        for c in 0..2 {
+            g.screen = Screen::Floor9Chamber(c);
+            for armed in [false, true] {
+                g.armed = if armed {
+                    Some(ArmedFor::Floor9Chamber(c))
+                } else {
+                    None
+                };
+                let all = layout(&g);
+                for (i, (el, a)) in all.iter().enumerate() {
+                    assert_eq!(hit_test(&g, a.cx(), a.cy()), Some(*el));
+                    for (other, b) in &all[i + 1..] {
+                        assert!(
+                            !(a.x < b.x + b.w
+                                && b.x < a.x + a.w
+                                && a.y < b.y + b.h
+                                && b.y < a.y + a.h),
+                            "{el:?} overlaps {other:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn malformed_numeric_work_and_out_of_range_buttons_stay_safe() {
+        let mut g = Game::new();
+        g.begin();
+        g.io = None;
+        g.screen = Screen::Floor9Chamber(0);
+        g.expedition.floor9.chambers[0].work.predictions[0][0] = 255;
+        click(&mut g, El::F9Prediction(0, 0));
+        assert_eq!(g.expedition.floor9.chambers[0].work.predictions[0][0], 0);
+        let before = g.expedition.floor9.clone();
+        for el in [
+            El::F9Prediction(255, 0),
+            El::F9Prediction(0, 255),
+            El::F9Slot(255),
+            El::F9Next(255),
+        ] {
+            g.activate(el);
+        }
+        assert_eq!(before, g.expedition.floor9);
+        g.screen = Screen::Floor9Chamber(1);
+        g.expedition.floor9.chambers[1].work.slots[0] = 255;
+        click(&mut g, El::F9Slot(0));
+        assert!(!g.expedition.floor9_diagnosed(1));
+    }
+    #[test]
+    fn wrong_room_actions_and_premature_strikes_refuse() {
+        let mut g = Game::new();
+        let before = g.expedition.floor9.clone();
+        for el in [
+            El::F9Prediction(0, 0),
+            El::F9Slot(0),
+            El::F9Next(0),
+            El::F9Judge,
+            El::F9Watch,
+        ] {
+            g.activate(el);
+        }
+        assert_eq!(before, g.expedition.floor9);
+        g.screen = Screen::Floor9Chamber(0);
+        g.activate(El::Seal);
+        g.activate(El::SealConfirm);
+        assert_eq!(
+            g.expedition.floor9.chambers[0].state,
+            ChamberState::Unworked
+        );
+    }
+    #[test]
+    fn editing_invalidates_judgment_and_reset_preserves_hints() {
+        let mut g = Game::new();
+        g.begin();
+        g.io = None;
+        g.screen = Screen::Floor9Chamber(0);
+        g.expedition.floor9.chambers[0].work.predictions = puzzles::hoard_shelf_trace().0;
+        click(&mut g, El::F9Judge);
+        click(&mut g, El::Chip(Verb::Prove));
+        click(&mut g, El::F9Prediction(0, 0));
+        assert!(!g.expedition.floor9_diagnosed(0));
+        assert!(!g.expedition.floor9.chambers[0].work.judged);
+        g.expedition.floor9.chambers[0].hints_used = 3;
+        click(&mut g, El::ResetChamber);
+        assert_eq!(g.expedition.floor9.chambers[0].hints_used, 3);
+        assert_eq!(g.expedition.floor9.chambers[0].work, Default::default());
     }
 }

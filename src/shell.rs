@@ -9665,6 +9665,119 @@ fn build_floor9_chamber(
         false,
         fonts,
     );
+    for (_, rect, label) in crate::game::floor9_controls(game, index) {
+        spawn_button(commands, stage, rect, &label, pal, false, fonts);
+    }
+    spawn_button(
+        commands,
+        stage,
+        rects::RESET_BTN,
+        "Reset chamber",
+        pal,
+        false,
+        fonts,
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::stone(),
+        pal.card,
+        "THE RULE",
+        "read the inscription",
+    );
+    if index == 0 {
+        let (_, costs) = crate::puzzles::hoard_shelf_trace();
+        spawn_text(
+            commands,
+            stage,
+            40.0,
+            142.0,
+            Some(450.0),
+            &format!(
+                "Reserve {} · seals {:?}\nCOPY COST per push {:?}; total {}",
+                content::F9_RESERVE,
+                content::F9_CRATES,
+                costs,
+                costs.iter().sum::<usize>()
+            ),
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            360.0,
+            Some(376.0),
+            &crate::puzzles::hoard_boundary_exhibit(),
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+    } else if index == 1 {
+        // Scattered identity cards: links are explicit identities, never spatial arrows.
+        for (node, name) in content::F9_NODES.iter().enumerate() {
+            let (x, y) = [
+                (40.0, 150.0),
+                (240.0, 210.0),
+                (40.0, 290.0),
+                (250.0, 350.0),
+                (40.0, 420.0),
+                (250.0, 480.0),
+            ][node];
+            let next = content::F9_LINKS[node];
+            let tail = if next == 255 {
+                "none"
+            } else {
+                content::F9_NODES[usize::from(next)]
+            };
+            spawn_text(
+                commands,
+                stage,
+                x,
+                y,
+                Some(120.0),
+                &format!("Node {node}: {name}\nnext identity: {tail}"),
+                12.0,
+                true,
+                pal.ink,
+                Justify::Left,
+                fonts,
+            );
+        }
+        spawn_text(
+            commands,
+            stage,
+            380.0,
+            350.0,
+            Some(376.0),
+            &format!(
+                "Heads: Ash, Copper, Dusk. Walk in that order; assign slots on first visit.\n{}",
+                content::F9_CHAIN_WALL
+            ),
+            12.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+    }
+    build_seal(
+        commands,
+        game,
+        pal,
+        fonts,
+        stage,
+        progress.state == ChamberState::Diagnosed,
+        "Repair the proven record",
+    );
 }
 
 fn build_floor5_hub(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {

@@ -129,3 +129,126 @@ Source-only `git diff --stat -- src` (new Markdown files: FLOOR9-BRIEF.md and th
 Diff whitespace audit: Rust source diff is clean. The complete staged diff
 reports one pre-existing trailing space in the supplied brief at line 127;
 its byte-identical copy is mandatory, so that input whitespace is preserved.
+
+## Step 2 — The Shelf and Honest Chains
+
+Actual base: `784894c0ba725221d279b89e07fccd88204fddda`, clean designated
+worktree `/home/phaedrus/.local/share/pax/niflheim-floor9-wt-20261110`, branch
+`pax/floor9-build-20261110`. Re-read the live tip and Step 1 report before
+writing. Step 1's final suite was 285 unit tests + 1 doctest; this step is
+303 unit tests + 1 doctest, zero failed/ignored. Step 2 only; no C3–5 or FOE
+proofs implemented, no Step 3 started. No push or merge.
+
+Built: serde-defaulted HoardWork predictions, judged, slots and nexts;
+pure real-structure shelf replay and graph traversal judges; mismatch-naming
+proof refusals; ordered proof filing and two-stage shared-seal repair;
+facets at hints_used <= 3 naming The Hoardstone; chamber-specific four-rung
+hint ladders; rendered and hit-tested numeric work controls, real cost and
+boundary/loan exhibits, scattered named nodes and the post-mortem wall.
+Proof slots retain KIND labels. Save remains v9; core.rs and gate.rs are
+byte-identical to base, and the unsafe forbid is intact. Trio APIs unchanged.
+
+Coordinator rulings applied (run-1 stop items resolved):
+- **R-F9-5 / REVIEW-F9-C1-AUTHORED-INPUTS:** ShelfVec<u16>, reserve 4,
+  crate seals 101..108 in content.rs. All eight (len, cap) pairs and every
+  copy cost come from running the landed ShelfVec. A growth charges its
+  pre-push living length, otherwise zero; total is display-only. The
+  post-trace exhibit fills to the real capacity if needed, then performs
+  the next boundary push, displaying its actual reserve. It explicitly
+  limits the doubling rule of thumb at that boundary. A real take_loan /
+  refused push / return_loan / accepted same push follows. No output table
+  or fixed growth-count claim is used.
+- **R-F9-6 / REVIEW-F9-C2-AUTHORED-GRAPH:** content.rs holds the six named
+  nodes, authored node links and heads 0,2,4. First-visit traversal assigns
+  slots, skips already visited identities, and translates node links into
+  slot-indexed nexts. The judge recomputes both arrays. Tests verify the
+  ruling's recomputed canonical record, two referrers to one terminal
+  slot, wrong shared-tail placement and cycles. Identity labels show
+  honest links on scattered nodes, with no implied adjacency arrows.
+  The wall names both hand-linked failures: the ledger's live-loan fight
+  and the road's scattered pointer-chasing fight.
+
+Geometry: drawing and hit-testing consume the same floor9_controls list.
+C1: two columns x808/1030, width214, rows y194+32*r, height28; judge/file
+at y454, height30. C2: same columns, rows y194+40*r, height34; file at y454.
+The shared seal starts y514, confirm/cancel y604; no work control crosses
+those bounds. Exhibit x380/y100/376x32; return x380/y578/376x32. Existing
+desk, rule stone and reset retain their geometry. Tests check every pair
+of hit rectangles and every control centre in both rooms, with the seal
+armed and unarmed. Scattered text columns end x370, wall starts x380;
+node cards do not claim spatial links.
+
+**REVIEW-F9-RESET-ORDER (deterministic constraint derivation):** ordered
+proofs depend on the prior repair; reset must leave a loadable state that
+still satisfies that order. Reset clears this chamber and its dependent
+later proofs/work/facets while retaining every hint count. A pointer test
+earns both repairs, resets C1, and verifies C2 invalidation, hint retention
+and successful load-back. This adds no puzzle answer or independent choice.
+
+18 added tests, 9 validation / 9 adversarial: state 4/4, puzzles 2/2,
+GUI 3/3. Existing test bodies are byte-preserved, no test deleted, skipped,
+weakened or renamed (diff-audit.json). Adversarial checks include every
+pair's off-by-one, unjudged trace, false boundary doubling, loan refusal
+at exact capacity without mutation, wrong shared tail, self-cycles,
+premature repairs/order bypass, forged saved proof, repeated repair,
+wrong-room/out-of-range actions and malformed u8 input. The GUI earns
+both repairs through real pointer handlers. The separate transient DS-9
+probe starts from the shipped earned F7 fixture (F5 complete), enters F9
+through its real F5 door, earns C1–2 through controls, saves v9 and checks
+load-back equality. It ran twice and was removed from tests afterward.
+
+Evidence directory: `/home/phaedrus/.local/share/pax/niflheim-floor9-step2-build-20261110/`.
+Paths in this table are relative to that directory.
+
+| Gate | Result / evidence |
+|---|---|
+| fmt apply + check | PASS, exit 0; fmt-final.log, fmt-check.log; same verified pinned offline formatter exception as Step 1 |
+| cargo test | PASS, exit 0; test-shipped.log: 303 unit tests + 1 compile-fail doctest, zero failed/ignored |
+| clippy --all-targets -- -D warnings | PASS, exit 0; clippy-shipped.log |
+| Theodolite | PASS, producer niflheim-bacon first with current locations; same-session 3 E0308 control, SHA-verified restore 96bf0f774865c645d1a105331d88f2672c07693b7a0a6cd1bbc7ced245d7aacc, all five touched Rust files count=0; theodolite.json, theodolite.log, bacon.log |
+| Determinism + load-back | PASS, both probe runs exit 0, byte-identical; probe1.log, probe2.log, floor9_probe.rs, save-run1.json, save-run2.json, save.sha256; SHA 4e8d50c864fb463538aaaf557dd7ba21aae0c8c8bfe7a7e7068589a5cb6641f3 |
+| Android aarch64 debug lib | PASS, exit 0; android.log, android-size.txt: 1,353,704,024 bytes |
+| Desktop/Xvfb | PASS, build exit 0, smoke exit 124 expected; build.log, xvfb-smoke.log, xvfb-exit.txt; cold_start_ms=1104, zero panics |
+| Scope / safety | PASS; diff-audit.json, diff-stat.txt, working.diff; gate.rs/core.rs untouched, save v9, unsafe forbid intact; preserved stop copy SHA f7df872004315c205f9eed7b6d7c09b7e816e60c9fb5cc233c2e173b255ff267 |
+
+Incidents/fixes: initial compile caught an incorrect shared-button enum
+name and missing module qualifications; corrected against source. Splice
+anchor assertions refused non-matching/overbroad anchors before writing;
+corrected and resumed. First expanded suite was 300 pass / 1 fail: the GUI
+playthrough caught Step 1's early placeholder proof refusal. Removed that
+placeholder, reran 301/0, then added reset/load-back and malformed-u8 tests
+and ran final 303/0. All failure logs retained. Geometry review narrowed
+the scattered node labels to keep them clear of the wall. No gate was
+weakened. All cargo calls used the commissioned pinned offline/locked
+route, shared target FLAG, nice 10, exact-name foreign-process checks and
+20 GB disk floor; no downloads, fresh target, or toolchain sync. The
+formatter uses cargo --offline --locked fmt, as already verified in Step
+1, because cargo-fmt rejects build-only flags.
+
+Variances retained, built to SPEC: The Hoard Beneath vs The Deep Hoard;
+The Hoardstone vs The Toll Stone; Trio consumers F12 C1/F13 C5/F16 vs
+FULL-DESIGN F12/F13/F14. R-F9-1..6 remain boundary-reviewable before the
+Step 5 freeze. Future C3/C5 authored-content REVIEWs remain outside this
+step. No custom skill materially used. Markdown is not-LSP-validated
+(no configured Markdown route). Run-1 stop report remains untouched at
+REPORT-STEP2-run1-stop.md in the commissioning directory. Local commit
+hash is recorded externally in REPORT-STEP2.md to avoid a self-reference.
+
+Source-only `git diff --stat -- src`:
+
+```text
+ src/content.rs |  26 ++++-
+ src/game.rs    | 360 +++++++++++++++++++++++++++++++++++++++++++++++++++++++--
+ src/puzzles.rs | 114 ++++++++++++++++++
+ src/shell.rs   | 113 ++++++++++++++++++
+ src/state.rs   | 189 +++++++++++++++++++++++++++++-
+ 5 files changed, 790 insertions(+), 12 deletions(-)
+```
+
+Producer session `niflheim-bacon` remains running for the coordinator's floor
+boundary shutdown. Its evidence-local cargo wrapper still uses this worktree
+and the commissioned route. Untracked `bacon.toml` and `.bacon-locations`
+are retained solely for that producer and excluded from the commit; they
+were absent at entry. A diagnostic `bacon --help | head` invocation printed
+a broken-pipe panic after head closed stdout; it did not affect the producer
+or any gate (the Xvfb log itself has zero panics).

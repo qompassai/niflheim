@@ -1035,6 +1035,14 @@ impl Default for Floor8Progress {
 pub struct HoardWork {
     #[serde(default)]
     pub watched: bool,
+    #[serde(default)]
+    pub predictions: [[u8; 2]; 8],
+    #[serde(default)]
+    pub judged: bool,
+    #[serde(default)]
+    pub slots: [u8; 6],
+    #[serde(default)]
+    pub nexts: [u8; 6],
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Floor9ChamberProgress {
@@ -4726,9 +4734,64 @@ impl Expedition {
             .unwrap_or(0)
     }
 
-    // Floor 9 — scaffolding only: no chamber proof is available yet.
-    pub fn floor9_diagnosed(&self, _chamber: usize) -> bool {
-        false
+    pub fn floor9_diagnosed(&self, chamber: usize) -> bool {
+        let Some(p) = self.floor9.chambers.get(chamber) else {
+            return false;
+        };
+        match chamber {
+            0 => p.work.judged && p.work.predictions == crate::puzzles::hoard_shelf_trace().0,
+            1 => {
+                let (slots, nexts) = crate::puzzles::hoard_chain_indices();
+                p.work.slots == slots && p.work.nexts == nexts
+            }
+            _ => false,
+        }
+    }
+    pub fn floor9_file_proof(&mut self, chamber: usize) -> Result<String, Refusal> {
+        if chamber > 1
+            || (chamber > 0 && self.floor9.chambers[chamber - 1].state != ChamberState::Repaired)
+        {
+            return Err(Refusal(
+                "Repair the prior chamber first; this proof is unavailable.".into(),
+            ));
+        }
+        if !self.floor9_diagnosed(chamber) {
+            let mismatch = if chamber == 0 {
+                "LENGTH + CAPACITY TRACE mismatch: judge all eight exact pairs against the real shelf, including its capacity boundary."
+            } else {
+                "SLOTS + NEXT INDICES mismatch: use first-visit arena slots, preserve the one shared tail and end chains with 255; cycles are not chains."
+            };
+            return Err(Refusal(mismatch.into()));
+        }
+        let p = &mut self.floor9.chambers[chamber];
+        if p.state == ChamberState::Repaired {
+            return Err(Refusal("Already repaired.".into()));
+        }
+        p.state = ChamberState::Diagnosed;
+        Ok("Filed with Heapwarden: the record proves its claim.".into())
+    }
+    pub fn floor9_repair_chamber(&mut self, chamber: usize) -> Result<String, Refusal> {
+        if !self.floor9_diagnosed(chamber)
+            || (chamber > 0 && self.floor9.chambers[chamber - 1].state != ChamberState::Repaired)
+        {
+            return Err(Refusal(
+                "The seal sleeps: complete the ordered proof first.".into(),
+            ));
+        }
+        let p = &mut self.floor9.chambers[chamber];
+        if p.state != ChamberState::Diagnosed {
+            return Err(Refusal(
+                "File the proof before repairing; a repaired seal cannot strike twice.".into(),
+            ));
+        }
+        p.state = ChamberState::Repaired;
+        p.facet = p.hints_used <= 3;
+        Ok(if p.facet {
+            "Repaired at full standard. A facet of The Hoardstone settles into the codex."
+        } else {
+            "Repaired; the fourth hint named the seam, so no facet is earned."
+        }
+        .into())
     }
     pub fn floor9_reachable(&self) -> bool {
         self.floor5_complete()
@@ -5230,6 +5293,12 @@ impl Expedition {
                 return Err(corrupt(
                     "a Floor 9 facet stands without a full-standard repair",
                 ));
+            }
+            if progress.state != ChamberState::Unworked
+                && chamber > 0
+                && self.floor9.chambers[chamber - 1].state != ChamberState::Repaired
+            {
+                return Err(corrupt("a Floor 9 proof bypasses the prior repair"));
             }
             if progress.state != ChamberState::Unworked && !self.floor9_diagnosed(chamber) {
                 return Err(corrupt(
@@ -8037,5 +8106,119 @@ mod floor9_scaffolding_tests {
             expedition.validate_invariants().is_err(),
             "no Step 1 proof supports even a low-hint repair"
         );
+    }
+}
+
+#[cfg(test)]
+mod floor9_step2_tests {
+    use super::*;
+    fn shelf(e: &mut Expedition) {
+        e.floor9.chambers[0].work.predictions = crate::puzzles::hoard_shelf_trace().0;
+        e.floor9.chambers[0].work.judged = true;
+    }
+    fn chains(e: &mut Expedition) {
+        let (slots, nexts) = crate::puzzles::hoard_chain_indices();
+        e.floor9.chambers[1].work.slots = slots;
+        e.floor9.chambers[1].work.nexts = nexts;
+    }
+    #[test]
+    fn shelf_proof_repair_and_facet() {
+        let mut e = Expedition::new();
+        shelf(&mut e);
+        assert!(e.floor9_diagnosed(0));
+        e.floor9_file_proof(0).unwrap();
+        assert!(
+            e.floor9_repair_chamber(0)
+                .unwrap()
+                .contains("The Hoardstone")
+        );
+        assert!(e.floor9.chambers[0].facet);
+    }
+    #[test]
+    fn chains_repair_and_roundtrip() {
+        let mut e = Expedition::new();
+        shelf(&mut e);
+        e.floor9_file_proof(0).unwrap();
+        e.floor9_repair_chamber(0).unwrap();
+        chains(&mut e);
+        e.floor9_file_proof(1).unwrap();
+        e.floor9_repair_chamber(1).unwrap();
+        assert_eq!(Expedition::load_json(&e.save_json().unwrap()).unwrap(), e);
+    }
+    #[test]
+    fn fourth_hint_repairs_without_facet() {
+        let mut e = Expedition::new();
+        shelf(&mut e);
+        e.floor9.chambers[0].hints_used = 4;
+        e.floor9_file_proof(0).unwrap();
+        e.floor9_repair_chamber(0).unwrap();
+        assert!(!e.floor9.chambers[0].facet);
+    }
+    #[test]
+    fn old_work_defaults_and_hints_name_seams() {
+        let w: HoardWork = serde_json::from_str(r#"{"watched":true}"#).unwrap();
+        assert!(w.watched);
+        assert_eq!(w.predictions, [[0; 2]; 8]);
+        assert!(!w.judged);
+        for c in 0..2 {
+            assert!(crate::content::floor9_chamber_hints(c)[3].contains("seam"));
+        }
+    }
+    #[test]
+    fn every_off_by_one_and_unjudged_trace_refused() {
+        let mut e = Expedition::new();
+        shelf(&mut e);
+        e.floor9.chambers[0].work.judged = false;
+        assert!(e.floor9_file_proof(0).is_err());
+        for row in 0..8 {
+            for field in 0..2 {
+                shelf(&mut e);
+                e.floor9.chambers[0].work.predictions[row][field] += 1;
+                assert!(!e.floor9_diagnosed(0));
+                assert!(e.floor9_file_proof(0).unwrap_err().0.contains("CAPACITY"));
+            }
+        }
+    }
+    #[test]
+    fn wrong_shared_tail_and_cycles_refused() {
+        let mut e = Expedition::new();
+        shelf(&mut e);
+        e.floor9_file_proof(0).unwrap();
+        e.floor9_repair_chamber(0).unwrap();
+        chains(&mut e);
+        e.floor9.chambers[1].work.slots[3] = 3;
+        assert!(
+            e.floor9_file_proof(1)
+                .unwrap_err()
+                .0
+                .contains("shared tail")
+        );
+        for s in 0..6 {
+            chains(&mut e);
+            e.floor9.chambers[1].work.nexts[s] = s as u8;
+            assert!(!e.floor9_diagnosed(1));
+        }
+    }
+    #[test]
+    fn premature_repairs_and_order_bypasses_refused() {
+        let mut e = Expedition::new();
+        assert!(e.floor9_repair_chamber(0).is_err());
+        shelf(&mut e);
+        assert!(e.floor9_repair_chamber(0).is_err());
+        chains(&mut e);
+        assert!(e.floor9_file_proof(1).is_err());
+        assert!(e.floor9_repair_chamber(1).is_err());
+        e.floor9.chambers[1].state = ChamberState::Diagnosed;
+        assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
+    }
+    #[test]
+    fn forged_boundary_proof_and_repeat_repair_refused() {
+        let mut e = Expedition::new();
+        shelf(&mut e);
+        e.floor9_file_proof(0).unwrap();
+        e.floor9_repair_chamber(0).unwrap();
+        assert!(e.floor9_repair_chamber(0).is_err());
+        e.floor9.chambers[0].work.predictions[4][1] -= 1;
+        assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
     }
 }

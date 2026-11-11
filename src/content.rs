@@ -5025,7 +5025,23 @@ pub const F9_EXAMINE_TEXTS: [&str; 5] = [
     "Ten operations on a slate beside the Heapwarden's Trio.",
     "Eight strings beside sequential arena blocks and a reset lever.",
 ];
-pub fn floor9_chamber_hints(_chamber: usize) -> [&'static str; 4] {
+pub fn floor9_chamber_hints(chamber: usize) -> [&'static str; 4] {
+    if chamber == 0 {
+        return [
+            "Read the reserve and the eight crate seals.",
+            "Length counts living crates; capacity counts reserved places.",
+            "Charge copies only when capacity actually changes. Read the boundary and loan exhibit.",
+            "The seam: doubling is a rule of thumb, not evidence at the boundary. Predict each real (length, capacity) pair and judge the trace.",
+        ];
+    }
+    if chamber == 1 {
+        return [
+            "Read all three heads and each scattered node's next identity.",
+            "Walk the heads in order; slot a node only on its first visit.",
+            "Translate node links into slot links. The two bells must still reach one tail.",
+            "The seam: identity is shared, not copied. Assign first-visit slots and next indices; 255 ends a chain.",
+        ];
+    }
     [
         "Read the posted claim and identify what must be counted.",
         "Follow the real structure one operation at a time.",
@@ -5033,3 +5049,11 @@ pub fn floor9_chamber_hints(_chamber: usize) -> [&'static str; 4] {
         "The seam: a tally needs its evidence. Count actual operations and keep each count fused to its census-scroll.",
     ]
 }
+
+// R-F9-5 / R-F9-6: authored inputs only; outputs are computed.
+pub const F9_RESERVE: usize = 4;
+pub const F9_CRATES: [u16; 8] = [101, 102, 103, 104, 105, 106, 107, 108];
+pub const F9_NODES: [&str; 6] = ["Ash", "Birch", "Copper", "Bell", "Dusk", "Ember"];
+pub const F9_LINKS: [u8; 6] = [1, 3, 3, 255, 5, 255];
+pub const F9_HEADS: [u8; 3] = [0, 2, 4];
+pub const F9_CHAIN_WALL: &str = "Twin Bells: Birch and Copper ring one Bell, one tail with two referrers. The hand-linked chain fights the ledger: a live loan bars the hand that rewrites a link. It fights the road: scattered crates force pointer-chasing instead of a contiguous walk. Arena indices preserve identity; they do not pretend the nodes were adjacent.";

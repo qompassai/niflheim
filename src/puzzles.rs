@@ -3856,3 +3856,117 @@ mod floor9_trio_tests {
         assert_ne!(a.census_id(), b.census_id());
     }
 }
+
+/// Eight real pushes and their copy costs (R-F9-5).
+pub fn hoard_shelf_trace() -> ([[u8; 2]; 8], [usize; 8]) {
+    let mut shelf = ShelfVec::new(crate::content::F9_RESERVE);
+    let mut trace = [[0; 2]; 8];
+    let mut costs = [0; 8];
+    for (i, seal) in crate::content::F9_CRATES.into_iter().enumerate() {
+        let (len, cap) = (shelf.len(), shelf.cap());
+        assert!(shelf.push(seal));
+        trace[i] = [
+            u8::try_from(shelf.len()).unwrap(),
+            u8::try_from(shelf.cap()).unwrap(),
+        ];
+        if shelf.cap() != cap {
+            costs[i] = len;
+        }
+    }
+    (trace, costs)
+}
+
+/// Exhibit the first post-trace push starting at exact capacity, then a loan.
+pub fn hoard_boundary_exhibit() -> String {
+    let mut shelf = ShelfVec::new(crate::content::F9_RESERVE);
+    for seal in crate::content::F9_CRATES {
+        assert!(shelf.push(seal));
+    }
+    while shelf.len() < shelf.cap() {
+        assert!(shelf.push(109));
+    }
+    let (len, cap) = (shelf.len(), shelf.cap());
+    assert!(shelf.push(109));
+    let grown = shelf.cap();
+    shelf.take_loan();
+    let before = (shelf.len(), shelf.cap());
+    let refused = !shelf.push(110);
+    assert_eq!(before, (shelf.len(), shelf.cap()));
+    shelf.return_loan();
+    let accepted = shelf.push(110);
+    format!(
+        "Boundary push {}: before len={len}, cap={cap}; after cap={grown}. Doubling is a rule of thumb; its authority expires exactly at the capacity boundary. Read the real reserve here. One loan: push refused={refused}; return loan: same push accepted={accepted}.",
+        len + 1
+    )
+}
+
+/// First-visit traversal of the authored graph; nexts are indexed by slot.
+pub fn hoard_chain_indices() -> ([u8; 6], [u8; 6]) {
+    let mut slots = [255; 6];
+    let mut count = 0;
+    for head in crate::content::F9_HEADS {
+        let mut node = head;
+        while node != 255 && slots[usize::from(node)] == 255 {
+            slots[usize::from(node)] = count;
+            count += 1;
+            node = crate::content::F9_LINKS[usize::from(node)];
+        }
+    }
+    let mut nexts = [255; 6];
+    for (node, next) in crate::content::F9_LINKS.into_iter().enumerate() {
+        if next != 255 {
+            nexts[usize::from(slots[node])] = slots[usize::from(next)];
+        }
+    }
+    (slots, nexts)
+}
+
+#[cfg(test)]
+mod hoard_step2_tests {
+    use super::*;
+    #[test]
+    fn shelf_trace_matches_std_vec_and_copy_costs() {
+        let (trace, costs) = hoard_shelf_trace();
+        let mut v = Vec::with_capacity(crate::content::F9_RESERVE);
+        for (i, seal) in crate::content::F9_CRATES.into_iter().enumerate() {
+            let (len, cap) = (v.len(), v.capacity());
+            v.push(seal);
+            assert_eq!(trace[i], [v.len() as u8, v.capacity() as u8]);
+            assert_eq!(costs[i], if cap != v.capacity() { len } else { 0 });
+        }
+        assert!(costs.iter().sum::<usize>() > 0);
+    }
+    #[test]
+    fn graph_traversal_preserves_twin_tail() {
+        let (slots, nexts) = hoard_chain_indices();
+        assert_eq!(slots, [0, 1, 3, 2, 4, 5]);
+        assert_eq!(nexts, [1, 2, 255, 2, 5, 255]);
+        let tail = slots[3];
+        assert_eq!(nexts.iter().filter(|&&s| s == tail).count(), 2);
+        assert_eq!(nexts[usize::from(tail)], 255);
+    }
+    #[test]
+    fn capacity_boundary_loan_refuses_without_change() {
+        let mut s = ShelfVec::new(crate::content::F9_RESERVE);
+        while s.len() < s.cap() {
+            assert!(s.push(101u16));
+        }
+        let before = (s.len(), s.cap());
+        s.take_loan();
+        assert!(!s.push(102));
+        assert_eq!(before, (s.len(), s.cap()));
+        s.return_loan();
+        assert!(s.push(102));
+        assert!(s.cap() > before.1);
+        let exhibit = hoard_boundary_exhibit();
+        assert!(exhibit.contains("refused=true"));
+        assert!(exhibit.contains("accepted=true"));
+    }
+    #[test]
+    fn false_doubling_at_boundary_cannot_replace_observation() {
+        let (mut trace, _) = hoard_shelf_trace();
+        let before = crate::content::F9_RESERVE as u8;
+        trace[3][1] = before * 2;
+        assert_ne!(trace, hoard_shelf_trace().0);
+    }
+}
