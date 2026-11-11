@@ -8288,6 +8288,40 @@ fn build_floor8_chamber(
         false,
         fonts,
     );
+    for (_, rect, label) in crate::game::floor8_controls(index) {
+        spawn_button(commands, stage, rect, &label, pal, false, fonts);
+    }
+    let w = &progress.work;
+    let record = match index {
+        0 => format!(
+            "Poll trace {:?}; rung: {}. Next state: {}",
+            w.polls,
+            w.rung,
+            w.polls
+                .iter()
+                .position(|&p| p == 0)
+                .map(|i| content::F8_BELL_STATES[i])
+                .unwrap_or("complete — no further polls")
+        ),
+        1 => format!(
+            "Torn: {} · pinned: {} · handle moved: {}. Referent: A; self-reference: A after rehang. Pin keeps this address invariant.",
+            w.torn, w.pinned, w.moved
+        ),
+        _ => "Work controls arrive with this chamber's step.".into(),
+    };
+    spawn_text(
+        commands,
+        stage,
+        380.0,
+        310.0,
+        Some(380.0),
+        &record,
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
 }
 
 fn build_floor7_chamber(

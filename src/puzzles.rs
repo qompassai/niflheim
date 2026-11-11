@@ -3340,3 +3340,51 @@ mod floor7_third_tests {
 
 /// Frozen turn-stepped executor for Floor 8 and Part B.
 pub mod executor;
+
+/// The authored state-box drive: loading and preparation are Pending;
+/// only the final state is Ready. Reports are computed from the executor.
+pub fn hour_bell_trace() -> Vec<executor::Event> {
+    use executor::{ErrandSpec, Outcome, State, Timer};
+    executor::run(&[ErrandSpec {
+        seal: "Countdown Bell",
+        states: crate::content::F8_BELL_STATES
+            .iter()
+            .enumerate()
+            .map(|(i, &name)| State {
+                name,
+                outcome: if i + 1 == crate::content::F8_BELL_STATES.len() {
+                    Outcome::Ready
+                } else {
+                    Outcome::Pending
+                },
+                heart: None,
+            })
+            .collect(),
+        drive: (0..crate::content::F8_BELL_STATES.len()).collect(),
+        timers: (1..crate::content::F8_BELL_STATES.len())
+            .map(|tick| Timer {
+                tick: tick as u32,
+                generation: 0,
+            })
+            .collect(),
+    }])
+}
+
+pub fn hour_bell_reports() -> Vec<u8> {
+    hour_bell_trace()
+        .iter()
+        .filter_map(|event| match event {
+            executor::Event::Sleep { .. } => Some(1),
+            executor::Event::Completed { .. } => Some(2),
+            _ => None,
+        })
+        .collect()
+}
+
+pub fn hour_bell_diagnosed(polls: &[u8; 5], rung: bool) -> bool {
+    rung && polls.as_slice() == hour_bell_reports()
+}
+
+pub fn hour_tapestry_diagnosed(torn: bool, pinned: bool, moved: bool) -> bool {
+    torn && pinned && moved
+}

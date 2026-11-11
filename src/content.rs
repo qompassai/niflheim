@@ -4663,7 +4663,31 @@ pub const F8_EXAMINE_TEXTS: [&str; 5] = [
     "The Lockheart Pair on loan, four errand seals, twelve event slots.",
     "Six started errands and six terminal accounting lines.",
 ];
-pub fn floor8_chamber_hints(_chamber: usize) -> [&'static str; 4] {
+pub const F8_BELL_STATES: [&str; 5] = [
+    "begin loading",
+    "wait",
+    "load arrives",
+    "prepare bell",
+    "complete",
+];
+
+pub fn floor8_chamber_hints(chamber: usize) -> [&'static str; 4] {
+    if chamber == 0 {
+        return [
+            "Read the state boxes.",
+            "The load arrives before the whole future completes.",
+            "Ring only after the final Ready report.",
+            "The seam: Pending through preparation, Ready at completion; ring then.",
+        ];
+    }
+    if chamber == 1 {
+        return [
+            "Watch the address markers.",
+            "The unpinned tear must be demonstrated first.",
+            "Pin promises the referent stays put.",
+            "The seam: move unpinned, pin, then move only the handle; the pinned referent stays at its address.",
+        ];
+    }
     [
         "Read the state and its next report before acting.",
         "A wake is a signal, not completion. Read its provenance.",

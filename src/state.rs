@@ -909,6 +909,16 @@ impl Default for Floor7Progress {
 /// scaffolding, like its elders'.
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct HourWork {
+    #[serde(default)]
+    pub polls: [u8; 5],
+    #[serde(default)]
+    pub rung: bool,
+    #[serde(default)]
+    pub torn: bool,
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
+    pub moved: bool,
     /// The demonstration has been watched.
     #[serde(default)]
     pub watched: bool,
@@ -4236,15 +4246,95 @@ impl Expedition {
     }
 
     /// Judges land with each chamber's step.
-    pub fn floor8_diagnosed(&self, _chamber: usize) -> bool {
-        false
+    pub fn floor8_diagnosed(&self, chamber: usize) -> bool {
+        let Some(progress) = self.floor8.chambers.get(chamber) else {
+            return false;
+        };
+        let work = &progress.work;
+        match chamber {
+            0 => crate::puzzles::hour_bell_diagnosed(&work.polls, work.rung),
+            1 => crate::puzzles::hour_tapestry_diagnosed(work.torn, work.pinned, work.moved),
+            _ => false,
+        }
+    }
+
+    pub fn floor8_poll(&mut self, report: u8) -> Result<String, Refusal> {
+        let work = &mut self.floor8.chambers[0].work;
+        let Some(index) = work.polls.iter().position(|&p| p == 0) else {
+            return Err(Refusal(
+                "The future completed: do not poll after Ready; ring the bell.".into(),
+            ));
+        };
+        if crate::puzzles::hour_bell_reports()[index] != report {
+            return Err(Refusal(format!(
+                "State {} ({}) refuses that report; no transition.",
+                index + 1,
+                crate::content::F8_BELL_STATES[index]
+            )));
+        }
+        work.polls[index] = report;
+        Ok(format!(
+            "State {}: {}.",
+            index + 1,
+            if report == 1 {
+                "Pending"
+            } else {
+                "Ready — ring now"
+            }
+        ))
+    }
+
+    pub fn floor8_ring(&mut self) -> Result<String, Refusal> {
+        let work = &mut self.floor8.chambers[0].work;
+        if work.polls.as_slice() != crate::puzzles::hour_bell_reports() || work.rung {
+            return Err(Refusal(
+                "Ring exactly once at the whole future's completion.".into(),
+            ));
+        }
+        work.rung = true;
+        Ok("The completed future rings once.".into())
+    }
+
+    pub fn floor8_tapestry(&mut self, pin: bool) -> Result<String, Refusal> {
+        let work = &mut self.floor8.chambers[1].work;
+        if pin {
+            if !work.torn {
+                return Err(Refusal("First move unpinned and exhibit the tear.".into()));
+            }
+            if work.pinned {
+                return Err(Refusal("The referent is already pinned.".into()));
+            }
+            work.pinned = true;
+            return Ok("Referent pinned at address A; self-reference points to A.".into());
+        }
+        if !work.torn {
+            work.torn = true;
+            return Ok("Unpinned referent moves A to B; its self-reference still points to A: TORN. Rehang at A before pinning.".into());
+        }
+        if !work.pinned {
+            return Err(Refusal(
+                "The tear is witnessed. Pin before the sound handle move.".into(),
+            ));
+        }
+        if work.moved {
+            return Err(Refusal("The sound handle move is already complete.".into()));
+        }
+        work.moved = true;
+        Ok("Handle/frame token moved; pinned referent stays at A, self-reference A: SOUND.".into())
     }
 
     pub fn floor8_file_proof(&mut self, chamber: usize) -> Result<String, Refusal> {
         if !self.floor8_diagnosed(chamber) {
-            return Err(Refusal(
-                "The chamber's work does not yet prove its claim.".into(),
-            ));
+            let mismatch = match chamber {
+                0 => {
+                    "POLL TRACE + COMPLETION mismatch: five correct reports and one completion ring are required."
+                }
+                1 => {
+                    "MOVEMENT RECORD mismatch: exhibit the tear, pin the referent, then move the handle soundly."
+                }
+                _ => "The chamber's work does not yet prove its claim.",
+            };
+            return Err(Refusal(mismatch.into()));
         }
         let progress = self
             .floor8
@@ -5727,6 +5817,65 @@ mod tests {
         assert_eq!(loaded.floor8, Floor8Progress::new());
         assert_eq!(loaded.floor6, e.floor6);
         assert!(loaded.save_json().unwrap().contains("\"version\":8"));
+    }
+
+    #[test]
+    fn hour_countdown_completes_and_roundtrips() {
+        let mut e = Expedition::new();
+        for report in crate::puzzles::hour_bell_reports() {
+            e.floor8_poll(report).unwrap();
+        }
+        e.floor8_ring().unwrap();
+        assert!(e.floor8_diagnosed(0));
+        e.floor8_file_proof(0).unwrap();
+        e.floor8_repair_chamber(0).unwrap();
+        assert!(
+            Expedition::load_json(&e.save_json().unwrap())
+                .unwrap()
+                .floor8_diagnosed(0)
+        );
+    }
+
+    #[test]
+    fn hour_wrong_poll_and_early_duplicate_ring_leave_work_unchanged() {
+        let mut e = Expedition::new();
+        let before = e.floor8.chambers[0].work.clone();
+        assert!(e.floor8_poll(2).is_err());
+        assert!(e.floor8_ring().is_err());
+        assert_eq!(before, e.floor8.chambers[0].work);
+        for report in crate::puzzles::hour_bell_reports() {
+            e.floor8_poll(report).unwrap();
+        }
+        e.floor8_ring().unwrap();
+        assert!(e.floor8_ring().is_err());
+        assert!(e.floor8_poll(2).is_err());
+    }
+
+    #[test]
+    fn hour_tapestry_requires_tear_pin_handle_sequence() {
+        let mut e = Expedition::new();
+        e.floor8_tapestry(false).unwrap();
+        e.floor8_tapestry(true).unwrap();
+        e.floor8_tapestry(false).unwrap();
+        assert!(e.floor8_diagnosed(1));
+        e.floor8_file_proof(1).unwrap();
+        e.floor8_repair_chamber(1).unwrap();
+        assert!(
+            Expedition::load_json(&e.save_json().unwrap())
+                .unwrap()
+                .floor8_diagnosed(1)
+        );
+    }
+
+    #[test]
+    fn hour_tapestry_refuses_pin_first_and_unpinned_second_move() {
+        let mut e = Expedition::new();
+        assert!(e.floor8_tapestry(true).is_err());
+        assert!(!e.floor8_diagnosed(1));
+        e.floor8_tapestry(false).unwrap();
+        assert!(e.floor8_tapestry(false).is_err());
+        e.floor8.chambers[1].work.moved = true;
+        assert!(!e.floor8_diagnosed(1));
     }
 
     #[test]

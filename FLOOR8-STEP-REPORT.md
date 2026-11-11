@@ -109,4 +109,57 @@ untouched; Floor 8 has its own working route. No custom skill was used.
 Commit hash is recorded after committing in the staging REPORT / commit
 artifact, avoiding a self-referential hash inside this commit.
 
+## Step 2 — Countdown Bell and Pinned Tapestry
+
+Base: 58a737ebe90293d03668353cbe66b47a96e5aa6a. Prior disk blocker cleared:
+122,256,388,096 bytes available at this run's preflight; no cache cleanup by this lane.
+Added defaulted polls/rung/torn/pinned/moved fields, pure simulation-backed
+bell judge and tapestry judge, guarded transitions, chamber-specific mismatch
+refusals and four-rung hints, drawn/hit-tested controls and progress records.
+Both chambers file proof and repair through the existing shared seal.
+Six shipped tests (3 validation / 3 adversarial) cover earned save/load,
+wrong poll with no transition, early/duplicate ring, post-Ready poll refusal,
+pin-first/second-unpinned-move refusal, real pointer play and premature seal.
+No baseline test changed. Save stays v8; gate.rs and unsafe forbid untouched.
+
+REVIEW-F8-CONTENT derivation: retained Step 1's five boxes (begin loading,
+wait, load arrives, prepare bell, complete). Load arrival is poll 3, whole
+future completion poll 5. The nonfinal boxes Pending and final box Ready
+are actual executor outcomes; reports are projected from Sleep/Completed
+events, not a typed answer table. Wrong reports preserve work and name the
+current box. The bell can ring exactly once after Ready; no further poll.
+REVIEW-F8-PIN: per run-5 ruling, unpinned referent moves symbolic address
+A to B and tears, is rehung at A, then pinned. Sound movement moves only
+the handle/frame token; referent and self-reference remain at A. The three
+ordered work flags, controls, judge and visible explanation use this meaning.
+No unsafe operation or real self-referential allocation is performed.
+Controls share one drawn/hit-test description at x380, y154/198/242,
+380x36, 8px vertical clearance, status below at y310; seal/panel untouched.
+
+| Gate | Actual result / evidence directory /home/phaedrus/.local/share/pax/niflheim-floor8-step2-build-20261110 |
+|---|---|
+| fmt apply/check | PASS; fmt.log |
+| Full test | PASS: 249 shipped, 0 failed/ignored + 1 transient; final-test.log |
+| Clippy all targets -D warnings | PASS; clippy.log |
+| Theodolite | PASS; producer current before session, control count=3 E0308, SHA restore 5c0dbee0f0a5a89ad753529dc17863a4dc3e96d1e4f2b5a5f3bd0752544e01e7, then 5 touched Rust files zero; theodolite.json |
+| Determinism/load-back | PASS; two earned C1/C2 repaired v8 saves identical; SHA256 a8c16cbf0af4ceec62fa8f556d41ce114279758ad6b9588128c6606f2d8b11a4 |
+| Android pinned lib | PASS; android.log; 1352047144 bytes |
+| Desktop/Xvfb fresh save | PASS; build.log, xvfb-smoke.log; cold_start_ms=2362, expected exit 124, zero panics |
+
+Source/artifact hashes: source-sha256.json / artifact-sha256.json. Markdown
+report is not-LSP-validated (no configured route). Probe and producer files
+removed after preservation in evidence; not committed. No custom skill.
+All cargo uses corrected offline pinned route, shared target flag, nice 10,
+foreign-process checks; no channel sync or downloads. Producer stopped
+before platform gates. Prior Step 1 claims are retained as prior-run evidence.
+
+Incidents: initial compile caught missing module qualification and a wrong
+save method name; fixed (staging step2-first-test.log). First clippy caught
+pointer helper scoped inside an older test; added local pointer helpers
+(clippy-first-failed.log). Initial corrected suite 247/0 preceded two added
+GUI tests; final suite 249/0 covers all changes. One staging git inspection
+ran outside the repository and failed; no gate claim relies on it.
+Later-step CONTENT/CANCELLATION remain for their steps; ARTIFACTS unchanged,
+no F7 prerequisite. Commit hash recorded externally after commit.
+
 <!-- END FLOOR 8 STEP REPORTS -->

@@ -340,6 +340,10 @@ pub enum El {
     /// A Floor 7 chamber door.
     Floor7Door(u8),
     Floor8Door(u8),
+    F8Poll(u8),
+    F8Ring,
+    F8Pin,
+    F8Move,
     /// Floor 2 hub: a chamber door, by index.
     Floor2Door(u8),
     /// Floor 2 hub: collapse or expand a roster group, by index.
@@ -2957,6 +2961,36 @@ impl Game {
                         StatusKind::Refusal,
                         format!("The Stillroom is barred: {}.", missing.join("; ")),
                     );
+                }
+            }
+            El::F8Poll(report) => {
+                if self.screen == Screen::Floor8Chamber(0) {
+                    let result = self.expedition.floor8_poll(report);
+                    match result {
+                        Ok(s) => self.say(StatusKind::Info, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
+                }
+            }
+            El::F8Ring => {
+                if self.screen == Screen::Floor8Chamber(0) {
+                    let result = self.expedition.floor8_ring();
+                    match result {
+                        Ok(s) => self.say(StatusKind::Info, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
+                }
+            }
+            El::F8Pin | El::F8Move => {
+                if self.screen == Screen::Floor8Chamber(1) {
+                    let result = self.expedition.floor8_tapestry(el == El::F8Pin);
+                    match result {
+                        Ok(s) => self.say(StatusKind::Info, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
                 }
             }
             El::F8Watch => {
@@ -7496,8 +7530,39 @@ fn layout_floor6_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
 
 /// The Floor 7 chambers' panel elements: the watch; each
 /// chamber's own controls land with its step.
-fn layout_floor8_chamber_panel(els: &mut Vec<(El, Rect)>, _game: &Game, _chamber: usize) {
+pub fn floor8_controls(chamber: usize) -> Vec<(El, Rect, String)> {
+    let labels = match chamber {
+        0 => vec![
+            (El::F8Poll(1), "Poll: Pending"),
+            (El::F8Poll(2), "Poll: Ready"),
+            (El::F8Ring, "Ring at completion"),
+        ],
+        1 => vec![
+            (El::F8Move, "Move referent / pinned handle"),
+            (El::F8Pin, "Pin the referent"),
+        ],
+        _ => vec![],
+    };
+    labels
+        .into_iter()
+        .enumerate()
+        .map(|(i, (el, label))| {
+            (
+                el,
+                Rect::new(380.0, 154.0 + i as f32 * 44.0, 380.0, 36.0),
+                label.into(),
+            )
+        })
+        .collect()
+}
+
+fn layout_floor8_chamber_panel(els: &mut Vec<(El, Rect)>, _game: &Game, chamber: usize) {
     els.push((El::F8Watch, Rect::new(380.0, 100.0, 300.0, 36.0)));
+    els.extend(
+        floor8_controls(chamber)
+            .into_iter()
+            .map(|(el, rect, _)| (el, rect)),
+    );
 }
 
 fn layout_floor7_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: usize) {
@@ -9708,6 +9773,78 @@ mod tests {
         assert_eq!(game.screen, Screen::Floor8Hub);
         game.activate(El::Floor8Door(255));
         assert_eq!(game.screen, Screen::Floor8Hub);
+    }
+
+    #[test]
+    fn floor8_first_two_rooms_play_through_real_buttons() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .into_iter()
+                .find(|(found, _)| *found == el)
+                .unwrap_or_else(|| panic!("{el:?} missing"))
+                .1;
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        game.screen = Screen::Floor8Hub;
+        click(&mut game, El::Floor8Door(0));
+        for report in crate::puzzles::hour_bell_reports() {
+            click(&mut game, El::F8Poll(report));
+        }
+        click(&mut game, El::F8Ring);
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor8.chambers[0].state,
+            ChamberState::Repaired
+        );
+        game.screen = Screen::Floor8Hub;
+        click(&mut game, El::Floor8Door(1));
+        click(&mut game, El::F8Move);
+        click(&mut game, El::F8Pin);
+        click(&mut game, El::F8Move);
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor8.chambers[1].state,
+            ChamberState::Repaired
+        );
+    }
+
+    #[test]
+    fn floor8_buttons_refuse_wrong_room_and_premature_seal() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .into_iter()
+                .find(|(found, _)| *found == el)
+                .unwrap_or_else(|| panic!("{el:?} missing"))
+                .1;
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        game.screen = Screen::Floor8Chamber(0);
+        click(&mut game, El::F8Poll(2));
+        click(&mut game, El::F8Ring);
+        game.activate(El::F8Pin);
+        game.activate(El::F8Move);
+        click(&mut game, El::Seal);
+        game.activate(El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor8.chambers[0].state,
+            ChamberState::Unworked
+        );
+        assert_eq!(game.expedition.floor8.chambers[0].work.polls, [0; 5]);
+        assert!(!game.expedition.floor8.chambers[1].work.torn);
     }
 
     #[test]
