@@ -564,3 +564,181 @@ Source-only diff:
  src/state.rs   | 405 +++++++++++++++++++++++++++++++++++++++-
  5 files changed, 1553 insertions(+), 5 deletions(-)
 ```
+
+## Step 5 — Integration + THE FREEZE (Part A close-out)
+
+Actual base: `13e1f3dee14ebb8b82fd22fd58e4edcc9153c075`, branch
+`pax/floor9-build-20261110`, designated worktree
+`/home/phaedrus/.local/share/pax/niflheim-floor9-wt-20261110`.
+Entry tracked/staged diff empty; producer-owned bacon.toml and
+.bacon-locations remain untracked and untouched by the commit. Read the
+live tip, Steps 1–4, commission and coordinator addendum, SPEC §3/§4 Floor
+9/§5/DS-1..15, brief and RULING-STEP1..4. Step 5 only. No push or merge.
+
+Built: `tests/floor9_playthrough.rs`, two shipped integration tests (one
+validation, one adversarial). The validation test loads the unchanged
+earned Floor 7 fixture solely for earlier-floor prerequisites, enters
+through the real F5 door, earns all five Floor 9 repairs and facets and
+FOE FALLEN with pointer_down/pointer_up through layout/hit_test, and
+round-trips the earned v9 save byte-identically. Predictions come from
+real Trio runs, never answer tables. No Floor 9 record is filled by a
+setter. The C4 pending-miss load-back is actual serialization, followed
+by continued pointer play. C5 follows both transcript phases; FOE sorts
+six identities, walks ordered exhibits, three trials and three refusal
+cases, refuses bare reissues, stamps each tally and confirms the seal.
+
+The adversarial test refuses proof/repair before diagnosis, earns the
+whole floor, resets C1 through the GUI, verifies all dependent repairs
+and FOE completion clear, reloads that valid reset save, then earns the
+whole floor again. It retains the wrong-attribution/locked-prediction
+and bare-reissue checks in each traversal. Existing tests and fixtures
+are byte-unchanged: no deletion, rename, skip or weakening. Final suite
+347 unit + 2 integration = 349 shipped tests, plus 1 compile-fail doctest;
+350 total, 0 failed/ignored. This is +2 from Step 4.
+
+Consistency pass: reviewed Floor 9's hub/navigation, chamber controls and
+press paths, authored tables/four-rung hints, FOE proof/gate/reissue/strike,
+and its own invariant block. The real full-floor playthrough exposes no
+runtime defect requiring a fix. No runtime code changes in Step 5.
+Earlier-floor surfaces remain unchanged. The existing geometry tests and
+all clicked control centres pass in the full suite.
+
+Evidence directory (all relative artifact names below):
+`/home/phaedrus/.local/share/pax/niflheim-floor9-step5-build-20261110/`.
+
+| Gate | Result / evidence |
+|---|---|
+| fmt apply + --check | PASS exit 0; fmt.log, fmt-check.log |
+| Full cargo test | PASS exit 0; test-final.log, 347 unit + 2 integration + 1 doctest; zero failed/ignored |
+| clippy --all-targets -- -D warnings | PASS exit 0; clippy.log |
+| Theodolite cured protocol | PASS; producer-first/current locations; same-session control count=3 E0308; clean companion core.rs count=0; restored shell.rs SHA `9c15dab7f8d48c3b4e9e32d75c187f955c1ad7727fd0668a623d7e6a63188d56`; new tests/floor9_playthrough.rs and restored src/shell.rs count=0 with arriving push/pull payload, no possibly_incomplete; theodolite.json/.log, producer-stat.txt, producer-bacon.toml, producer-.bacon-locations, bacon.log |
+| DS-9 completed save + load-back | PASS two exit-0 probe runs, cmp identical; floor9_probe.rs, probe1.log, probe2.log, save-run1.json, save-run2.json, save.sha256; SHA `60dfa28fdf692ca92482546647992fbfcc634705e122076f73e37d46db4603d8`; transient tests/floor9_probe.rs removed |
+| Android aarch64-linux-android --lib | PASS exit 0; android.log, android-size.txt; 1,354,641,568 bytes |
+| Desktop/Xvfb smoke | PASS build exit 0; expected timeout exit 124; cold_start_ms=488, zero panics; build.log, platform.log, xvfb-smoke.log, xvfb-exit.txt; fresh save path and commissioned lvp/DISABLE_LSFGVK/BEVY_ASSET_ROOT environment |
+| Diff/safety/test preservation | PASS; diff-audit.json, core-floor-diff.txt, freeze-bump-history.txt; all existing src/tests byte-preserved in Step 5; gate.rs whole-floor diff empty; core.rs whole-floor diff only version constant 8 -> 9; lib.rs unsafe forbid intact |
+
+Every cargo call used cargo-route.sh: pinned 1.99.0 bin first on PATH,
+offline/locked, nice 10, shared target via FLAG, CARGO_TARGET_DIR unset.
+Exact-name cargo/rustc checks serialize heavy launches, disk floor 20 GB
+checked. Formatter uses verified cargo --offline --locked fmt form.
+No downloads, channel syncs or fresh target trees. The already-running
+niflheim-bacon producer stayed in place; coordinator owns boundary stop
+and transient cleanup. Markdown is not-LSP-validated (no configured
+route). No Rust payload missing. No custom skill materially used, no
+skill-trust record claimed.
+
+Incident: first targeted run was 1 pass / 1 fail (test-initial.log).
+The new replay harness assumed C4's selector always started at operation
+zero; reset correctly clears saved work while retaining the UI selection.
+Fixed the harness to read and cycle the visible operation label before
+naming a wrong/true operation. No production change or weakened check.
+Targeted rerun 2/0 (test-fixed.log); full final battery passes. The initial Theodolite session validated the shipped Rust file. An
+additional control-file clean check then retained two stale rustc push
+diagnostics after SHA-verified restoration (extended-stale logs retained).
+REVIEW-F9-THEODOLITE-SAVE-REFRESH: bridge source inspection confirmed
+sync_file sends didChange but no didSave for changed bytes; opening a new clean document in the same
+session sends didSave and triggers a fresh compiler check. The final
+same-session control/restore run uses that supported diagnostic request
+and checks the control file as well as the shipped test; no tool source
+was changed (bridge-sync-source.txt cites the inspected source). This diagnostic-refresh incident is retained as evidence. New-file absence and exact replacement anchors were checked;
+initial output-line count assertion was performed after initial file
+creation, rather than before as required; disclosed procedural deviation.
+Subsequent replacement anchors were asserted exactly once before writes.
+
+### §5.1 freeze surface audit — verified against the landed tree
+
+Grep artifacts `freeze-save-bump.txt`, `freeze-trio-signatures.txt`,
+`freeze-conventions.txt`, `freeze-tables-hints.txt`,
+`freeze-shared-systems.txt` contain actual rg -n matches, backed by source
+excerpts freeze-api-source.txt, freeze-invariants.txt,
+freeze-hint-ladders.txt and freeze-bump-history.txt. No Step 5 runtime
+edits means these are the frozen signatures at this commit.
+
+- Save: core.rs SAVE_FORMAT_VERSION = 9; state.rs's Floor9Progress,
+  HoardWork, Floor9FoeProgress and expedition/save field pair retain
+  serde defaults and mappings. Only Step 1 changed core.rs (8 -> 9).
+  Existing version-load and future-forge tests pass. Part B bump protocol
+  remains SPEC §5.1/DS-2: its Step 1 increments once in integration order,
+  additive defaulted field + fixtures; existing fields unchanged.
+- ShelfVec<T>: new(reserve: usize) -> Self; push(&mut self, value: T) ->
+  bool; get(&self, index: usize) -> Option<&T>; len/cap(&self) -> usize;
+  take_loan/return_loan(&mut self); stamps(&self) -> u32. Real Vec capacity,
+  all pushes under a live loan refuse (R-F9-2). puzzles.rs:3456 onward.
+- CellarMap<K,V>, K: Eq + Hash: new(capacity: usize) -> Self;
+  insert(&mut self, key: K, value: V) -> Option<usize>;
+  get(&self, key: &K) -> Option<&V>; len(&self) -> usize;
+  probes_total(&self) -> u64. Deterministic DefaultHasher::new, bounded
+  linear probe, capacity zero clamped to one; insert probes include the
+  landing slot and full-table refusal walk. No removal/tombstones.
+  R-F9-4 governs the full-table policy. puzzles.rs:3497 onward.
+- Hoard: new(capacity: u32) -> Self; issue(&mut self, bytes: u32) ->
+  Option<u32>; reset(&mut self); used/blocks_used(&self) -> u32.
+  Checked positive-byte issue, sequential handles, no mutation on refusal;
+  reset restarts byte/block counters. R-F9-1; puzzles.rs:3561 onward.
+- Stamped<T>: seal(value: T, census: u32) -> Self; value(&self) -> &T;
+  census_id(&self) -> u32; for T: Copy + Add<Output=T>,
+  add(&self, other: &Stamped<T>) -> Option<Stamped<T>>. Private value and
+  census fields; checked same-scroll addition, no Add operator (passing
+  compile-fail doctest); R-F9-3. puzzles.rs:3607 onward.
+- Conventions: state.rs:4782 floor9_diagnosed(usize) -> bool;
+  floor9_file_proof(&mut self, usize) -> Result<String, Refusal>;
+  floor9_complete(&self) -> bool (five repairs + FALLEN);
+  floor9_reachable(&self) -> bool delegates to floor5_complete.
+  Pure record judges recompute real structure outputs. Shared chamber
+  seal and FOE arm/confirm paths recheck proof; game ArmedFor::Floor9*
+  dispatches them. Facet iff repair at hints_used <= 3 (state.rs:4861); own invariant block checks five ordered proofs and facets.
+- content.rs:5028 floor9_chamber_hints -> [&'static str;4] for all five,
+  fourth names the seam; floor9_foe_hints likewise four rungs. ChamberMeta,
+  intros/examine/authored inputs retain established table shapes.
+  Floor9Hub/door geometry/build_floor9_hub naming remains landed.
+- Existing loom::{LoomOp, explore, LoomReport} and executor::{run, Event}
+  remain unchanged. The stairs-clause precedent remains; stairs_23 is
+  explicitly Floor 10 work and is not added here. F12 C1/F13 C5/F16 may
+  consume the frozen Trio and F9 records per SPEC; earlier content remains
+  read-only under §5.2. Three 10,000-operation differential trials pass.
+
+### Floor 9 / Part A close-out
+
+**This commit is the Floor 9 Step 5 Part A FREEZE commit of SPEC §5.**
+Part A/Floor 9 work stops here; Pax alone integrates. No Part B tree work.
+
+| Step | Local commit |
+|---|---|
+| 1 | 784894c0ba725221d279b89e07fccd88204fddda |
+| 2 | 57e1dce042f3a7bffb518835ac52b9e8099d6f4d |
+| 3 | b0f899c6e6b3cc574fa0981ee97e173b03e5fdbb |
+| 4 | 13e1f3dee14ebb8b82fd22fd58e4edcc9153c075 |
+| 5 | This commit, “Floor 9 Step 5: integration + FREEZE — Part A freeze commit”; exact hash in external REPORT-STEP5.md |
+
+Per standing reporting shape, this commit's hash is recorded externally
+only, avoiding an impossible embedded self-hash. REPORT-STEP5.md lists
+all five exact hashes after committing. Final count 349 + 1 doctest;
+earned save v9, five repairs/facets + FALLEN; deterministic hash, Android
+size and GUI evidence are in the gate table above.
+
+Open items for Pax, retained explicitly at the boundary:
+R-F9-1..6 (Hoard construction, loan ledger, runtime checked Stamped
+branding, CellarMap signature/full-table rules, C1 authored pushes/copy
+cost, C2 graph/index derivation) remain flagged for review; R-F9-7 C4
+single growth trap and sticky attribution and R-F9-8 C5 two-phase pack
+transcript are also in force and flagged. REVIEW-F9-CONTENT C3 settled
+by first-five ascending u16 colliders modulo 11, flood first four, real
+probe accounting (Step 3 derivation/evidence); C5 settled by R-F9-8's
+PACK_ITEMS corpus and derived Blank Tallies last mile; FOE content
+settlement is REVIEW-F9-FOE-CONTENT (Step 4 minimal identity membership
+sets, real census). No unconstrained new content chosen in Step 5.
+REVIEW-F9-RESET-ORDER retains current-and-later reset, hints retained,
+FOE invalidated; shipped replay confirms reset saves load and replay.
+Three name variances remain: The Hoard Beneath / The Deep Hoard;
+The Hoardstone / The Toll Stone; Trio consumers SPEC F12 C1/F13 C5/F16
+versus FULL-DESIGN F12/F13/F14. Build follows SPEC; no harmonization.
+REVIEW-F9-EARLIER-F5-DOORS: pre-existing F5 F6/F7 hit rectangles without
+shell hub drawings, recorded in Step 1; earlier-floor surface untouched.
+No unresolved Step 5 implementation blocker. Boundary acceptance and
+merge remain Pax's responsibility.
+
+Whole-floor `git diff 52ba58a..HEAD --stat` at this FREEZE commit is filed
+post-commit in `floor-stat-freeze.txt` and reproduced in external
+REPORT-STEP5.md. The parent-tip version is floor-stat-before-freeze.txt.
+The final delta adds this report section and tests/floor9_playthrough.rs;
+core-floor-diff.txt proves the sole permitted core.rs version line.
