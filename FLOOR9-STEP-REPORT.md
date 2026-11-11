@@ -393,3 +393,174 @@ Source diff:
  src/state.rs   | 201 +++++++++++++++++++++++++-
  5 files changed, 912 insertions(+), 44 deletions(-)
 ```
+
+## Step 4 — The Interner's Hoard, Rebuilt and The Hoard Beneath
+
+Actual base: `b0f899c6e6b3cc574fa0981ee97e173b03e5fdbb`; worktree
+`/home/phaedrus/.local/share/pax/niflheim-floor9-wt-20261110`, branch
+`pax/floor9-build-20261110`. Read live tip and Steps 1–3 before writing.
+Entry tracked/staged diffs were empty; existing untracked bacon.toml and
+.bacon-locations belong to niflheim-bacon, remain in place, and are excluded
+from the commit. Only Step 4 is built. The shipped whole-floor GUI test
+and freeze remain Step 5 work. No push or merge.
+
+Built: C5 serde-defaulted blocks/suite_walked/last_mile, pure real-Hoard
+transcript judge, four hints ending at the seam, proof refusal naming the
+incomplete 255 diagnosis, ordered proof/shared-seal repair and Hoardstone
+facet at hints <=3. A rebuilt interner issues one real Hoard block per
+unique text, dedupes by identity, refuses exhaustion without mutation,
+and resets the arena and its text ledger together. Empty text claims one
+byte (Hoard refuses zero-byte issues); other text claims its UTF-8 byte
+length. The arena capacity for the pack is the sum of those real lengths.
+These are arena block counts, not a claim about host heap allocations:
+the safe model retains owned text in a Vec alongside the arena's handles.
+
+**R-F9-8 / REVIEW-F9-C5-INTERN-TRANSCRIPT resolved:** PACK_ITEMS in its
+unchanged table order is the eight-string corpus. content.rs records the
+four pack names actually interned by the original GATE_TESTS. A test reads
+that unchanged suite's literal intern calls and names arrays and checks
+the factual subset. The last pack name outside that subset is derived by
+rposition: Blank Tallies. `last_mile` encodes its pack index (7), following
+the landed indexed-record pattern; it is not a count or a symbol.
+
+Phase 1 runs the real rebuilt interner with that derived string withheld;
+seven real blocks issue, and its blocks entry is 255. The player assigns
+the diagnosis handles and names the absent string. Find refuses a wrong
+name, unread diagnosis, or incorrect assignments. The successful finding
+interns the missing text and records its actual handle. Phase 2 accepts
+only the full real transcript plus suite_walked and the derived index;
+no seven-block diagnosis can satisfy the final judge. Computed earned
+save: handles [0,1,2,3,4,5,6,7], last_mile 7, suite_walked true.
+
+Original-suite evidence is executable: the new cargo unit test compiles
+the actual Hoard and HoardInterner implementation slices with pinned
+rustc, a thin infallible adapter for the suite's bounded successful inputs,
+and the shipped reference LineIndex, then runs all 14 original GATE_TESTS
+unchanged. It does not modify gate.rs or create a game cargo gate. Another
+test compares the real original core::Interner and rebuild on all pack
+names plus the suite's three repeated Heartstone Chart strings: relative
+symbols, lookup, round-trip text and dedupe/block counts agree. Exhaustion
+and empty/multibyte text are separately tested through the fallible API.
+
+FOE: five repairs unlock its door. Three exhibits must be filed in order:
+the honest tallies, exact six-item overlap classes, then the reconciled
+identity census as Stamped<u32>. A missing predecessor is named. The three
+bounded frontier quotes continue repeating the computed bare sum; there
+is no timer, damage or destroyed evidence. One six-identity census batch
+shows 0/6 or 6/6 and an empty/full progress bar. Reconciliation reads
+identity memberships back from a real ShelfVec, CellarMap and Hoard block
+ledger; union membership, never tally arithmetic, produces the census.
+
+**REVIEW-F9-FOE-CONTENT — derived authored inputs, boundary-reviewable:**
+use the first six existing PACK_ITEMS identities, never a new corpus.
+Shelf A is the first four; cellar B is the last three. Their intersection
+is one of B's three keys, exactly the design's one-third overlap. Arena C
+uses the first interior shelf identity and the shared identity (1,3),
+preserving identity 0 as an A-only exemplar and exhibiting both A+C and
+A+B+C. Every arena identity is shelved. This is the minimal two-member
+arena that exhibits both required arena overlap classes. Empty classes
+remain available in the seven-way sorting control; their absence in this
+physical hoard is not an invented answer. Authored sets are inputs only;
+all classes, counts and scrolls are computed from real runs and tested
+against independent identity sets. Computed earned observations: classes
+[1,5,1,7,2,2] (membership bit masks), tallies [4,3,2], misleading sum 9,
+once-only census 6. These observations are not answer tables in code.
+
+The gate walks three summaries citing the exact shipped 10,000-operation
+Trio differential tests, plus three real adversarial exhibits: a live-loan
+growth refusal at exact capacity, C3's collision flood accounting, and
+Hoard::issue returning None at arena exhaustion without changing counts.
+All six records are required. Each repair tally is a real Stamped count
+under its own identity-scroll bitset; bare and foreign-scroll choices are
+refused. Accepted records retain both value and census. Checked addition
+refuses different scrolls (R-F9-3); even a relabelled sum fails the desk's
+real-value check. Stamped gains serialization derives only; its fields,
+method signatures, checked addition and the Trio's behaviour are unchanged.
+
+Proof changes/cancel/navigation disarm the strike. The shared seal arms
+only for EXPOSED proof, all gate records and all three accepted reissues;
+confirmation rechecks them, then records FALLEN, date, The Hoardstone and
+The Heapwarden's Trio exactly once. The stone preserves the mechanism:
+verification moves from remembered discipline to structure at the desk.
+Only Floor 9's invariant block is extended: five chambers and ordered
+proofs recomputed, exact identity census, gate, stamped reissues, strike
+and fallen metadata checked. Resetting any earlier chamber clears the
+dependent FOE record while retaining all hint counts and earned codex/loot.
+
+Geometry: drawing and hit-testing share controls. C5 block rows are
+x808/y194+28*i, 436x26; diagnosis/suite x380/y100,150, 376x32;
+last-mile/find y390,434; file x1030/y454. Pack text occupies x40/y146,
+transcript x40/y350, both width330, clear of the central desk. FOE has
+three tabs x380+128*i/y100, 120x32; left exhibit/trial/stamp rows
+x380/y342+44*i, 376x36, below the desk's y208..332. Right class rows
+x808/y194+38*i, 436x34; adversary/reissue rows use 44-pixel spacing.
+Seal begins y514, confirm/cancel y604; return x380/y578. Tests check all
+control pairs and hit centres on C5 and all three FOE pages, armed and
+unarmed. Labels use words as well as state; no timing or colour-only gate.
+
+24 new tests: 12 validation / 12 adversarial, split 4/4 each in puzzles,
+state and GUI. Existing test bodies in touched files are byte-preserved
+(288 checked); no test removed, renamed, skipped or weakened. Validation
+covers the unchanged original suite, dedupe/transcripts/reset, independent
+identity census, serde defaults, repairs/facets/load-back, bounded pressure,
+C5/FOE pointer play and geometry. Adversarial covers exhaustion, empty and
+multibyte boundaries, wrong counts/stamps, seven-block proof refusal,
+every wrong block, wrong last-mile name, order bypass, overlap errors,
+forged save proofs/gates/censuses/reissues, skipped trials, premature and
+repeated strikes, armed edits and stale controls. The separate DS-9 probe
+starts from the shipped earned F7 fixture, enters via the real F5 door,
+earns C1–5 and FALLEN through real pointer handlers, exercises C4's miss
+loop and bare reissue refusal, saves v9 and verifies load-back equality.
+It ran twice byte-identically and was removed; source stays in evidence.
+
+Evidence directory: `/home/phaedrus/.local/share/pax/niflheim-floor9-step4-build-20261110/`.
+Gate paths below are relative to it.
+
+| Gate | Result / evidence |
+|---|---|
+| fmt apply + current-tree check | PASS exit 0; fmt-final.log, fmt-check-shipped.log |
+| cargo test | PASS exit 0; test-shipped.log: 347 unit + 1 compile-fail doctest, zero failed/ignored; +24 from 323+1; includes 14 unchanged original-suite subtests |
+| clippy --all-targets -- -D warnings | PASS exit 0; clippy-shipped.log |
+| Theodolite | PASS; producer first/current locations, same-session count=3 E0308, SHA-verified restoration 9c15dab7f8d48c3b4e9e32d75c187f955c1ad7727fd0668a623d7e6a63188d56; clean count=0 on all five touched Rust files; theodolite.json/.log, producer-stat.txt, producer-bacon.toml, producer-.bacon-locations, bacon.log; supported rust-analyzer push/pull route with bacon-ls paired |
+| DS-9 determinism/load-back | PASS both runs exit 0, byte-identical earned five repairs + FALLEN; floor9_probe.rs, probe1.log, probe2.log, save-run1.json, save-run2.json, save.sha256; SHA 60dfa28fdf692ca92482546647992fbfcc634705e122076f73e37d46db4603d8; transient removed |
+| Android aarch64 debug lib | PASS exit 0; android.log, android-size.txt: 1,354,641,568 bytes |
+| Desktop / Xvfb | PASS build exit 0, smoke exit 124 expected, cold_start_ms=600, zero panics; build.log, platform.log, xvfb-smoke.log, xvfb-exit.txt |
+| Scope / preservation / safety | PASS; diff-audit.json, working.diff, diff-stat.txt, gate-status.json; core.rs/gate.rs byte-identical, save v9, unsafe forbid intact, Trio signatures/implementations preserved apart from Stamped serialization derives, 288 existing test bodies byte-preserved; preserved stop SHA 091239d5f0b50c3c666f5974c7d6205a3571e05156263946cab63c76b46d8744 |
+
+
+Incidents/fixes: exact-once splice assertions rejected ambiguous hint and
+match-list anchors before those writes, and a disarm occurrence-count
+assertion refused its write; narrowed anchors to the current tree and
+resumed. Initial full build, before new tests, passed the 323+1 baseline.
+First expanded run: 346 passed, 1 failed; the new geometry test caught an
+exhibit covering the desk. Moved all FOE left rows below it and reran
+347+1 successfully. A visual source review also moved C5's transcript text
+out of the desk's rectangle. Failure and preparation logs are retained;
+no gate was weakened. No custom skill materially used; no skill-trust
+recorder invented. Markdown: not-LSP-validated (no configured route).
+
+Every cargo call used the commissioned pinned 1.99.0/offline/locked/nice10
+route and shared target FLAG, never CARGO_TARGET_DIR. Exact-name
+cargo/rustc waits yielded to other builds; /home exceeded 20 GB free.
+No downloads, channel syncs or fresh target trees. The nested original
+suite uses that pinned rustc inherited from the cargo route. The existing
+niflheim-bacon producer remains running for coordinator boundary shutdown.
+
+Variances retained, built to SPEC: The Hoard Beneath / The Deep Hoard;
+The Hoardstone / The Toll Stone; Trio consumers F12 C1/F13 C5/F16 /
+FULL-DESIGN F12/F13/F14. R-F9-1..8 and the named FOE content derivation
+remain boundary-reviewable before Step 5's freeze. No unresolved Step 4
+implementation blocker. Run-1 stop report remains byte-identical at
+REPORT-STEP4-run1-stop.md in the commissioning directory. Local commit
+hash is recorded externally in REPORT-STEP4.md only.
+
+Source-only diff:
+
+```text
+ src/content.rs |  45 +++++
+ src/game.rs    | 576 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++-
+ src/puzzles.rs | 378 ++++++++++++++++++++++++++++++++++++-
+ src/shell.rs   | 154 +++++++++++++++
+ src/state.rs   | 405 +++++++++++++++++++++++++++++++++++++++-
+ 5 files changed, 1553 insertions(+), 5 deletions(-)
+```

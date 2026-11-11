@@ -1016,6 +1016,7 @@ fn rebuild_now(
         Screen::Floor6Hub => build_floor6_hub(commands, game, &pal, fonts, stage),
         Screen::Floor7Hub => build_floor7_hub(commands, game, &pal, fonts, stage),
         Screen::Floor8Hub => build_floor8_hub(commands, game, &pal, fonts, stage),
+        Screen::Floor9Foe => build_floor9_foe(commands, game, &pal, fonts, stage),
         Screen::Floor9Hub => build_floor9_hub(commands, game, &pal, fonts, stage),
         Screen::Floor9Chamber(index) => {
             build_floor9_chamber(commands, game, &pal, fonts, stage, index)
@@ -1205,6 +1206,7 @@ fn build_header(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, 
         Screen::Floor6Hub => "Niflheim — Floor 6 · The Lockheart".to_string(),
         Screen::Floor7Hub => "Niflheim — Floor 7 · The Loom of Many Hands".to_string(),
         Screen::Floor8Hub => "Niflheim — Floor 8 · The Suspended Hour".to_string(),
+        Screen::Floor9Foe => "Niflheim — The Hoard Beneath · The Hoardstone".into(),
         Screen::Floor9Hub => "Niflheim — Floor 9 · The Hoard Beneath".into(),
         Screen::Floor9Chamber(index) => format!(
             "Floor 9 · Chamber {} — {}",
@@ -9802,6 +9804,44 @@ fn build_floor9_chamber(
             Justify::Left,
             fonts,
         );
+    } else if index == 4 {
+        let complete = progress.work.blocks == crate::puzzles::hoard_intern_transcript(true).0
+            && usize::from(progress.work.last_mile) == crate::puzzles::hoard_last_mile();
+        let (handles, count) = crate::puzzles::hoard_intern_transcript(complete);
+        let pack = content::PACK_ITEMS
+            .iter()
+            .enumerate()
+            .map(|(i, p)| format!("{i}: {}", p.name))
+            .collect::<Vec<_>>()
+            .join("\n");
+        spawn_text(
+            commands,
+            stage,
+            40.0,
+            146.0,
+            Some(330.0),
+            &pack,
+            15.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            40.0,
+            350.0,
+            Some(330.0),
+            &format!(
+                "Current transcript: {handles:?}\nReal blocks_used: {count}\n255 = not interned. Find the absent string, then the arena issues its missing block. All eight assignments must match. Blocks reset as one; duplicates reuse handles."
+            ),
+            14.0,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
     } else if index == 3 {
         let slate = content::STEWARD_WORKLOAD
             .iter()
@@ -12092,5 +12132,119 @@ fn build_gate_record(
         11.5,
         pal.ink,
         fonts,
+    );
+}
+
+fn build_floor9_foe(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    build_header(commands, game, pal, fonts, stage);
+    build_room_base(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Hoard Beneath — three honest tallies, one lying sum",
+    );
+    build_panel_header(
+        commands,
+        pal,
+        fonts,
+        stage,
+        "The Hoardstone",
+        "Provenance is part of the value.",
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::desk(),
+        pal.card,
+        "CENSUS DESK",
+        "read the inscription",
+    );
+    build_block(
+        commands,
+        pal,
+        fonts,
+        stage,
+        geom::stone(),
+        pal.card,
+        "THE RULE",
+        "read the inscription",
+    );
+    for (_, r, label) in crate::game::floor9_foe_controls(game) {
+        spawn_button(commands, stage, r, &label, pal, false, fonts);
+    }
+    let f = &game.expedition.floor9.foe;
+    let (classes, counts, census) = crate::puzzles::hoard_census();
+    let mut text = format!(
+        "{:?} · gate {}\nA shelf {}, B cellar {}, C arena {}\nFrontier quotes bare sum {} ({}/3); overlaps make it misleading.\n",
+        f.state,
+        f.gate_passed,
+        counts[0],
+        counts[1],
+        counts[2],
+        counts.iter().sum::<u32>(),
+        f.pressure
+    );
+    if f.page == 0 {
+        for (i, c) in classes.iter().enumerate() {
+            text.push_str(&format!(
+                "{}: {}\n",
+                content::PACK_ITEMS[i].name,
+                content::F9_CLASSES[usize::from(*c)]
+            ));
+        }
+        let walked = if f.exhibits[2] { classes.len() } else { 0 };
+        text.push_str(&format!(
+            "Identity batch {walked}/{}; once-only count {} under scroll {}.\n",
+            classes.len(),
+            census.value(),
+            census.census_id()
+        ));
+        let r = Rect::new(40.0, 440.0, 300.0, 12.0);
+        spawn_box(
+            commands,
+            stage,
+            r,
+            Some(pal.card),
+            Some((1.0, pal.edge)),
+            0.0,
+        );
+        if walked > 0 {
+            spawn_box(commands, stage, r, Some(pal.wax), None, 0.0);
+        }
+    } else if f.page == 1 {
+        for line in content::F9_TRIALS {
+            text.push_str(line);
+            text.push('\n');
+        }
+        text.push_str("Trials run in cargo tests, not on a clock. Walk the three records and three real adversarial exhibits.");
+    } else {
+        text.push_str(content::HOARDSTONE_TEXT);
+    }
+    spawn_text(
+        commands,
+        stage,
+        40.0,
+        146.0,
+        Some(330.0),
+        &text,
+        13.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+    build_seal(
+        commands,
+        game,
+        pal,
+        fonts,
+        stage,
+        f.state == FoeState::Exposed
+            && game.expedition.floor9_foe_gate()
+            && game.expedition.floor9_foe_rewrite(),
+        "Re-issue counts fused to their scrolls",
     );
 }

@@ -210,6 +210,7 @@ pub enum Screen {
     Floor7Hub,
     Floor8Hub,
     Floor9Hub,
+    Floor9Foe,
     Floor9Chamber(usize),
     /// A Floor 7 chamber, by index (0-4).
     Floor7Chamber(usize),
@@ -371,6 +372,12 @@ pub enum El {
     F9StewardRun,
     F9StewardCycle,
     F9StewardName,
+    F9Block(u8),
+    F9Suite,
+    F9LastMile,
+    F9Find,
+    DoorFoe9,
+    F9Foe(HoardAction),
     /// A Floor 7 chamber door.
     Floor7Door(u8),
     Floor8Door(u8),
@@ -816,6 +823,7 @@ enum ArmedFor {
     Foe6,
     Foe7,
     Foe8,
+    Foe9,
     /// The FOE's strike.
     Foe,
     /// Floor 2 FOE's strike.
@@ -993,6 +1001,7 @@ impl Game {
                 | Screen::Floor5Foe
                 | Screen::Floor6Foe
                 | Screen::Floor8Foe
+                | Screen::Floor9Foe
                 | Screen::Floor7Foe
                 | Screen::Foe
                 | Screen::Floor2Foe
@@ -1051,6 +1060,7 @@ impl Game {
             Screen::Floor4Foe => self.expedition.floor4.foe.strike == StrikePhase::Armed,
             Screen::Floor5Foe => self.expedition.floor5.foe.strike == StrikePhase::Armed,
             Screen::Floor6Foe => self.expedition.floor6.foe.strike == StrikePhase::Armed,
+            Screen::Floor9Foe => self.expedition.floor9.foe.strike == StrikePhase::Armed,
             Screen::Floor8Foe => self.expedition.floor8.foe.strike == StrikePhase::Armed,
             Screen::Floor7Foe => self.expedition.floor7.foe.strike == StrikePhase::Armed,
             _ => false,
@@ -1225,6 +1235,7 @@ impl Game {
     /// Enter a room screen, resetting per-room session state.
     fn enter_screen(&mut self, screen: Screen) {
         self.expedition.floor8.foe.strike = StrikePhase::Idle;
+        self.expedition.floor9.foe.strike = StrikePhase::Idle;
         self.screen = screen;
         self.overlay = Overlay::None;
         self.armed = None;
@@ -1284,7 +1295,7 @@ impl Game {
                 Verb::Hint,
                 Verb::Map,
             ],
-            Screen::Floor8Foe => vec![
+            Screen::Floor9Foe | Screen::Floor8Foe => vec![
                 Verb::Examine,
                 Verb::Read,
                 Verb::Enumerate,
@@ -2101,6 +2112,7 @@ impl Game {
             | Screen::Floor5Foe
             | Screen::Floor6Foe
             | Screen::Floor8Foe
+            | Screen::Floor9Foe
             | Screen::Floor7Foe => (8..10).contains(&cx) && (2..4).contains(&cy) || cell == (2, 7),
             Screen::Title => true,
         }
@@ -2306,6 +2318,7 @@ impl Game {
     fn disarm(&mut self) {
         self.armed = None;
         self.expedition.floor8.foe.strike = StrikePhase::Idle;
+        self.expedition.floor9.foe.strike = StrikePhase::Idle;
         if self.expedition.foe.strike == StrikePhase::Armed {
             self.expedition.foe_disarm_strike();
         }
@@ -2408,6 +2421,7 @@ impl Game {
                          charters on every wall, and many hands pulling \
                          one thread under a single posted order."
                     }
+                    Screen::Floor9Foe => content::HOARDSTONE_TEXT,
                     Screen::Floor9Hub => content::FLOOR9_INTRO,
                     Screen::Floor9Chamber(index) => content::F9_EXAMINE_TEXTS[index],
                     Screen::Floor8Hub => {
@@ -2422,6 +2436,15 @@ impl Game {
                 self.bump();
             }
             Verb::Enumerate => {
+                if self.screen == Screen::Floor9Foe {
+                    let result = self.expedition.floor9_foe_exhibit(0);
+                    match result {
+                        Ok(s) => self.say(StatusKind::Info, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
+                    return;
+                }
                 if self.screen == Screen::Floor8Foe {
                     let result = self.expedition.floor8_foe_exhibit(0);
                     match result {
@@ -2600,6 +2623,15 @@ impl Game {
                     self.changed();
                     return;
                 }
+                if self.screen == Screen::Floor9Foe {
+                    let result = self.expedition.floor9_foe_prove();
+                    match result {
+                        Ok(s) => self.say(StatusKind::Good, s),
+                        Err(e) => self.say(StatusKind::Refusal, e.0),
+                    }
+                    self.changed();
+                    return;
+                }
                 if let Screen::Floor9Chamber(index) = self.screen {
                     match self.expedition.floor9_file_proof(index) {
                         Ok(text) => self.say(StatusKind::Good, text),
@@ -2661,6 +2693,14 @@ impl Game {
                 }
             }
             Verb::Hint => {
+                if self.screen == Screen::Floor9Foe {
+                    self.expedition.floor9.foe_hints_used =
+                        self.expedition.floor9.foe_hints_used.max(1);
+                    self.hint_showing = self.expedition.floor9.foe_hints_used;
+                    self.overlay = Overlay::Reading(ReadingKind::Hint);
+                    self.changed();
+                    return;
+                }
                 if let Screen::Floor9Chamber(index) = self.screen {
                     let hints = &mut self.expedition.floor9.chambers[index].hints_used;
                     *hints = (*hints).max(1);
@@ -3206,6 +3246,101 @@ impl Game {
                     self.changed();
                 }
             }
+            El::DoorFoe9 => {
+                if self.screen == Screen::Floor9Hub
+                    && self.expedition.floor9_chambers_repaired() == 5
+                {
+                    self.enter_screen(Screen::Floor9Foe);
+                    self.say(
+                        StatusKind::Info,
+                        "Three honest tallies; one lying sum. Exhibit them in sequence.",
+                    );
+                } else {
+                    self.say(
+                        StatusKind::Refusal,
+                        "Repair all five chambers before entering The Hoard Beneath.",
+                    );
+                }
+            }
+            El::F9Block(_) | El::F9Suite | El::F9LastMile | El::F9Find => {
+                if self.screen != Screen::Floor9Chamber(4)
+                    || self.expedition.floor9.chambers[3].state != ChamberState::Repaired
+                    || self.expedition.floor9.chambers[4].state == ChamberState::Repaired
+                {
+                    return;
+                }
+                let p = &mut self.expedition.floor9.chambers[4];
+                let message=match el {
+                    El::F9Block(i) if i<8 => {let v=&mut p.work.blocks[usize::from(i)];*v=if *v==255 {0} else if *v>=7 {255} else {*v+1};"Block assignment changed; file the full transcript again.".to_string()}
+                    El::F9Suite => {p.work.suite_walked=true;format!("Unchanged Floor 1 suite: {} tests, rebuilt interner + line index. Heartstone Chart repeated three times dedupes to one block; same relative symbol order as the original. Real cargo suite verifies this walk.",content::GATE_TESTS.matches("#[test]").count())}
+                    El::F9LastMile => {p.work.last_mile=p.work.last_mile.wrapping_add(1)%8;"Candidate changed; find the absent name in the seven-block diagnosis.".into()}
+                    El::F9Find if p.work.watched && usize::from(p.work.last_mile)==crate::puzzles::hoard_last_mile() && p.work.blocks==crate::puzzles::hoard_intern_transcript(false).0 => {
+                        let last=crate::puzzles::hoard_last_mile();p.work.blocks[last]=crate::puzzles::hoard_intern_transcript(true).0[last];
+                        format!("Found {}. Interned now: block {}; real blocks_used {}.",content::PACK_ITEMS[last].name,p.work.blocks[last],crate::puzzles::hoard_intern_transcript(true).1)
+                    }
+                    El::F9Find=>"Refused: read the diagnosis, assign seven real handles and 255 to the absent string, then name that string.".into(),
+                    _=>return,
+                };
+                p.state = ChamberState::Unworked;
+                p.facet = false;
+                self.armed = None;
+                self.say(StatusKind::Info, message);
+                self.changed();
+            }
+            El::F9Foe(action) => {
+                if self.screen != Screen::Floor9Foe {
+                    return;
+                }
+                use HoardAction::*;
+                if self.expedition.floor9.foe.state == FoeState::Fallen
+                    && !matches!(action, Page(_))
+                {
+                    return;
+                }
+                self.armed = None;
+                self.expedition.floor9.foe.strike = StrikePhase::Idle;
+                let result = match action {
+                    Page(p) if p < 3 => {
+                        self.expedition.floor9.foe.page = p;
+                        Ok("Evidence, trial ledger, stamped repair.".into())
+                    }
+                    Exhibit(i) => self.expedition.floor9_foe_exhibit(usize::from(i)),
+                    Class(i)
+                        if i < 6
+                            && self.expedition.floor9.foe.exhibits[0]
+                            && !self.expedition.floor9.foe.exhibits[1] =>
+                    {
+                        let c = &mut self.expedition.floor9.foe.classes[usize::from(i)];
+                        *c = (*c + 1) % 8;
+                        Ok("Membership changed. Verify each identity in the real ledgers.".into())
+                    }
+                    Trial(i) if i < 3 && self.expedition.floor9_foe_proof() => {
+                        self.expedition.floor9.foe.trials[usize::from(i)] = true;
+                        Ok(content::F9_TRIALS[usize::from(i)].into())
+                    }
+                    Adversary(i) if i < 3 && self.expedition.floor9_foe_proof() => {
+                        self.expedition.floor9.foe.adversaries[usize::from(i)] = true;
+                        Ok(crate::puzzles::hoard_adversary(usize::from(i)).unwrap())
+                    }
+                    Stamp(i) if i < 3 => {
+                        let f = &mut self.expedition.floor9.foe;
+                        let j = usize::from(i);
+                        f.stamps[j] = (f.stamps[j] + 1) % 3;
+                        f.reissued[j] = None;
+                        Ok("Choose bare, own census-scroll, or foreign scroll; the desk checks the fused value.".into())
+                    }
+                    Reissue(i) => self.expedition.floor9_foe_reissue(usize::from(i)),
+                    _ => Err(crate::state::Refusal(
+                        "Missing prior proof or invalid control.".into(),
+                    )),
+                };
+                self.expedition.floor9.foe.gate_passed = self.expedition.floor9_foe_gate();
+                match result {
+                    Ok(s) => self.say(StatusKind::Info, s),
+                    Err(e) => self.say(StatusKind::Refusal, e.0),
+                }
+                self.changed();
+            }
             El::F9Judge => {
                 if self.screen == Screen::Floor9Chamber(2)
                     && self.expedition.floor9.chambers[1].state == ChamberState::Repaired
@@ -3224,6 +3359,12 @@ impl Game {
                 }
             }
             El::F9Watch => {
+                if self.screen == Screen::Floor9Chamber(4) {
+                    self.expedition.floor9.chambers[4].work.watched = true;
+                    let (handles, count) = crate::puzzles::hoard_intern_transcript(false);
+                    self.say(StatusKind::Info,format!("Diagnosis transcript {handles:?}: real blocks_used {count}. 255 = absent. Assign the pack in table order, then find and intern the last mile."));
+                    self.changed();
+                }
                 if let Screen::Floor9Chamber(index @ 0..=1) = self.screen {
                     self.expedition.floor9.chambers[index].work.watched = true;
                     let text = if index == 0 {
@@ -3244,7 +3385,7 @@ impl Game {
                 }
             }
             El::F9Return => {
-                if matches!(self.screen, Screen::Floor9Chamber(_)) {
+                if matches!(self.screen, Screen::Floor9Chamber(_) | Screen::Floor9Foe) {
                     self.enter_screen(Screen::Floor9Hub);
                     self.say(StatusKind::Info, content::FLOOR9_INTRO);
                 }
@@ -6355,6 +6496,8 @@ impl Game {
                     self.changed();
                 }
                 Screen::Floor9Chamber(index) => {
+                    // The FOE depends on all five repairs; retain only its hint history.
+                    self.expedition.floor9.foe = Default::default();
                     // Later proofs depend on this repair; keep the ordered save valid.
                     for p in self.expedition.floor9.chambers.iter_mut().skip(index) {
                         p.work = Default::default();
@@ -6472,6 +6615,13 @@ impl Game {
                 self.bump();
             }
             El::HintDeeper => {
+                if self.screen == Screen::Floor9Foe {
+                    self.expedition.floor9.foe_hints_used =
+                        (self.expedition.floor9.foe_hints_used + 1).min(4);
+                    self.hint_showing = self.expedition.floor9.foe_hints_used;
+                    self.changed();
+                    return;
+                }
                 if let Screen::Floor9Chamber(index) = self.screen {
                     let hints = &mut self.expedition.floor9.chambers[index].hints_used;
                     *hints = hints.saturating_add(1).min(4);
@@ -6656,6 +6806,16 @@ impl Game {
                         "The seal sleeps until the proof is complete.",
                     );
                 }
+            },
+            Screen::Floor9Foe => match self.expedition.floor9_foe_arm_strike() {
+                Ok(()) => {
+                    self.armed = Some(ArmedFor::Foe9);
+                    self.say(
+                        StatusKind::Info,
+                        "Stamped repair proven. Confirm the strike or stand down.",
+                    );
+                }
+                Err(e) => self.say(StatusKind::Refusal, e.0),
             },
             Screen::Floor9Chamber(index) => {
                 if self.expedition.floor9.chambers[index].state == ChamberState::Diagnosed
@@ -7015,6 +7175,14 @@ impl Game {
                 self.changed();
             }
 
+            Some(ArmedFor::Foe9) => {
+                self.armed = None;
+                match self.expedition.floor9_foe_confirm_strike(&self.today) {
+                    Ok(s) => self.say(StatusKind::Good, s),
+                    Err(e) => self.say(StatusKind::Refusal, e.0),
+                }
+                self.changed();
+            }
             Some(ArmedFor::Foe8) => {
                 self.armed = None;
                 let result = self.expedition.floor8_foe_confirm_strike(&self.today);
@@ -7365,6 +7533,7 @@ impl Game {
                 Screen::Floor4Foe => "The Foundation's Inscription".to_string(),
                 Screen::Floor5Foe => "The Thing's Inscription".to_string(),
                 Screen::Floor6Foe => "The Heart's Inscription".to_string(),
+                Screen::Floor9Foe => "The Hoardstone".into(),
                 Screen::Floor8Foe => "The Pinstone".into(),
                 Screen::Floor7Foe => "The Loomstone".to_string(),
                 _ => "The Inscription".to_string(),
@@ -7416,6 +7585,7 @@ impl Game {
                     content::HOUR_POLICY,
                     crate::puzzles::hour::stale_trace()
                 ),
+                Screen::Floor9Foe => content::HOARDSTONE_TEXT.into(),
                 Screen::Floor7Foe => content::FOE7_INSCRIPTION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
@@ -7460,6 +7630,7 @@ impl Game {
                     content::HOUR_POLICY,
                     crate::puzzles::hour::policy_trace()
                 ),
+                Screen::Floor9Foe => content::HOARDSTONE_TEXT.into(),
                 Screen::Floor7Foe => content::FOE7_DEMONSTRATION.to_string(),
                 _ => content::FLOOR_INTRO.to_string(),
             },
@@ -7479,6 +7650,7 @@ impl Game {
                     Screen::Floor4Foe => content::floor4_foe_hints()[rung - 1],
                     Screen::Floor5Foe => content::floor5_foe_hints()[rung - 1],
                     Screen::Floor6Foe => content::floor6_foe_hints()[rung - 1],
+                    Screen::Floor9Foe => content::floor9_foe_hints()[rung - 1],
                     Screen::Floor8Foe => content::floor8_foe_hints()[rung - 1],
                     Screen::Floor7Foe => content::floor7_foe_hints()[rung - 1],
                     _ => {
@@ -7700,6 +7872,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
         | Screen::Floor5Foe
         | Screen::Floor6Foe
         | Screen::Floor8Foe
+        | Screen::Floor9Foe
         | Screen::Floor7Foe
         | Screen::Floor3Hub
         | Screen::Floor4Hub
@@ -7759,6 +7932,7 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             els.push((El::DoorFoe7, geom::door_foe7()));
         }
         Screen::Floor9Hub => {
+            els.push((El::DoorFoe9, geom::door_foe()));
             els.push((El::CampStone, geom::camp_stone()));
             for index in 0..5 {
                 els.push((El::Floor9Door(index as u8), geom::door_chamber(index)));
@@ -7977,6 +8151,16 @@ pub fn layout(game: &Game) -> Vec<(El, Rect)> {
             layout_seal(&mut els, game);
         }
 
+        Screen::Floor9Foe => {
+            els.push((El::Desk, geom::desk()));
+            els.push((El::Stone, geom::stone()));
+            els.extend(
+                floor9_foe_controls(game)
+                    .into_iter()
+                    .map(|(e, r, _)| (e, r)),
+            );
+            layout_seal(&mut els, game);
+        }
         Screen::Floor8Foe => {
             els.push((El::Desk, geom::desk()));
             els.push((El::Stone, geom::stone()));
@@ -8099,6 +8283,7 @@ fn layout_seal(els: &mut Vec<(El, Rect)>, game: &Game) {
         Screen::Floor4Foe => game.expedition.floor4.foe.strike == StrikePhase::Armed,
         Screen::Floor5Foe => game.expedition.floor5.foe.strike == StrikePhase::Armed,
         Screen::Floor6Foe => game.expedition.floor6.foe.strike == StrikePhase::Armed,
+        Screen::Floor9Foe => game.expedition.floor9.foe.strike == StrikePhase::Armed,
         Screen::Floor8Foe => game.expedition.floor8.foe.strike == StrikePhase::Armed,
         Screen::Floor7Foe => game.expedition.floor7.foe.strike == StrikePhase::Armed,
         _ => false,
@@ -12310,10 +12495,46 @@ mod floor9_scaffolding_tests {
 /// One geometry source for drawing and hit-testing. Work is in the side panel.
 pub fn floor9_controls(game: &Game, chamber: usize) -> Vec<(El, Rect, String)> {
     let mut out = vec![];
-    if chamber > 3 {
+    if chamber > 4 {
         return out;
     }
     let w = &game.expedition.floor9.chambers[chamber].work;
+    if chamber == 4 {
+        out.push((
+            El::F9Watch,
+            Rect::new(380.0, 100.0, 376.0, 32.0),
+            "Read seven-block diagnosis".into(),
+        ));
+        out.push((
+            El::F9Suite,
+            Rect::new(380.0, 150.0, 376.0, 32.0),
+            format!("Walk unchanged suite: {}", w.suite_walked),
+        ));
+        for i in 0..8u8 {
+            out.push((
+                El::F9Block(i),
+                Rect::new(808.0, 194.0 + f32::from(i) * 28.0, 436.0, 26.0),
+                format!(
+                    "{}: block {}",
+                    content::PACK_ITEMS[usize::from(i)].name,
+                    w.blocks[usize::from(i)]
+                ),
+            ));
+        }
+        out.push((
+            El::F9LastMile,
+            Rect::new(380.0, 390.0, 376.0, 32.0),
+            format!(
+                "Last mile: {}",
+                content::PACK_ITEMS[usize::from(w.last_mile).min(7)].name
+            ),
+        ));
+        out.push((
+            El::F9Find,
+            Rect::new(380.0, 434.0, 376.0, 32.0),
+            "Find and intern last mile".into(),
+        ));
+    }
     if chamber == 2 {
         out.push((
             El::F9Place,
@@ -12796,5 +13017,354 @@ mod floor9_step3_gui_tests {
         set_prediction(&mut g, puzzles::hoard_steward_run().1);
         assert!(!g.expedition.floor9.chambers[3].work.ran);
         assert!(!g.expedition.floor9_diagnosed(3));
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HoardAction {
+    Page(u8),
+    Exhibit(u8),
+    Class(u8),
+    Trial(u8),
+    Adversary(u8),
+    Stamp(u8),
+    Reissue(u8),
+}
+/// Pages keep controls readable without hiding a gate behind timing or motion.
+pub fn floor9_foe_controls(game: &Game) -> Vec<(El, Rect, String)> {
+    use HoardAction::*;
+    let f = &game.expedition.floor9.foe;
+    let mut out = vec![(
+        El::F9Return,
+        geom::floor9_return(),
+        "Return to the Hoard".into(),
+    )];
+    for (i, name) in ["Evidence", "Trial ledger", "Stamped repair"]
+        .iter()
+        .enumerate()
+    {
+        out.push((
+            El::F9Foe(Page(i as u8)),
+            Rect::new(380.0 + i as f32 * 128.0, 100.0, 120.0, 32.0),
+            name.to_string(),
+        ));
+    }
+    match f.page {
+        0 => {
+            for (i, name) in content::F9_EXHIBITS.iter().enumerate() {
+                out.push((
+                    El::F9Foe(Exhibit(i as u8)),
+                    Rect::new(380.0, 342.0 + i as f32 * 44.0, 376.0, 36.0),
+                    format!(
+                        "{}: {} {}",
+                        i + 1,
+                        name,
+                        if f.exhibits[i] { "SEEN" } else { "" }
+                    ),
+                ));
+            }
+            for (i, c) in f.classes.iter().enumerate() {
+                out.push((
+                    El::F9Foe(Class(i as u8)),
+                    Rect::new(808.0, 194.0 + i as f32 * 38.0, 436.0, 34.0),
+                    format!(
+                        "{}: {}",
+                        content::PACK_ITEMS[i].name,
+                        content::F9_CLASSES[usize::from(*c).min(7)]
+                    ),
+                ));
+            }
+        }
+        1 => {
+            for i in 0..3u8 {
+                out.push((
+                    El::F9Foe(Trial(i)),
+                    Rect::new(380.0, 342.0 + f32::from(i) * 44.0, 376.0, 36.0),
+                    format!(
+                        "{} trial: {}",
+                        ["Shelf", "Cellar", "Hoard"][usize::from(i)],
+                        f.trials[usize::from(i)]
+                    ),
+                ));
+                out.push((
+                    El::F9Foe(Adversary(i)),
+                    Rect::new(808.0, 194.0 + f32::from(i) * 44.0, 436.0, 36.0),
+                    format!(
+                        "{}: {}",
+                        ["Growth refusal", "Collision flood", "Arena exhaustion"][usize::from(i)],
+                        f.adversaries[usize::from(i)]
+                    ),
+                ));
+            }
+        }
+        _ => {
+            for i in 0..3u8 {
+                out.push((
+                    El::F9Foe(Stamp(i)),
+                    Rect::new(380.0, 342.0 + f32::from(i) * 44.0, 376.0, 36.0),
+                    format!(
+                        "Tally {}: {}",
+                        i + 1,
+                        ["BARE", "own scroll", "foreign scroll"]
+                            [usize::from(f.stamps[usize::from(i)]).min(2)]
+                    ),
+                ));
+                out.push((
+                    El::F9Foe(Reissue(i)),
+                    Rect::new(808.0, 194.0 + f32::from(i) * 44.0, 436.0, 36.0),
+                    format!(
+                        "Re-issue tally {}: {}",
+                        i + 1,
+                        f.reissued[usize::from(i)].is_some()
+                    ),
+                ));
+            }
+        }
+    }
+    out.push((
+        El::Chip(Verb::Prove),
+        Rect::new(1030.0, 454.0, 214.0, 30.0),
+        "File identity proof".into(),
+    ));
+    out
+}
+
+#[cfg(test)]
+mod floor9_step4_gui_tests {
+    use super::*;
+    fn click(g: &mut Game, e: El) {
+        let r = layout(g).into_iter().find(|(el, _)| *el == e).unwrap().1;
+        assert_eq!(hit_test(g, r.cx(), r.cy()), Some(e));
+        g.pointer_down(r.cx(), r.cy());
+        g.pointer_up(r.cx(), r.cy());
+    }
+    fn ready() -> Game {
+        let mut g = Game::new();
+        g.begin();
+        g.io = None;
+        g.expedition = crate::state::floor9_step4_tests::ready();
+        g.screen = Screen::Floor9Hub;
+        g
+    }
+    fn fifth(g: &mut Game) {
+        click(g, El::Floor9Door(4));
+        click(g, El::F9Watch);
+        click(g, El::F9Suite);
+        let expected = crate::puzzles::hoard_intern_transcript(false).0;
+        for (i, h) in expected.into_iter().enumerate() {
+            while g.expedition.floor9.chambers[4].work.blocks[i] != h {
+                click(g, El::F9Block(i as u8));
+            }
+        }
+        while usize::from(g.expedition.floor9.chambers[4].work.last_mile)
+            != crate::puzzles::hoard_last_mile()
+        {
+            click(g, El::F9LastMile);
+        }
+        click(g, El::F9Find);
+        click(g, El::Chip(Verb::Prove));
+        click(g, El::Seal);
+        assert!(g.seal_armed());
+        click(g, El::SealConfirm);
+        click(g, El::F9Return);
+    }
+    fn proof(g: &mut Game) {
+        use HoardAction::*;
+        fifth(g);
+        click(g, El::DoorFoe9);
+        click(g, El::F9Foe(Exhibit(0)));
+        for (i, c) in crate::puzzles::hoard_census().0.into_iter().enumerate() {
+            for _ in 0..c {
+                click(g, El::F9Foe(Class(i as u8)));
+            }
+        }
+        click(g, El::F9Foe(Exhibit(1)));
+        click(g, El::F9Foe(Exhibit(2)));
+        click(g, El::Chip(Verb::Prove));
+    }
+    fn full(g: &mut Game) {
+        use HoardAction::*;
+        proof(g);
+        click(g, El::F9Foe(Page(1)));
+        for i in 0..3 {
+            click(g, El::F9Foe(Trial(i)));
+            click(g, El::F9Foe(Adversary(i)));
+        }
+        click(g, El::F9Foe(Page(2)));
+        for i in 0..3 {
+            click(g, El::F9Foe(Stamp(i)));
+            click(g, El::F9Foe(Reissue(i)));
+        }
+    }
+    #[test]
+    fn c5_two_phase_transcript_is_pointer_earned() {
+        let mut g = ready();
+        fifth(&mut g);
+        assert_eq!(
+            g.expedition.floor9.chambers[4].state,
+            ChamberState::Repaired
+        );
+        assert!(g.expedition.floor9.chambers[4].facet);
+        assert_eq!(
+            crate::state::Expedition::load_json(&g.expedition.save_json().unwrap()).unwrap(),
+            g.expedition
+        );
+    }
+    #[test]
+    fn foe_pointer_proof_gate_reissue_and_shared_strike() {
+        let mut g = ready();
+        full(&mut g);
+        click(&mut g, El::Seal);
+        assert!(g.seal_armed());
+        click(&mut g, El::SealCancel);
+        assert!(!g.seal_armed());
+        click(&mut g, El::Seal);
+        click(&mut g, El::SealConfirm);
+        assert!(g.expedition.floor9_complete());
+        let saved = g.expedition.save_json().unwrap();
+        assert_eq!(
+            crate::state::Expedition::load_json(&saved).unwrap(),
+            g.expedition
+        );
+        let mut expected = g.expedition.clone();
+        expected.floor9.foe.page = 0;
+        click(&mut g, El::F9Foe(HoardAction::Page(0)));
+        click(&mut g, El::F9Foe(HoardAction::Class(0)));
+        assert_eq!(expected, g.expedition);
+    }
+    #[test]
+    fn c5_and_foe_geometry_has_no_overlaps_and_centres_hit() {
+        let mut g = ready();
+        fifth(&mut g);
+        let mut screens = vec![(Screen::Floor9Chamber(4), 0)];
+        for p in 0..3 {
+            screens.push((Screen::Floor9Foe, p));
+        }
+        for (screen, page) in screens {
+            g.screen = screen;
+            g.expedition.floor9.foe.page = page;
+            for armed in [false, true] {
+                g.armed = if armed {
+                    Some(if screen == Screen::Floor9Foe {
+                        ArmedFor::Foe9
+                    } else {
+                        ArmedFor::Floor9Chamber(4)
+                    })
+                } else {
+                    None
+                };
+                g.expedition.floor9.foe.strike = if armed {
+                    StrikePhase::Armed
+                } else {
+                    StrikePhase::Idle
+                };
+                let controls = layout(&g);
+                for (i, (a, r)) in controls.iter().enumerate() {
+                    assert_eq!(hit_test(&g, r.cx(), r.cy()), Some(*a));
+                    for (b, s) in controls.iter().skip(i + 1) {
+                        assert!(
+                            !(r.x < s.x + s.w
+                                && s.x < r.x + r.w
+                                && r.y < s.y + s.h
+                                && s.y < r.y + r.h),
+                            "{a:?} overlaps {b:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn reset_invalidates_foe_dependents_but_keeps_hints() {
+        let mut g = ready();
+        full(&mut g);
+        click(&mut g, El::Seal);
+        click(&mut g, El::SealConfirm);
+        g.expedition.floor9.foe_hints_used = 2;
+        g.expedition.floor9.chambers[4].hints_used = 3;
+        g.screen = Screen::Floor9Chamber(4);
+        click(&mut g, El::ResetChamber);
+        assert_eq!(g.expedition.floor9.foe, Default::default());
+        assert_eq!(g.expedition.floor9.foe_hints_used, 2);
+        assert_eq!(g.expedition.floor9.chambers[4].hints_used, 3);
+        assert_eq!(
+            crate::state::Expedition::load_json(&g.expedition.save_json().unwrap()).unwrap(),
+            g.expedition
+        );
+    }
+    #[test]
+    fn early_foe_entry_and_wrong_room_actions_are_inert() {
+        let mut g = ready();
+        g.activate(El::DoorFoe9);
+        assert_eq!(g.screen, Screen::Floor9Hub);
+        let before = g.expedition.clone();
+        for e in [
+            El::F9Block(0),
+            El::F9Suite,
+            El::F9Find,
+            El::F9Foe(HoardAction::Trial(0)),
+            El::F9Foe(HoardAction::Reissue(0)),
+        ] {
+            g.activate(e);
+        }
+        assert_eq!(g.expedition, before);
+    }
+    #[test]
+    fn wrong_last_mile_and_diagnosis_only_cannot_file() {
+        let mut g = ready();
+        click(&mut g, El::Floor9Door(4));
+        click(&mut g, El::F9Find);
+        assert!(!g.expedition.floor9_diagnosed(4));
+        for e in [El::F9Block(255), El::F9Foe(HoardAction::Page(255))] {
+            g.activate(e);
+        }
+        click(&mut g, El::Chip(Verb::Prove));
+        click(&mut g, El::Seal);
+        assert!(!g.seal_armed());
+        assert_eq!(
+            g.expedition.floor9.chambers[4].state,
+            ChamberState::Unworked
+        );
+    }
+    #[test]
+    fn bare_reissue_and_skipped_trial_keep_seal_asleep() {
+        use HoardAction::*;
+        let mut g = ready();
+        proof(&mut g);
+        click(&mut g, El::F9Foe(Page(2)));
+        click(&mut g, El::F9Foe(Reissue(0)));
+        click(&mut g, El::Seal);
+        assert!(!g.seal_armed());
+        click(&mut g, El::F9Foe(Page(1)));
+        for i in 0..3 {
+            click(&mut g, El::F9Foe(Adversary(i)));
+            if i != 1 {
+                click(&mut g, El::F9Foe(Trial(i)));
+            }
+        }
+        assert!(!g.expedition.floor9_foe_gate());
+        click(&mut g, El::Seal);
+        assert!(!g.seal_armed());
+        click(&mut g, El::F9Foe(Trial(1)));
+        click(&mut g, El::F9Foe(Page(2)));
+        click(&mut g, El::F9Foe(Reissue(0)));
+        assert!(g.expedition.floor9.foe.reissued[0].is_none());
+        click(&mut g, El::F9Foe(Stamp(0)));
+        click(&mut g, El::F9Foe(Stamp(0)));
+        click(&mut g, El::F9Foe(Reissue(0)));
+        assert!(g.expedition.floor9.foe.reissued[0].is_none());
+    }
+    #[test]
+    fn armed_edit_cancels_strike_and_foreign_stamp_is_not_accepted() {
+        let mut g = ready();
+        full(&mut g);
+        click(&mut g, El::Seal);
+        click(&mut g, El::F9Foe(HoardAction::Stamp(0)));
+        assert!(!g.seal_armed());
+        assert!(g.expedition.floor9.foe.reissued[0].is_none());
+        click(&mut g, El::F9Foe(HoardAction::Reissue(0)));
+        assert!(!g.expedition.floor9_foe_rewrite());
+        g.activate(El::SealConfirm);
+        assert_ne!(g.expedition.floor9.foe.state, FoeState::Fallen);
     }
 }

@@ -3603,7 +3603,7 @@ impl Hoard {
 /// use niflheim::puzzles::Stamped;
 /// let _ = Stamped::seal(1u32, 7) + Stamped::seal(2u32, 8);
 /// ```
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Stamped<T> {
     value: T,
     census: u32,
@@ -4147,5 +4147,381 @@ mod hoard_step3_tests {
             u64::from(total),
             u64::from(total) + map.probes_total() - map.len() as u64
         );
+    }
+}
+
+/// Rebuilt interner: each distinct text owns one real Hoard block.
+/// Empty strings occupy one byte; exhaustion refuses without changing the ledger.
+#[derive(Debug)]
+pub struct HoardInterner {
+    arena: Hoard,
+    entries: Vec<(u32, String)>,
+}
+impl HoardInterner {
+    pub fn new(bytes: u32) -> Self {
+        Self {
+            arena: Hoard::new(bytes),
+            entries: vec![],
+        }
+    }
+    pub fn intern(&mut self, text: &str) -> Option<u32> {
+        if let Some(handle) = self.lookup(text) {
+            return Some(handle);
+        }
+        let bytes = u32::try_from(text.len().max(1)).ok()?;
+        let handle = self.arena.issue(bytes)?;
+        self.entries.push((handle, text.into()));
+        Some(handle)
+    }
+    pub fn lookup(&self, text: &str) -> Option<u32> {
+        self.entries
+            .iter()
+            .find(|(_, s)| s == text)
+            .map(|(h, _)| *h)
+    }
+    pub fn text(&self, handle: u32) -> Option<&str> {
+        self.entries
+            .iter()
+            .find(|(h, _)| *h == handle)
+            .map(|(_, s)| s.as_str())
+    }
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+    pub fn blocks_used(&self) -> u32 {
+        self.arena.blocks_used()
+    }
+    pub fn reset(&mut self) {
+        self.arena.reset();
+        self.entries.clear();
+    }
+}
+// End rebuilt interner implementation (also compiled against unchanged Floor 1 suite).
+pub fn hoard_last_mile() -> usize {
+    crate::content::PACK_ITEMS
+        .iter()
+        .rposition(|p| !crate::content::F9_SUITE_PACK_NAMES.contains(&p.name))
+        .expect("pack has an uninterned last mile")
+}
+pub fn hoard_intern_transcript(complete: bool) -> ([u8; 8], u32) {
+    let bytes = crate::content::PACK_ITEMS
+        .iter()
+        .map(|p| p.name.len().max(1) as u32)
+        .sum();
+    let mut interner = HoardInterner::new(bytes);
+    let mut handles = [255; 8];
+    let last = hoard_last_mile();
+    for (i, p) in crate::content::PACK_ITEMS.iter().enumerate() {
+        if i != last {
+            handles[i] = interner.intern(p.name).expect("corpus fits") as u8;
+        }
+    }
+    if complete {
+        handles[last] = interner
+            .intern(crate::content::PACK_ITEMS[last].name)
+            .expect("last mile fits") as u8;
+    }
+    (handles, interner.blocks_used())
+}
+/// Memberships are read back from the real Trio, never an authored answer table.
+pub fn hoard_census() -> ([u8; 6], [u32; 3], Stamped<u32>) {
+    let mut shelf = ShelfVec::new(crate::content::F9_SHELVED.len());
+    for id in crate::content::F9_SHELVED {
+        assert!(shelf.push(id));
+    }
+    let mut cellar = CellarMap::new(crate::content::F9_CELLARED.len() + 1);
+    for id in crate::content::F9_CELLARED {
+        assert!(cellar.insert(id, id).is_some());
+    }
+    let mut arena = Hoard::new(crate::content::F9_ARENA.len() as u32);
+    let mut blocks = Vec::new();
+    for id in crate::content::F9_ARENA {
+        blocks.push((arena.issue(1).expect("authored identities fit"), id));
+    }
+    let classes = std::array::from_fn(|i| {
+        let id = i as u8;
+        let a = (0..shelf.len()).any(|j| shelf.get(j) == Some(&id));
+        let b = cellar.get(&id).is_some();
+        let c = blocks
+            .iter()
+            .any(|(h, v)| *v == id && *h < arena.blocks_used());
+        u8::from(a) | (u8::from(b) << 1) | (u8::from(c) << 2)
+    });
+    let count = classes.iter().filter(|&&c| c != 0).count() as u32;
+    let scroll = classes.iter().enumerate().fold(
+        0,
+        |mask, (i, &c)| if c != 0 { mask | (1 << i) } else { mask },
+    );
+    (
+        classes,
+        [shelf.len() as u32, cellar.len() as u32, arena.blocks_used()],
+        Stamped::seal(count, scroll),
+    )
+}
+pub fn hoard_tally_scroll(index: usize) -> u32 {
+    let (classes, _, _) = hoard_census();
+    classes.iter().enumerate().fold(0, |mask, (i, &c)| {
+        if c & (1 << index) != 0 {
+            mask | (1 << i)
+        } else {
+            mask
+        }
+    })
+}
+/// A desk accepts a count only together with the exact census that produced it.
+pub fn hoard_accept_tally(index: usize, value: Option<Stamped<u32>>) -> bool {
+    if index >= 3 {
+        return false;
+    }
+    let (_, counts, _) = hoard_census();
+    value.is_some_and(|v| *v.value() == counts[index] && v.census_id() == hoard_tally_scroll(index))
+}
+pub fn hoard_adversary(index: usize) -> Option<String> {
+    match index {
+        0 => {
+            let mut shelf = ShelfVec::new(1);
+            assert!(shelf.push(1));
+            let before = (shelf.len(), shelf.cap());
+            shelf.take_loan();
+            let refused = !shelf.push(2) && before == (shelf.len(), shelf.cap());
+            shelf.return_loan();
+            Some(format!(
+                "Growth at exact capacity: live shared loan; DOCUMENTED REFUSAL {refused}; returned loan permits push {}.",
+                shelf.push(2)
+            ))
+        }
+        1 => Some(format!(
+            "Chamber 3 collision flood: {:?}; real probe cost {}.",
+            crate::content::F9_FLOOD_KEYS,
+            hoard_cellar_trace().1
+        )),
+        2 => {
+            let mut arena = Hoard::new(1);
+            let first = arena.issue(1);
+            let refused = arena.issue(1).is_none() && arena.used() == 1 && arena.blocks_used() == 1;
+            Some(format!(
+                "Arena exhaustion: Hoard::issue returns None — DOCUMENTED REFUSAL {refused}; first block {first:?}; no panic, no wrap."
+            ))
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod floor9_step4_tests {
+    use super::*;
+    #[test]
+    fn pack_transcript_and_dedupe_match_original() {
+        let suite = crate::content::GATE_TESTS;
+        let suite_pack: Vec<_> = crate::content::PACK_ITEMS
+            .iter()
+            .filter(|p| {
+                suite.contains(&format!("intern(\"{}\")", p.name))
+                    || suite.split("let names = [").skip(1).any(|part| {
+                        part.split("];")
+                            .next()
+                            .unwrap()
+                            .contains(&format!("\"{}\"", p.name))
+                    })
+            })
+            .map(|p| p.name)
+            .collect();
+        assert_eq!(suite_pack, crate::content::F9_SUITE_PACK_NAMES);
+        let last = hoard_last_mile();
+        assert_eq!(crate::content::PACK_ITEMS[last].name, "Blank Tallies");
+        let mut old = crate::core::Interner::new();
+        let mut new = HoardInterner::new(4096);
+        for text in crate::content::PACK_ITEMS
+            .iter()
+            .map(|p| p.name)
+            .chain(["Heartstone Chart"; 3])
+        {
+            let symbol = old.intern(text).unwrap();
+            let handle = new.intern(text).unwrap();
+            assert_eq!(symbol.index(), handle as usize);
+            assert_eq!(old.text(symbol).unwrap(), new.text(handle).unwrap());
+            assert_eq!(
+                old.lookup(text).unwrap().index(),
+                new.lookup(text).unwrap() as usize
+            );
+        }
+        assert_eq!(new.blocks_used(), old.len() as u32);
+        let (before, n) = hoard_intern_transcript(false);
+        let (after, m) = hoard_intern_transcript(true);
+        assert_eq!(before[last], 255);
+        assert_eq!(n + 1, m);
+        assert_eq!(m, crate::content::PACK_ITEMS.len() as u32);
+        for i in 0..8 {
+            if i != last {
+                assert_eq!(before[i], after[i]);
+            }
+        }
+    }
+    #[test]
+    fn original_floor1_suite_runs_unchanged_on_real_rebuild() {
+        // Compile the actual Hoard + rebuilt implementation, not a second implementation.
+        let source = include_str!("puzzles.rs");
+        let arena = source
+            .split("/// A byte-bounded bump arena")
+            .nth(1)
+            .unwrap()
+            .split("/// A value fused to its census")
+            .next()
+            .unwrap();
+        let interner = source
+            .split("/// Rebuilt interner:")
+            .nth(1)
+            .unwrap()
+            .split("// End rebuilt interner implementation")
+            .next()
+            .unwrap();
+        // Use the already shipped Floor 1 reference LineIndex, unchanged.
+        let reference = include_str!("gate.rs");
+        let start = reference.find("pub struct LineIndex<'a> {").unwrap();
+        let line = &reference[start..reference[start..].find("\n\";").unwrap() + start];
+        let suite = crate::content::GATE_TESTS;
+        let program = format!(
+            "extern crate self as the_interners_hoard;\n//{arena}\n//{interner}\n{line}\npub struct Interner(HoardInterner);\nimpl Default for Interner {{ fn default()->Self {{Self::new()}} }}\nimpl Interner {{pub fn new()->Self {{Self(HoardInterner::new(4096))}} pub fn intern(&mut self,s:&str)->u32 {{self.0.intern(s).expect(\"suite fits\")}} pub fn lookup(&self,s:&str)->Option<u32>{{self.0.lookup(s)}} pub fn text(&self,h:u32)->Option<&str>{{self.0.text(h)}} pub fn len(&self)->usize{{self.0.len()}} pub fn is_empty(&self)->bool{{self.0.is_empty()}}}}\nmod original_suite {{\n{suite}\n}}\n"
+        );
+        let dir =
+            std::env::temp_dir().join(format!("niflheim-f9-original-suite-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("suite.rs"), program).unwrap();
+        let compile = std::process::Command::new("rustc")
+            .args(["--edition=2024", "--test"])
+            .arg(dir.join("suite.rs"))
+            .arg("-o")
+            .arg(dir.join("suite"))
+            .output()
+            .unwrap();
+        assert!(
+            compile.status.success(),
+            "{}",
+            String::from_utf8_lossy(&compile.stderr)
+        );
+        let run = std::process::Command::new(dir.join("suite"))
+            .output()
+            .unwrap();
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stdout)
+        );
+        assert!(
+            String::from_utf8_lossy(&run.stdout)
+                .contains(&format!("{} passed", suite.matches("#[test]").count()))
+        );
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn physical_census_reconciles_real_memberships() {
+        let (classes, counts, census) = hoard_census();
+        let sets = [
+            crate::content::F9_SHELVED.to_vec(),
+            crate::content::F9_CELLARED.to_vec(),
+            crate::content::F9_ARENA.to_vec(),
+        ];
+        let mut union = std::collections::BTreeSet::new();
+        for (j, set) in sets.iter().enumerate() {
+            assert_eq!(counts[j], set.len() as u32);
+            for &id in set {
+                union.insert(id);
+                assert_ne!(classes[usize::from(id)] & (1 << j), 0);
+            }
+        }
+        assert_eq!(*census.value(), union.len() as u32);
+        assert!(counts.iter().sum::<u32>() > *census.value());
+        assert!(sets[2].iter().all(|id| sets[0].contains(id)));
+        assert_eq!(
+            sets[1].iter().filter(|id| sets[0].contains(id)).count() * 3,
+            sets[1].len()
+        );
+        for (i, count) in counts.into_iter().enumerate() {
+            assert!(hoard_accept_tally(
+                i,
+                Some(Stamped::seal(count, hoard_tally_scroll(i)))
+            ));
+        }
+    }
+    #[test]
+    fn arena_reset_and_adversarial_exhibits_are_real() {
+        let mut h = HoardInterner::new(32);
+        let first = h.intern("Saw").unwrap();
+        h.intern("Rope");
+        h.reset();
+        assert_eq!(h.blocks_used(), 0);
+        assert!(h.is_empty());
+        assert_eq!(h.lookup("Saw"), None);
+        assert_eq!(h.intern("New"), Some(first));
+        assert!(
+            hoard_adversary(0)
+                .unwrap()
+                .contains("DOCUMENTED REFUSAL true")
+        );
+        assert!(
+            hoard_adversary(1)
+                .unwrap()
+                .contains(&hoard_cellar_trace().1.to_string())
+        );
+        assert!(
+            hoard_adversary(2)
+                .unwrap()
+                .contains("DOCUMENTED REFUSAL true")
+        );
+    }
+    #[test]
+    fn exhausted_interner_keeps_identity_and_dedupe() {
+        let mut h = HoardInterner::new(3);
+        let handle = h.intern("Saw").unwrap();
+        let before = h.blocks_used();
+        assert_eq!(h.intern("Other"), None);
+        assert_eq!(h.blocks_used(), before);
+        assert_eq!(h.intern("Saw"), Some(handle));
+        assert_eq!(h.lookup("Other"), None);
+        assert_eq!(h.text(u32::MAX), None);
+        assert_eq!(HoardInterner::new(0).intern(""), None);
+    }
+    #[test]
+    fn empty_case_and_unicode_do_not_alias_or_undercount() {
+        let mut h = HoardInterner::new(5);
+        let empty = h.intern("").unwrap();
+        let crab = h.intern("🦀").unwrap();
+        assert_ne!(empty, crab);
+        assert_eq!(h.intern("x"), None);
+        assert_eq!(h.lookup("🦀"), Some(crab));
+        assert_eq!(h.lookup("🦀x"), None);
+        assert_eq!(h.blocks_used(), 2);
+    }
+    #[test]
+    fn bare_foreign_and_wrong_count_are_refused() {
+        let (_, counts, _) = hoard_census();
+        for (i, count) in counts.into_iter().enumerate() {
+            assert!(!hoard_accept_tally(i, None));
+            assert!(!hoard_accept_tally(
+                i,
+                Some(Stamped::seal(count, hoard_tally_scroll(i) ^ u32::MAX))
+            ));
+            assert!(!hoard_accept_tally(
+                i,
+                Some(Stamped::seal(count + 1, hoard_tally_scroll(i)))
+            ));
+        }
+        assert!(!hoard_accept_tally(3, None));
+        assert!(hoard_adversary(3).is_none());
+    }
+    #[test]
+    fn different_scrolls_cannot_be_added_at_the_desk() {
+        let (_, counts, _) = hoard_census();
+        let a = Stamped::seal(counts[0], hoard_tally_scroll(0));
+        let b = Stamped::seal(counts[1], hoard_tally_scroll(1));
+        assert!(a.add(&b).is_none());
+        // Even a relabelled sum under A's scroll is not A's real tally.
+        assert!(!hoard_accept_tally(
+            0,
+            Some(Stamped::seal(counts.iter().sum(), a.census_id()))
+        ));
     }
 }

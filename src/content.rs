@@ -5050,6 +5050,14 @@ pub fn floor9_chamber_hints(chamber: usize) -> [&'static str; 4] {
             "The seam: each occupied slot costs a probe and the landing slot costs one more; predict the real trace and flood total, then judge.",
         ];
     }
+    if chamber == 4 {
+        return [
+            "Read the seven-block diagnosis transcript.",
+            "Assign each pack string its issued handle; 255 means absent.",
+            "Find the last pack name the old suite never interned, then issue its missing block.",
+            "The seam: Blank Tallies is the uncounted last mile. Walk the unchanged suite and file all eight real handles after interning it.",
+        ];
+    }
     if chamber == 3 {
         return [
             "Read all ten operations and their face costs before running.",
@@ -5105,3 +5113,40 @@ pub const STEWARD_WORKLOAD: [(StewardOp, &str, u8); 10] = [
 pub const STEWARD_RULE: &str = "Reserve 3; cellar 11 slots; hoard 32 bytes. Count NEW allocations: shelf claim + buffer on growth; cellar slot claim (not probes); hoard block; reads zero. Face costs omit one growth buffer. For ANY miss, under or over, name that growth operation; a wrong name keeps prediction locked.";
 
 pub const F9_CHAIN_WALL: &str = "Twin Bells: Birch and Copper ring one Bell, one tail with two referrers. The hand-linked chain fights the ledger: a live loan bars the hand that rewrites a link. It fights the road: scattered crates force pointer-chasing instead of a contiguous walk. Arena indices preserve identity; they do not pretend the nodes were adjacent.";
+
+// R-F9-8: factual pack-name subset interned by the unchanged GATE_TESTS.
+pub const F9_SUITE_PACK_NAMES: [&str; 4] =
+    ["Saw", "Heartstone Chart", "Tally Sticks", "Rope Ladder"];
+// REVIEW-F9-FOE-CONTENT: six pack identities, overlapping real storage ledgers.
+pub const F9_SHELVED: [u8; 4] = [0, 1, 2, 3];
+pub const F9_CELLARED: [u8; 3] = [3, 4, 5];
+pub const F9_ARENA: [u8; 2] = [1, 3];
+pub const F9_CLASSES: [&str; 8] = [
+    "unassigned",
+    "A only",
+    "B only",
+    "A+B",
+    "C only",
+    "A+C",
+    "B+C",
+    "A+B+C",
+];
+pub const F9_EXHIBITS: [&str; 3] = [
+    "three honest tallies",
+    "overlap classes",
+    "stamped identity census",
+];
+pub const F9_TRIALS: [&str; 3] = [
+    "ShelfVec: 10,000 operations vs std Vec; zero divergence (floor9_trio_tests::shelf_differential_10000_operations)",
+    "CellarMap: 10,000 operations vs naive map; zero divergence (floor9_trio_tests::cellar_differential_10000_operations)",
+    "Hoard: 10,000 operations vs naive arena; zero divergence (floor9_trio_tests::hoard_differential_10000_operations)",
+];
+pub const HOARDSTONE_TEXT: &str = "The Hoardstone — Provenance is part of the value. The check moves from discipline (remembering to verify) to structure: the desk itself refuses anything else.";
+pub fn floor9_foe_hints() -> [&'static str; 4] {
+    [
+        "Exhibit each honest tally before asking what overlaps.",
+        "Read identities in A, B and C; a good can inhabit several ledgers.",
+        "Walk all three trial summaries and adversarial refusals, then re-issue each tally under its own scroll.",
+        "The seam: count each physical identity once. Bare values and foreign census stamps are refused by the desk itself.",
+    ]
+}

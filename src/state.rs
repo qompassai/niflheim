@@ -1055,6 +1055,12 @@ pub struct HoardWork {
     pub ran: bool,
     #[serde(default)]
     pub steward_missed: bool,
+    #[serde(default)]
+    pub blocks: [u8; 8],
+    #[serde(default)]
+    pub suite_walked: bool,
+    #[serde(default)]
+    pub last_mile: u8,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Floor9ChamberProgress {
@@ -1072,6 +1078,24 @@ fn floor9_unworked() -> ChamberState {
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Floor9FoeProgress {
+    #[serde(default)]
+    pub exhibits: [bool; 3],
+    #[serde(default)]
+    pub classes: [u8; 6],
+    #[serde(default)]
+    pub census: Option<crate::puzzles::Stamped<u32>>,
+    #[serde(default)]
+    pub trials: [bool; 3],
+    #[serde(default)]
+    pub adversaries: [bool; 3],
+    #[serde(default)]
+    pub reissued: [Option<crate::puzzles::Stamped<u32>>; 3],
+    #[serde(default)]
+    pub stamps: [u8; 3],
+    #[serde(default)]
+    pub pressure: u8,
+    #[serde(default)]
+    pub page: u8,
     #[serde(default = "floor9_standing")]
     pub state: FoeState,
     #[serde(default)]
@@ -1090,6 +1114,15 @@ fn floor9_idle() -> StrikePhase {
 impl Default for Floor9FoeProgress {
     fn default() -> Self {
         Self {
+            exhibits: [false; 3],
+            classes: [0; 6],
+            census: None,
+            trials: [false; 3],
+            adversaries: [false; 3],
+            reissued: std::array::from_fn(|_| None),
+            stamps: [0; 3],
+            pressure: 0,
+            page: 0,
             state: FoeState::Standing,
             gate_passed: false,
             strike: StrikePhase::Idle,
@@ -4767,11 +4800,16 @@ impl Expedition {
                     && !p.work.steward_missed
                     && (!missed || p.work.misses_explained[crate::content::STEWARD_TRAP_OP])
             }
+            4 => {
+                p.work.suite_walked
+                    && usize::from(p.work.last_mile) == crate::puzzles::hoard_last_mile()
+                    && p.work.blocks == crate::puzzles::hoard_intern_transcript(true).0
+            }
             _ => false,
         }
     }
     pub fn floor9_file_proof(&mut self, chamber: usize) -> Result<String, Refusal> {
-        if chamber > 3
+        if chamber > 4
             || (chamber > 0 && self.floor9.chambers[chamber - 1].state != ChamberState::Repaired)
         {
             return Err(Refusal(
@@ -4788,6 +4826,9 @@ impl Expedition {
                 }
                 2 => {
                     "PROBE TRACE + FLOOD COST mismatch: place the five keys, flood a fresh cellar with the four flood keys, and judge exact counts including landing slots."
+                }
+                4 => {
+                    "SUITE + BLOCK COUNT + LAST MILE mismatch: walk the unchanged suite; identify the absent string and intern it. A diagnosis with blocks[last] = 255 is not the full transcript."
                 }
                 _ => {
                     "ALLOCATION COUNT + EXPLANATION mismatch: run the filed prediction; explain a pending miss by naming the growth operation before re-predicting, then run the exact count."
@@ -4824,6 +4865,123 @@ impl Expedition {
             "Repaired; the fourth hint named the seam, so no facet is earned."
         }
         .into())
+    }
+    pub fn floor9_foe_proof(&self) -> bool {
+        let f = &self.floor9.foe;
+        let (classes, _, census) = crate::puzzles::hoard_census();
+        self.floor9_chambers_repaired() == 5
+            && (0..5).all(|c| self.floor9_diagnosed(c))
+            && f.exhibits.iter().all(|v| *v)
+            && f.classes == classes
+            && f.census.as_ref() == Some(&census)
+    }
+    pub fn floor9_foe_gate(&self) -> bool {
+        self.floor9.foe.trials.iter().all(|v| *v) && self.floor9.foe.adversaries.iter().all(|v| *v)
+    }
+    pub fn floor9_foe_rewrite(&self) -> bool {
+        self.floor9
+            .foe
+            .reissued
+            .iter()
+            .enumerate()
+            .all(|(i, v)| crate::puzzles::hoard_accept_tally(i, v.clone()))
+    }
+    pub fn floor9_foe_exhibit(&mut self, index: usize) -> Result<String, Refusal> {
+        if index >= 3 || self.floor9.foe.state == FoeState::Fallen {
+            return Err(Refusal("No live exhibit at that index.".into()));
+        }
+        if self.floor9_chambers_repaired() != 5 {
+            return Err(Refusal("Repair all five chambers first.".into()));
+        }
+        if index > 0 && !self.floor9.foe.exhibits[index - 1] {
+            return Err(Refusal(format!(
+                "First exhibit the {}.",
+                crate::content::F9_EXHIBITS[index - 1]
+            )));
+        }
+        let (classes, counts, census) = crate::puzzles::hoard_census();
+        if index > 0 && self.floor9.foe.classes != classes {
+            return Err(Refusal("OVERLAP CLASSES mismatch: sort six physical identities by their actual A/B/C membership.".into()));
+        }
+        if index == 2 {
+            self.floor9.foe.census = Some(census.clone());
+        }
+        self.floor9.foe.exhibits[index] = true;
+        self.floor9.foe.pressure = (self.floor9.foe.pressure + 1).min(3);
+        Ok(format!(
+            "{}: honest tallies {counts:?}; identity census {:?}. Frontier desk {}/3 still quotes bare sum {} — misleading; proof preserved.",
+            crate::content::F9_EXHIBITS[index],
+            if index == 2 { Some(census) } else { None },
+            self.floor9.foe.pressure,
+            counts.iter().sum::<u32>()
+        ))
+    }
+    pub fn floor9_foe_prove(&mut self) -> Result<String, Refusal> {
+        if !self.floor9_foe_proof() {
+            return Err(Refusal("File all three ordered exhibits, six exact classes and the stamped identity census after five repairs.".into()));
+        }
+        if self.floor9.foe.state == FoeState::Standing {
+            self.floor9.foe.state = FoeState::Exposed;
+        }
+        Ok("The Hoard Beneath is EXPOSED: the honest tallies overlap; the sum lies.".into())
+    }
+    pub fn floor9_foe_reissue(&mut self, index: usize) -> Result<String, Refusal> {
+        if index >= 3
+            || !self.floor9_foe_proof()
+            || !self.floor9_foe_gate()
+            || self.floor9.foe.state == FoeState::Fallen
+        {
+            return Err(Refusal(
+                "Complete proof and the trial/refusal ledger first.".into(),
+            ));
+        }
+        let (_, counts, _) = crate::puzzles::hoard_census();
+        let scroll = crate::puzzles::hoard_tally_scroll(index);
+        let candidate = match self.floor9.foe.stamps[index] {
+            1 => Some(crate::puzzles::Stamped::seal(counts[index], scroll)),
+            2 => Some(crate::puzzles::Stamped::seal(
+                counts[index],
+                scroll ^ u32::MAX,
+            )),
+            _ => None,
+        };
+        if !crate::puzzles::hoard_accept_tally(index, candidate.clone()) {
+            return Err(Refusal("BARE / FOREIGN CENSUS refused: the desk requires the count fused to its own census-scroll.".into()));
+        }
+        self.floor9.foe.reissued[index] = candidate;
+        Ok("Stamped re-issue accepted; provenance is part of the value.".into())
+    }
+    pub fn floor9_foe_arm_strike(&mut self) -> Result<(), Refusal> {
+        self.floor9.foe.gate_passed = self.floor9_foe_gate();
+        if self.floor9.foe.state != FoeState::Exposed
+            || !self.floor9_foe_proof()
+            || !self.floor9_foe_gate()
+            || !self.floor9_foe_rewrite()
+        {
+            return Err(Refusal("The seal requires exposed identity proof, all trial/refusal records and three accepted stamped re-issues.".into()));
+        }
+        self.floor9.foe.strike = StrikePhase::Armed;
+        Ok(())
+    }
+    pub fn floor9_foe_confirm_strike(&mut self, date: &str) -> Result<String, Refusal> {
+        if self.floor9.foe.strike != StrikePhase::Armed {
+            return Err(Refusal("Press the proven seal first.".into()));
+        }
+        self.floor9_foe_arm_strike()?;
+        self.floor9.foe.strike = StrikePhase::Idle;
+        self.floor9.foe.state = FoeState::Fallen;
+        self.floor9.foe.fallen_date = Some(date.into());
+        if !self
+            .codex
+            .iter()
+            .any(|s| s == crate::content::HOARDSTONE_TEXT)
+        {
+            self.codex.push(crate::content::HOARDSTONE_TEXT.into());
+        }
+        if !self.pack.iter().any(|s| s == "The Heapwarden's Trio") {
+            self.pack.push("The Heapwarden's Trio".into());
+        }
+        Ok("The Hoard Beneath falls. The Hoardstone enters the codex; The Heapwarden's Trio enters the pack. The desk itself refuses anything else.".into())
     }
     pub fn floor9_reachable(&self) -> bool {
         self.floor5_complete()
@@ -5337,6 +5495,45 @@ impl Expedition {
                     "the save claims a Floor 9 proof its work does not hold",
                 ));
             }
+        }
+        let f = &self.floor9.foe;
+        if f.page > 2
+            || f.pressure > 3
+            || f.stamps.iter().any(|v| *v > 2)
+            || f.classes.iter().any(|v| *v > 7)
+            || (f.exhibits[1] && !f.exhibits[0])
+            || (f.exhibits[2] && !f.exhibits[1])
+            || (f.exhibits.iter().any(|v| *v) && self.floor9_chambers_repaired() != 5)
+            || (f.exhibits[1] && f.classes != crate::puzzles::hoard_census().0)
+            || (f.census.is_some()
+                && (!f.exhibits[2] || f.census.as_ref() != Some(&crate::puzzles::hoard_census().2)))
+            || (f.exhibits[2] && f.census.is_none())
+            || (f.gate_passed != self.floor9_foe_gate())
+            || ((f.trials.iter().any(|v| *v) || f.adversaries.iter().any(|v| *v))
+                && !self.floor9_foe_proof())
+            || (f.strike == StrikePhase::Armed && f.state != FoeState::Exposed)
+            || (f.fallen_date.is_some() != (f.state == FoeState::Fallen))
+            || (f.reissued.iter().any(Option::is_some)
+                && (!self.floor9_foe_proof() || !self.floor9_foe_gate()))
+            || f.reissued
+                .iter()
+                .enumerate()
+                .any(|(i, v)| v.is_some() && !crate::puzzles::hoard_accept_tally(i, v.clone()))
+            || (f.state != FoeState::Standing && !self.floor9_foe_proof())
+            || ((f.state == FoeState::Fallen || f.strike == StrikePhase::Armed)
+                && (!self.floor9_foe_gate() || !self.floor9_foe_rewrite()))
+            || (f.state == FoeState::Fallen
+                && (f.fallen_date.is_none()
+                    || f.strike != StrikePhase::Idle
+                    || !self
+                        .codex
+                        .iter()
+                        .any(|s| s == crate::content::HOARDSTONE_TEXT)
+                    || !self.pack.iter().any(|s| s == "The Heapwarden's Trio")))
+        {
+            return Err(corrupt(
+                "the Floor 9 Hoard proof, gate, stamped re-issue or strike is forged",
+            ));
         }
         if self.floor8.chambers.len() != 5 {
             return Err(corrupt("the save does not hold five Floor 8 chambers"));
@@ -8411,5 +8608,211 @@ mod floor9_step3_tests {
         e.floor9.chambers[3].work.steward_missed = true;
         assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
         assert!(!e.floor9_diagnosed(4));
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod floor9_step4_tests {
+    use super::*;
+    use crate::{content, puzzles};
+    pub(crate) fn ready() -> Expedition {
+        let mut e = Expedition::new();
+        e.floor9.chambers[0].work.predictions = puzzles::hoard_shelf_trace().0;
+        e.floor9.chambers[0].work.judged = true;
+        let (s, n) = puzzles::hoard_chain_indices();
+        e.floor9.chambers[1].work.slots = s;
+        e.floor9.chambers[1].work.nexts = n;
+        let (p, f) = puzzles::hoard_cellar_trace();
+        e.floor9.chambers[2].work.probes = p;
+        e.floor9.chambers[2].work.flood_cost = f;
+        e.floor9.chambers[2].work.judged = true;
+        e.floor9.chambers[3].work.predicted = puzzles::hoard_steward_run().1;
+        e.floor9.chambers[3].work.ran = true;
+        for c in 0..4 {
+            e.floor9_file_proof(c).unwrap();
+            e.floor9_repair_chamber(c).unwrap();
+        }
+        e
+    }
+    fn fifth(e: &mut Expedition) {
+        let w = &mut e.floor9.chambers[4].work;
+        w.blocks = puzzles::hoard_intern_transcript(true).0;
+        w.last_mile = puzzles::hoard_last_mile() as u8;
+        w.suite_walked = true;
+        e.floor9_file_proof(4).unwrap();
+        e.floor9_repair_chamber(4).unwrap();
+    }
+    fn proof(e: &mut Expedition) {
+        fifth(e);
+        e.floor9_foe_exhibit(0).unwrap();
+        e.floor9.foe.classes = puzzles::hoard_census().0;
+        e.floor9_foe_exhibit(1).unwrap();
+        e.floor9_foe_exhibit(2).unwrap();
+        e.floor9_foe_prove().unwrap();
+    }
+    fn full(e: &mut Expedition) {
+        proof(e);
+        e.floor9.foe.trials = [true; 3];
+        e.floor9.foe.adversaries = [true; 3];
+        e.floor9.foe.gate_passed = e.floor9_foe_gate();
+        e.floor9.foe.stamps = [1; 3];
+        for i in 0..3 {
+            e.floor9_foe_reissue(i).unwrap();
+        }
+    }
+    #[test]
+    fn fifth_proof_facet_and_loadback() {
+        let mut e = ready();
+        e.floor9.chambers[4].hints_used = 3;
+        fifth(&mut e);
+        assert!(e.floor9.chambers[4].facet);
+        assert_eq!(Expedition::load_json(&e.save_json().unwrap()).unwrap(), e);
+        assert!(content::floor9_chamber_hints(4)[3].contains("seam"));
+    }
+    #[test]
+    fn ordered_census_gate_and_stamped_repair_fall_once() {
+        let mut e = ready();
+        full(&mut e);
+        e.floor9_foe_arm_strike().unwrap();
+        e.floor9_foe_confirm_strike("2026-11-11").unwrap();
+        assert!(e.floor9_complete());
+        assert_eq!(
+            e.codex
+                .iter()
+                .filter(|s| *s == content::HOARDSTONE_TEXT)
+                .count(),
+            1
+        );
+        assert_eq!(
+            e.pack
+                .iter()
+                .filter(|s| s.as_str() == "The Heapwarden's Trio")
+                .count(),
+            1
+        );
+        assert_eq!(Expedition::load_json(&e.save_json().unwrap()).unwrap(), e);
+        assert!(e.floor9_foe_confirm_strike("again").is_err());
+        assert!(e.floor9_foe_arm_strike().is_err());
+    }
+    #[test]
+    fn pressure_is_bounded_and_preserves_identity_proof() {
+        let mut e = ready();
+        proof(&mut e);
+        let census = e.floor9.foe.census.clone();
+        for _ in 0..20 {
+            e.floor9_foe_exhibit(2).unwrap();
+        }
+        assert_eq!(e.floor9.foe.pressure, 3);
+        assert_eq!(e.floor9.foe.census, census);
+        assert!(e.floor9_foe_proof());
+        assert_eq!(Expedition::load_json(&e.save_json().unwrap()).unwrap(), e);
+    }
+    #[test]
+    fn older_work_records_default_new_fields() {
+        let w: HoardWork = serde_json::from_str("{}").unwrap();
+        assert_eq!(w.blocks, [0; 8]);
+        assert!(!w.suite_walked);
+        let f: Floor9FoeProgress = serde_json::from_str("{}").unwrap();
+        assert_eq!(f, Floor9FoeProgress::default());
+        let mut e = ready();
+        e.floor9.chambers[4].hints_used = 4;
+        fifth(&mut e);
+        assert!(!e.floor9.chambers[4].facet);
+    }
+    #[test]
+    fn diagnosis_phase_and_each_wrong_block_refuse_final_proof() {
+        let mut e = ready();
+        fifth(&mut e);
+        let valid = e.floor9.chambers[4].work.clone();
+        for i in 0..8 {
+            e.floor9.chambers[4].work = valid.clone();
+            e.floor9.chambers[4].work.blocks[i] = valid.blocks[i].wrapping_add(1);
+            assert!(!e.floor9_diagnosed(4));
+        }
+        e.floor9.chambers[4].work = valid.clone();
+        e.floor9.chambers[4].work.blocks = puzzles::hoard_intern_transcript(false).0;
+        assert!(e.floor9_file_proof(4).unwrap_err().0.contains("255"));
+        e.floor9.chambers[4].work = valid.clone();
+        e.floor9.chambers[4].work.suite_walked = false;
+        assert!(!e.floor9_diagnosed(4));
+        e.floor9.chambers[4].work = valid;
+        e.floor9.chambers[4].work.last_mile = 255;
+        assert!(!e.floor9_diagnosed(4));
+        assert!(Expedition::load_json(&e.save_json().unwrap()).is_err());
+    }
+    #[test]
+    fn out_of_order_wrong_membership_and_premature_strikes_refuse() {
+        let mut e = ready();
+        assert!(e.floor9_foe_exhibit(0).is_err());
+        fifth(&mut e);
+        assert!(
+            e.floor9_foe_exhibit(2)
+                .unwrap_err()
+                .0
+                .contains("overlap classes")
+        );
+        assert!(
+            e.floor9_foe_exhibit(1)
+                .unwrap_err()
+                .0
+                .contains("three honest tallies")
+        );
+        assert!(e.floor9_foe_prove().is_err());
+        assert!(e.floor9_foe_confirm_strike("x").is_err());
+        e.floor9_foe_exhibit(0).unwrap();
+        assert!(e.floor9_foe_exhibit(1).is_err());
+        e.floor9.foe.classes = puzzles::hoard_census().0;
+        for i in 0..6 {
+            e.floor9.foe.classes[i] ^= 1;
+            assert!(e.floor9_foe_exhibit(1).is_err());
+            e.floor9.foe.classes[i] ^= 1;
+        }
+        assert!(e.floor9_foe_arm_strike().is_err());
+        assert!(e.floor9_foe_exhibit(3).is_err());
+    }
+    #[test]
+    fn forged_gate_stamp_census_and_missing_chamber_saves_refuse() {
+        let mut e = ready();
+        full(&mut e);
+        for kind in 0..7 {
+            let mut bad = e.clone();
+            match kind {
+                0 => bad.floor9.foe.gate_passed = false,
+                1 => bad.floor9.foe.trials[1] = false,
+                2 => bad.floor9.foe.adversaries[2] = false,
+                3 => bad.floor9.foe.census = Some(puzzles::Stamped::seal(999, 0)),
+                4 => bad.floor9.foe.reissued[0] = Some(puzzles::Stamped::seal(999, 0)),
+                5 => bad.floor9.foe.classes[0] ^= 1,
+                _ => bad.floor9.chambers[4].state = ChamberState::Unworked,
+            }
+            assert!(
+                Expedition::load_json(&bad.save_json().unwrap()).is_err(),
+                "forge {kind}"
+            );
+        }
+        e.floor9.foe.stamps = [0; 3];
+        e.floor9.foe.reissued = std::array::from_fn(|_| None);
+        for i in 0..3 {
+            assert!(e.floor9_foe_reissue(i).unwrap_err().0.contains("BARE"));
+            e.floor9.foe.stamps[i] = 2;
+            assert!(e.floor9_foe_reissue(i).is_err());
+        }
+        assert!(e.floor9_foe_reissue(3).is_err());
+    }
+    #[test]
+    fn armed_strike_rechecks_provenance_and_chamber_order() {
+        let mut e = ready();
+        full(&mut e);
+        e.floor9_foe_arm_strike().unwrap();
+        e.floor9.foe.reissued[1] = None;
+        assert!(e.floor9_foe_confirm_strike("x").is_err());
+        assert_eq!(e.floor9.foe.state, FoeState::Exposed);
+        let mut e = ready();
+        e.floor9.chambers[3].state = ChamberState::Unworked;
+        e.floor9.chambers[4].work.suite_walked = true;
+        e.floor9.chambers[4].work.last_mile = puzzles::hoard_last_mile() as u8;
+        e.floor9.chambers[4].work.blocks = puzzles::hoard_intern_transcript(true).0;
+        assert!(e.floor9_file_proof(4).is_err());
+        assert!(e.floor9_repair_chamber(4).is_err());
     }
 }
