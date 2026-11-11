@@ -784,6 +784,24 @@ pub struct LoomWork {
     /// Chambers 2 and 4: the judge has stamped the work.
     #[serde(default)]
     pub judged: bool,
+    /// Chamber 3: the five candidate edges, chalked or not.
+    #[serde(default)]
+    pub edges: [bool; 5],
+    /// Chamber 3: the marked weakened claim
+    /// (0 = unmarked, 1..=4 = the claim).
+    #[serde(default)]
+    pub weak_marked: u8,
+    /// Chamber 3: the stale tide has been found by its
+    /// witness.
+    #[serde(default)]
+    pub stale_found: bool,
+    /// Chamber 3: the keeper has graded the wall.
+    #[serde(default)]
+    pub graded: bool,
+    /// Chamber 4: the eight foretellings of the book's
+    /// script (0 = unforetold).
+    #[serde(default)]
+    pub predictions: [u8; 8],
 }
 
 /// Floor 7, one chamber's progress.
@@ -3700,6 +3718,12 @@ impl Expedition {
                 work.watched && work.scoped && crate::puzzles::scoped_order_valid(&work.join_order)
             }
             1 => work.watched && work.judged && crate::puzzles::seals_complete(&work.seals),
+            2 => {
+                work.watched
+                    && work.graded
+                    && crate::puzzles::wall_graded(&work.edges, work.weak_marked, work.stale_found)
+            }
+            3 => work.watched && work.judged && crate::puzzles::arc_foretold(&work.predictions),
             _ => false,
         }
     }
@@ -4961,6 +4985,70 @@ mod tests {
         assert_eq!(work.spin_annotations, [0; 4]);
     }
 
+    /// Floor 7 Step 3 state: the Charter Wall judges on the
+    /// graded wall, recomputed; Arc and Weak Echoes on the
+    /// foretold script, traced by the model.
+    #[test]
+    fn floor7_second_chambers_judged() {
+        let mut expedition = Expedition::new();
+        // The wall graded, but not by its own pieces: the
+        // stamp alone proves nothing (the judge recomputes).
+        {
+            let work = &mut expedition.floor7.chambers[2].work;
+            work.watched = true;
+            work.graded = true;
+        }
+        assert!(!expedition.floor7_diagnosed(2));
+        {
+            let work = &mut expedition.floor7.chambers[2].work;
+            work.edges = crate::content::WALL_EDGE_KEY;
+            work.weak_marked = 3;
+            work.stale_found = true;
+        }
+        assert!(expedition.floor7_diagnosed(2));
+        assert!(expedition.floor7_file_proof(2).is_ok());
+        assert!(expedition.floor7_repair_chamber(2).is_ok());
+        // The book: the model's own trace, judged.
+        {
+            let work = &mut expedition.floor7.chambers[3].work;
+            work.watched = true;
+            work.predictions = crate::puzzles::arc_trace();
+            work.judged = true;
+        }
+        assert!(expedition.floor7_diagnosed(3));
+        assert!(expedition.floor7_file_proof(3).is_ok());
+        assert!(expedition.floor7_repair_chamber(3).is_ok());
+    }
+
+    /// Adversarial: Floor 6's provisional annotations are
+    /// not this floor's to judge — a player who annotated
+    /// "wrong" at the Spin Heart (by Floor 7's key) still
+    /// completes the Charter Wall on the wall's own pieces,
+    /// and the annotations ride the save untouched (DS-7).
+    #[test]
+    fn floor7_wall_never_rejudges_the_spin_annotations() {
+        let mut expedition = Expedition::new();
+        expedition.floor6.chambers[2].work.spin_annotations = [1, 1, 1, 1];
+        {
+            let work = &mut expedition.floor7.chambers[2].work;
+            work.watched = true;
+            work.edges = crate::content::WALL_EDGE_KEY;
+            work.weak_marked = 3;
+            work.stale_found = true;
+            work.graded = true;
+        }
+        assert!(expedition.floor7_diagnosed(2));
+        assert_eq!(
+            expedition.floor6.chambers[2].work.spin_annotations,
+            [1, 1, 1, 1],
+            "the wall displays the annotations; it does not touch them"
+        );
+        expedition.floor7_reset_chamber(2);
+        let work = &expedition.floor7.chambers[2].work;
+        assert_eq!(work.edges, [false; 5]);
+        assert!(!work.graded);
+        assert!(!expedition.floor7_diagnosed(2));
+    }
     /// Floor 7 Step 2 state: the Scoped Loom judges on the
     /// posted order and the judge's stamp; the Border Seals
     /// on the true seals, judged whole.

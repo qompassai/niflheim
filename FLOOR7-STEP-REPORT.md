@@ -160,4 +160,58 @@ five mirrors primo→local with sha256 verification; the standing
 rule from here on is mirrors are only ever refreshed FROM primo
 after its fmt pass.
 
+Commit: `d042e9a` on `pax/floor2-build-20261109`.
+
+## Step 3 — The Charter Wall and Arc and Weak Echoes
+
+**Built.** Chamber 3 (The Charter Wall): `LoomWork.edges[5]`,
+`weak_marked`, `stale_found`, `graded`; content `WALL_EDGES` (five
+candidate happens-before pairs), `WALL_EDGE_KEY`
+[true,true,true,false,true] — the fourth chalked pair runs backwards
+(a read ordering the write it reads); `WALL_CLAIMS` — the weakened
+claim is the third (Relaxed tally increments asked to carry an
+edge), `WALL_WEAK_INDEX` 2; `WALL_TIDE_NOTE` (the dawn note: "the
+shuttle stands free"). puzzles `wall_fault` names the first fault in
+order (edges, then the mark, then the unfound tide); the diagnosis
+recomputes `wall_graded` behind the `graded` stamp. Presses:
+`F7EdgeToggle`, `F7WeakCycle`, `F7StaleWitness` (the witness text
+carries the shuttle's token from the Spin Heart — claimed, held
+since — against the dawn note), `F7WallGrade`. The shell panel
+displays Floor 6's four spin annotations beside the wall's claims,
+read from `floor6.chambers[2].work.spin_annotations` with their
+chosen orderings — displayed only, never read by any Floor 7 judge
+(DS-7); a state test proves a "wrong" (by Floor 7's key) set of
+annotations neither blocks the wall nor is modified by it.
+Chamber 4 (Arc and Weak Echoes): `LoomWork.predictions[8]` reusing
+the shared `judged` stamp; content `ARC_SCRIPT` — eight authored
+steps (operations + per-step questions: strong count, weak count,
+or the raising's outcome); puzzles runs a REAL counted strong/weak
+model (`ArcModel`) over the script and `arc_trace()` is the model's
+own output — [2,1,2,1,1,1,0,2], the last raising refused by an
+empty book; `arc_foretold` compares the player's foretellings
+against the computed trace. Presses `F7PredictCycle` / `F7ArcJudge`.
+One GUI playthrough drives both chambers through the seal,
+including the grade refusing while the backwards pair stands
+chalked.
+
+**Gates** (primo, rustc 1.99.0; evidence
+`~/.local/share/pax/niflheim-floor7-step3-build-20261110/`):
+- `cargo fmt --check` — clean.
+- `cargo test` — **217 passed / 0 failed** (210 + 4 puzzles + 2
+  state + 1 GUI).
+- `cargo clippy --all-targets -- -D warnings` — exit 0, no fixes
+  needed this step.
+- Theodolite (cured protocol; bacon producer live): planted run —
+  game.rs count=3, E0308 from `theodolite_route_control` at line
+  10053, the other four touched files count=0 in the same session;
+  restore sha256 `f764c721…` verified; clean run — all five touched
+  files count=0. PASS both modes.
+- Determinism: state-level probe through Floor 7 chambers 1–4
+  (transient, removed after, DS-9) — two runs byte-identical,
+  sha256 `8f9769e01ad429fdafcf44938bee0aae4feaba4825723bcf99f7f8d0d9988058`;
+  round-trip asserts `floor7_chambers_repaired() == 4`.
+- Android: exit 0 (libniflheim.so 1,350,198,120 bytes).
+- Xvfb smoke: cold_start_ms=1108, zero panics.
+- `#![forbid(unsafe_code)]` intact.
+
 Commit: (this commit)

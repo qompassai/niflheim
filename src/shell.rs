@@ -8255,6 +8255,8 @@ fn build_floor7_chamber(
     match index {
         0 => build_f7c1(commands, game, pal, fonts, stage),
         1 => build_f7c2(commands, game, pal, fonts, stage),
+        2 => build_f7c3(commands, game, pal, fonts, stage),
+        3 => build_f7c4(commands, game, pal, fonts, stage),
         _ => {}
     }
 }
@@ -8374,6 +8376,229 @@ fn build_f7c2(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, st
                 "The desk has judged the set true."
             } else {
                 "The desk judges only a full set, and judges it whole."
+            }
+        ),
+        12.0,
+        false,
+        pal.ink,
+        Justify::Left,
+        fonts,
+    );
+}
+
+/// Chamber 3's panel: the wall's five candidate edges,
+/// its four claims with the weakened mark, the stale tide
+/// note, and — on loan, provisional and unjudged here —
+/// the spin heart's four annotations from the Lockheart.
+fn build_f7c3(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor7.chambers[2].work;
+    for (index, (before, after)) in content::WALL_EDGES.iter().enumerate() {
+        let rect = geom::f7_op_row(index);
+        spawn_button(
+            commands,
+            stage,
+            rect,
+            &format!(
+                "EDGE {} — {}",
+                index + 1,
+                if work.edges[index] { "CHALKED" } else { "OPEN" }
+            ),
+            pal,
+            work.edges[index],
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 34.0,
+            Some(400.0),
+            &format!("{before} → {after}"),
+            10.5,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    let weak_rect = geom::f7_op_row(5);
+    spawn_button(
+        commands,
+        stage,
+        weak_rect,
+        &format!(
+            "WEAKENED CLAIM — {}",
+            if work.weak_marked == 0 {
+                "UNMARKED".to_string()
+            } else {
+                format!("CLAIM {}", work.weak_marked)
+            }
+        ),
+        pal,
+        work.weak_marked != 0,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        weak_rect.x + 4.0,
+        weak_rect.y + 34.0,
+        Some(400.0),
+        "One claim on the wall leans on a weakened ordering.",
+        10.5,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        150.0,
+        None,
+        "THE WALL'S CLAIMS",
+        12.0,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    for (index, claim) in content::WALL_CLAIMS.iter().enumerate() {
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            174.0 + index as f32 * 54.0,
+            Some(424.0),
+            &format!(
+                "{}{}",
+                claim,
+                if work.weak_marked == (index + 1) as u8 {
+                    "  [MARKED WEAK]"
+                } else {
+                    ""
+                }
+            ),
+            10.5,
+            false,
+            pal.ink,
+            Justify::Left,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        396.0,
+        Some(424.0),
+        &format!(
+            "{} {}",
+            content::WALL_TIDE_NOTE,
+            if work.stale_found {
+                "— FOUND STALE: the token says claimed."
+            } else {
+                ""
+            }
+        ),
+        10.5,
+        false,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        None,
+        "THE SPIN HEART'S FOUR — PROVISIONAL, UNJUDGED HERE",
+        10.5,
+        true,
+        pal.ink_dim,
+        Justify::Left,
+        fonts,
+    );
+    let shorts = ["payload write", "flag store", "flag load", "payload read"];
+    let recorded = game.expedition.floor6.chambers[2].work.spin_annotations;
+    for index in 0..4 {
+        let chosen = recorded[index];
+        let ordering = if chosen == 0 {
+            "unrecorded".to_string()
+        } else {
+            let candidate = content::SPIN_CLAIMS[index].1[(chosen - 1) as usize];
+            content::ORDERING_NAMES[candidate].to_string()
+        };
+        spawn_text(
+            commands,
+            stage,
+            808.0,
+            492.0 + index as f32 * 22.0,
+            Some(424.0),
+            &format!("{} — {}", shorts[index], ordering),
+            10.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+}
+
+/// Chamber 4's panel: the book's eight steps with their
+/// questions and the player's foretellings, and the
+/// referee's standing.
+fn build_f7c4(commands: &mut Commands, game: &Game, pal: &Pal, fonts: &Fonts, stage: Entity) {
+    let work = &game.expedition.floor7.chambers[3].work;
+    for (index, step) in content::ARC_SCRIPT.iter().enumerate() {
+        let rect = geom::f7_step_row(index);
+        let foretold = work.predictions[index];
+        spawn_button(
+            commands,
+            stage,
+            rect,
+            &format!(
+                "STEP {} — {}",
+                index + 1,
+                if foretold == 0 {
+                    "—".to_string()
+                } else {
+                    foretold.to_string()
+                }
+            ),
+            pal,
+            foretold != 0,
+            fonts,
+        );
+        spawn_text(
+            commands,
+            stage,
+            rect.x + 4.0,
+            rect.y + 33.0,
+            Some(400.0),
+            &format!("{} {}", step.action, step.question),
+            10.0,
+            false,
+            pal.ink_dim,
+            Justify::Left,
+            fonts,
+        );
+    }
+    spawn_text(
+        commands,
+        stage,
+        808.0,
+        470.0,
+        Some(424.0),
+        &format!(
+            "Foretold: {} of 8. {}",
+            work.predictions.iter().filter(|p| **p != 0).count(),
+            if work.judged {
+                "The referee's book has agreed, step for step."
+            } else {
+                "The referee judges the whole script at once."
             }
         ),
         12.0,

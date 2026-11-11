@@ -358,6 +358,18 @@ pub enum El {
     F7SealCycle(u8),
     /// Floor 7 Chamber 2: call the border judge.
     F7SealJudge,
+    /// Floor 7 Chamber 3: chalk or un-chalk one edge.
+    F7EdgeToggle(u8),
+    /// Floor 7 Chamber 3: mark the next claim weakened.
+    F7WeakCycle,
+    /// Floor 7 Chamber 3: carry the stale tide's witness.
+    F7StaleWitness,
+    /// Floor 7 Chamber 3: call the wall's grade.
+    F7WallGrade,
+    /// Floor 7 Chamber 4: cycle one step's foretelling.
+    F7PredictCycle(u8),
+    /// Floor 7 Chamber 4: call the referee.
+    F7ArcJudge,
     /// Floor 6 Chamber 1: walk one operation of the day.
     F6DayOp(u8),
     /// Floor 6 Chamber 2: make one call on the brazier.
@@ -1300,6 +1312,23 @@ pub mod geom {
     /// Floor 7 chambers: the judge's button.
     pub fn f7_judge_btn() -> Rect {
         Rect::new(380.0, 452.0, 220.0, 30.0)
+    }
+
+    /// Floor 7 Chamber 3: the witness button, beside the
+    /// judge's.
+    pub fn f7_stale_btn() -> Rect {
+        Rect::new(620.0, 452.0, 156.0, 30.0)
+    }
+
+    /// Floor 7 Chamber 4: one script step's row.
+    pub fn f7_step_row(index: usize) -> Rect {
+        Rect::new(380.0, 96.0 + index as f32 * 48.0, 300.0, 30.0)
+    }
+
+    /// Floor 7 Chamber 4: the referee's button, below the
+    /// eight rows.
+    pub fn f7_arc_judge_btn() -> Rect {
+        Rect::new(380.0, 500.0, 220.0, 30.0)
     }
 
     /// Floor 6 chambers 1-4: one operation/call row.
@@ -4335,6 +4364,147 @@ impl Game {
                 }
             }
 
+            El::F7EdgeToggle(edge) => {
+                if let Screen::Floor7Chamber(2) = self.screen {
+                    let edge = edge as usize;
+                    if let Some(work) = self.expedition.floor7.chambers[2].work.edges.get_mut(edge)
+                    {
+                        *work = !*work;
+                    }
+                    self.expedition.floor7.chambers[2].work.graded = false;
+                    let (before, after) = content::WALL_EDGES[edge];
+                    let chalked = self.expedition.floor7.chambers[2].work.edges[edge];
+                    self.say(
+                        StatusKind::Info,
+                        format!(
+                            "{} → {} — {}.",
+                            before,
+                            after,
+                            if chalked {
+                                "chalked as an edge"
+                            } else {
+                                "un-chalked"
+                            }
+                        ),
+                    );
+                    self.changed();
+                }
+            }
+
+            El::F7WeakCycle => {
+                if let Screen::Floor7Chamber(2) = self.screen {
+                    let work = &mut self.expedition.floor7.chambers[2].work;
+                    work.weak_marked = (work.weak_marked + 1) % 5;
+                    work.graded = false;
+                    let marked = self.expedition.floor7.chambers[2].work.weak_marked;
+                    self.say(
+                        StatusKind::Info,
+                        format!(
+                            "The weakened claim marked: {}.",
+                            if marked == 0 {
+                                "none".to_string()
+                            } else {
+                                format!("claim {}", marked)
+                            }
+                        ),
+                    );
+                    self.changed();
+                }
+            }
+
+            El::F7StaleWitness => {
+                if let Screen::Floor7Chamber(2) = self.screen {
+                    self.expedition.floor7.chambers[2].work.stale_found = true;
+                    self.say(
+                        StatusKind::Good,
+                        "You carry the witness: the shuttle's token is in the \
+                         spin heart's hand — claimed at the second bell and \
+                         held since. The dawn note was true when written; \
+                         standing against the token, it is a stale tide, \
+                         and it is found.",
+                    );
+                    self.changed();
+                }
+            }
+
+            El::F7WallGrade => {
+                if let Screen::Floor7Chamber(2) = self.screen {
+                    let work = &self.expedition.floor7.chambers[2].work;
+                    let (edges, weak, stale) = (work.edges, work.weak_marked, work.stale_found);
+                    match puzzles::wall_fault(&edges, weak, stale) {
+                        None => {
+                            self.expedition.floor7.chambers[2].work.graded = true;
+                            self.say(
+                                StatusKind::Good,
+                                "The wall stands graded true: its edges are the \
+                                 true set, its weakened claim is marked, and \
+                                 its stale tide is found by the witness.",
+                            );
+                        }
+                        Some(fault) => {
+                            self.expedition.floor7.chambers[2].work.graded = false;
+                            self.say(
+                                StatusKind::Refusal,
+                                format!("The wall does not grade: {fault}."),
+                            );
+                        }
+                    }
+                    self.changed();
+                }
+            }
+
+            El::F7PredictCycle(step) => {
+                if let Screen::Floor7Chamber(3) = self.screen {
+                    let step = step as usize;
+                    if let Some(work) = self.expedition.floor7.chambers[3]
+                        .work
+                        .predictions
+                        .get_mut(step)
+                    {
+                        *work = (*work + 1) % 4;
+                    }
+                    self.expedition.floor7.chambers[3].work.judged = false;
+                    let foretold = self.expedition.floor7.chambers[3].work.predictions[step];
+                    self.say(
+                        StatusKind::Info,
+                        format!(
+                            "Step {} foretold: {}.",
+                            step + 1,
+                            if foretold == 0 {
+                                "—".to_string()
+                            } else {
+                                foretold.to_string()
+                            }
+                        ),
+                    );
+                    self.changed();
+                }
+            }
+
+            El::F7ArcJudge => {
+                if let Screen::Floor7Chamber(3) = self.screen {
+                    let predictions = self.expedition.floor7.chambers[3].work.predictions;
+                    if puzzles::arc_foretold(&predictions) {
+                        self.expedition.floor7.chambers[3].work.judged = true;
+                        self.say(
+                            StatusKind::Good,
+                            "The referee's book agrees, step for step: the \
+                             echoes and the counts as foretold.",
+                        );
+                    } else {
+                        self.expedition.floor7.chambers[3].work.judged = false;
+                        self.say(
+                            StatusKind::Refusal,
+                            "The referee's book disagrees: somewhere an echo \
+                             was trusted past its book, or a count was \
+                             hoped instead of held. Run the script again \
+                             in your hands.",
+                        );
+                    }
+                    self.changed();
+                }
+            }
+
             El::F7Watch => {
                 if let Screen::Floor7Chamber(index) = self.screen {
                     if let Some(progress) = self.expedition.floor7.chambers.get_mut(index) {
@@ -6835,6 +7005,20 @@ fn layout_floor7_chamber_panel(els: &mut Vec<(El, Rect)>, game: &Game, chamber: 
             }
             els.push((El::F7SealJudge, geom::f7_judge_btn()));
         }
+        2 => {
+            for edge in 0..5 {
+                els.push((El::F7EdgeToggle(edge as u8), geom::f7_op_row(edge)));
+            }
+            els.push((El::F7WeakCycle, geom::f7_op_row(5)));
+            els.push((El::F7StaleWitness, geom::f7_stale_btn()));
+            els.push((El::F7WallGrade, geom::f7_judge_btn()));
+        }
+        3 => {
+            for step in 0..8 {
+                els.push((El::F7PredictCycle(step as u8), geom::f7_step_row(step)));
+            }
+            els.push((El::F7ArcJudge, geom::f7_arc_judge_btn()));
+        }
         _ => {}
     }
 }
@@ -8530,6 +8714,100 @@ mod tests {
         );
     }
 
+    /// Floor 7 Step 3, driven on the GUI surface: the
+    /// Charter Wall is graded piece by piece — edges
+    /// chalked, the weakened claim marked, the stale tide
+    /// found by its witness — and the pattern-book's eight
+    /// steps are foretold to the referee's trace; both
+    /// chambers through the seal.
+    #[test]
+    fn floor7_chambers_three_and_four_played_on_the_gui() {
+        fn click(game: &mut Game, el: El) {
+            let rect = layout(game)
+                .iter()
+                .find(|(found, _)| *found == el)
+                .map(|(_, rect)| *rect)
+                .unwrap_or_else(|| panic!("{el:?} not laid out on {:?}", game.screen));
+            game.pointer_down(rect.cx(), rect.cy());
+            game.pointer_up(rect.cx(), rect.cy());
+        }
+        fn to_floor7_hub(game: &mut Game) {
+            game.screen = Screen::Hub;
+            game.expedition.foe.state = FoeState::Fallen;
+            game.expedition.foe.gate_passed = true;
+            game.expedition.floor2.foe.state = FoeState::Fallen;
+            game.expedition.floor3.foe.gate_passed = true;
+            for chamber in game.expedition.floor2.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            for chamber in game.expedition.floor4.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor4.foe.state = FoeState::Fallen;
+            for chamber in game.expedition.floor5.chambers.iter_mut() {
+                chamber.state = ChamberState::Repaired;
+            }
+            game.expedition.floor5.foe.state = FoeState::Fallen;
+            click(game, El::DoorFloor4);
+            click(game, El::DoorFloor5);
+            click(game, El::DoorFloor7);
+            assert_eq!(game.screen, Screen::Floor7Hub);
+        }
+        let mut game = Game::new();
+        game.begin();
+        game.io = None;
+        to_floor7_hub(&mut game);
+        // Chamber 3 — the Charter Wall.
+        click(&mut game, El::Floor7Door(2));
+        click(&mut game, El::F7Watch);
+        click(&mut game, El::F7WallGrade);
+        assert!(!game.expedition.floor7.chambers[2].work.graded);
+        for edge in [0u8, 1, 2, 4] {
+            click(&mut game, El::F7EdgeToggle(edge));
+        }
+        // Chalk the backwards pair too: the grade refuses.
+        click(&mut game, El::F7EdgeToggle(3));
+        click(&mut game, El::F7StaleWitness);
+        for _ in 0..3 {
+            click(&mut game, El::F7WeakCycle);
+        }
+        click(&mut game, El::F7WallGrade);
+        assert!(!game.expedition.floor7.chambers[2].work.graded);
+        click(&mut game, El::F7EdgeToggle(3));
+        click(&mut game, El::F7WallGrade);
+        assert!(game.expedition.floor7.chambers[2].work.graded);
+        assert!(game.expedition.floor7_diagnosed(2));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor7.chambers[2].state,
+            ChamberState::Repaired
+        );
+        // Chamber 4 — Arc and Weak Echoes.
+        click(&mut game, El::TabFloor);
+        to_floor7_hub(&mut game);
+        click(&mut game, El::Floor7Door(3));
+        click(&mut game, El::F7Watch);
+        click(&mut game, El::F7ArcJudge);
+        assert!(!game.expedition.floor7.chambers[3].work.judged);
+        // Foretell the model's trace [2, 1, 2, 1, 1, 1, 0, 2].
+        for (step, clicks) in [(0u8, 2), (1, 1), (2, 2), (3, 1), (4, 1), (5, 1), (7, 2)] {
+            for _ in 0..clicks {
+                click(&mut game, El::F7PredictCycle(step));
+            }
+        }
+        click(&mut game, El::F7ArcJudge);
+        assert!(game.expedition.floor7.chambers[3].work.judged);
+        assert!(game.expedition.floor7_diagnosed(3));
+        game.do_verb(Verb::Prove);
+        click(&mut game, El::Seal);
+        click(&mut game, El::SealConfirm);
+        assert_eq!(
+            game.expedition.floor7.chambers[3].state,
+            ChamberState::Repaired
+        );
+    }
     /// Floor 7 Step 2, driven on the GUI surface: the Scoped
     /// Loom's order is posted slot by slot and judged — a
     /// stranded order refused first — and the Border Seals'

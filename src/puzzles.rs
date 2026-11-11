@@ -2882,3 +2882,155 @@ mod floor7_first_tests {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Floor 7 — the Charter Wall and Arc and Weak Echoes. The
+// wall's judge checks the posted edges, the marked claim,
+// and the found tide against the wall's tables. The book's
+// referee is a REAL strong/weak counter simulation: the
+// script's operations run on a counted model, and the
+// trace the player must match is the model's own output.
+// ---------------------------------------------------------------------------
+
+/// The Charter Wall's first fault, if the grading has
+/// one — spoken by the grade press, in the wall's terms.
+pub fn wall_fault(edges: &[bool; 5], weak_marked: u8, stale_found: bool) -> Option<&'static str> {
+    if *edges != crate::content::WALL_EDGE_KEY {
+        return Some(
+            "the edges are not the true set: four of the five chalked pairs are \
+             edges, and one runs backwards",
+        );
+    }
+    if weak_marked != crate::content::WALL_WEAK_INDEX + 1 {
+        return Some(
+            "the weakened claim is not the one marked: one claim leans on \
+             Relaxed for an edge Relaxed never makes",
+        );
+    }
+    if !stale_found {
+        return Some(
+            "the stale tide stands unfound: carry the shuttle's token, not \
+             its dawn note",
+        );
+    }
+    None
+}
+
+/// Whether the wall stands graded true: the true edges,
+/// the weakened claim marked, the stale tide found.
+pub fn wall_graded(edges: &[bool; 5], weak_marked: u8, stale_found: bool) -> bool {
+    wall_fault(edges, weak_marked, stale_found).is_none()
+}
+
+/// The counted strong/weak model: strong holds keep the
+/// book open; weak echoes point at it. Raising an echo
+/// succeeds only while a strong hold stands — and
+/// consumes the echo into a hold.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct ArcModel {
+    /// Strong holds standing.
+    strong: u8,
+    /// Weak echoes standing.
+    weak: u8,
+}
+
+impl ArcModel {
+    /// Run one scripted operation; for a raising, return
+    /// whether it held.
+    fn run(&mut self, op: u8) -> bool {
+        match op {
+            0 => self.strong += 1,
+            1 | 2 => self.weak += 1,
+            3 => self.strong = self.strong.saturating_sub(1),
+            4 => {
+                if self.strong > 0 && self.weak > 0 {
+                    self.weak -= 1;
+                    self.strong += 1;
+                    return true;
+                }
+                return false;
+            }
+            _ => {}
+        }
+        false
+    }
+}
+
+/// The referee's trace over the authored eight-step
+/// script: per step, the foretold quantity — the strong
+/// count, the weak count, or the raising's outcome
+/// (1 = it holds, 2 = it fails) — as the model ran it.
+pub fn arc_trace() -> [u8; 8] {
+    let mut model = ArcModel { strong: 1, weak: 0 };
+    let mut trace = [0u8; 8];
+    for (index, step) in crate::content::ARC_SCRIPT.iter().enumerate() {
+        let held = model.run(step.op);
+        trace[index] = match step.kind {
+            0 => model.strong,
+            1 => model.weak,
+            _ => {
+                if held {
+                    1
+                } else {
+                    2
+                }
+            }
+        };
+    }
+    trace
+}
+
+/// Whether the eight foretellings match the model's
+/// trace, step for step.
+pub fn arc_foretold(predictions: &[u8; 8]) -> bool {
+    *predictions == arc_trace()
+}
+
+#[cfg(test)]
+mod floor7_second_tests {
+    use super::*;
+
+    /// Validation: the wall's true grading — the true
+    /// edges, the Relaxed claim marked, the tide found.
+    #[test]
+    fn wall_key_grades_true() {
+        assert!(wall_graded(&crate::content::WALL_EDGE_KEY, 3, true));
+    }
+
+    /// Adversarial: the backwards pair chalked as an
+    /// edge fails the set, and each missing piece is
+    /// named in its own order.
+    #[test]
+    fn wall_faults_are_named() {
+        let mut edges = crate::content::WALL_EDGE_KEY;
+        edges[3] = true;
+        assert!(!wall_graded(&edges, 3, true));
+        assert!(wall_fault(&crate::content::WALL_EDGE_KEY, 0, true).is_some());
+        assert!(wall_fault(&crate::content::WALL_EDGE_KEY, 1, true).is_some());
+        assert!(wall_fault(&crate::content::WALL_EDGE_KEY, 3, false).is_some());
+        assert_eq!(wall_fault(&crate::content::WALL_EDGE_KEY, 3, true), None);
+    }
+
+    /// Validation: the model's trace over the script —
+    /// holds growing and letting go, echoes made and
+    /// raised, the last raising refused by an empty book.
+    #[test]
+    fn arc_trace_is_the_models_own() {
+        assert_eq!(arc_trace(), [2, 1, 2, 1, 1, 1, 0, 2]);
+    }
+
+    /// Adversarial: one optimistic foretelling — the
+    /// last raising holds, in the player's hope — fails
+    /// the whole script; the counts are the model's, not
+    /// the hope's.
+    #[test]
+    fn arc_hope_is_not_the_trace() {
+        let mut foretold = arc_trace();
+        assert!(arc_foretold(&foretold));
+        foretold[7] = 1;
+        assert!(!arc_foretold(&foretold));
+        foretold = arc_trace();
+        foretold[0] = 3;
+        assert!(!arc_foretold(&foretold));
+    }
+}

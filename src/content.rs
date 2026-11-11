@@ -4285,3 +4285,123 @@ pub const SEAL_TOOLS: [SealTool; 6] = [
         true_seal: 0,
     },
 ];
+
+/// Floor 7 Chamber 3's five candidate happens-before
+/// edges, as (before, after) pairs chalked on the wall.
+/// Exactly four are true edges; the fourth runs backwards
+/// — a read can never order the write it reads.
+pub const WALL_EDGES: [(&str, &str); 5] = [
+    ("the payload is written", "the flag is stored (Release)"),
+    (
+        "the flag is stored (Release)",
+        "the flag is loaded (Acquire)",
+    ),
+    ("the flag is loaded (Acquire)", "the payload is read"),
+    ("the payload is read", "the payload is written"),
+    ("the flag is stored (Release)", "the SeqCst bell is rung"),
+];
+
+/// The wall's true edge set, in WALL_EDGES order.
+pub const WALL_EDGE_KEY: [bool; 5] = [true, true, true, false, true];
+
+/// Floor 7 Chamber 3's four wall claims. Exactly one
+/// leans on a weakened ordering: the third, whose Relaxed
+/// increments are asked to carry an edge Relaxed never
+/// makes. The claims are the wall's own — the spin heart's
+/// four provisional annotations stand beside them,
+/// displayed and never re-judged (DS-7).
+pub const WALL_CLAIMS: [&str; 4] = [
+    "The payload write is ordered before the flag store: the \
+     store releases what the write made.",
+    "The flag load acquires: a reader who sees the flag set \
+     sees the payload that was written before it.",
+    "The tally's Relaxed increments order the bell: whatever \
+     any hand has counted, the bell-ringer's next count \
+     already holds it.",
+    "The bell is rung SeqCst: it stands in the one total \
+     order with every other SeqCst act in the halls.",
+];
+
+/// The weakened claim's index into WALL_CLAIMS.
+pub const WALL_WEAK_INDEX: u8 = 2;
+
+/// The wall's stale tide note, in its older hand — true
+/// at dawn, when it was posted.
+pub const WALL_TIDE_NOTE: &str = "Posted at dawn, in the tide-keeper's \
+    hand: THE SHUTTLE STANDS FREE ON ITS HOOK — send a hand for it \
+    whenever the pattern wants it.";
+
+/// One step of the pattern-book's script (Chamber 4): what
+/// the hand does, and the question the player foretells.
+/// The question kinds: 0 = the strong count after, 1 = the
+/// weak count after, 2 = the upgrade's outcome (recorded
+/// 1 = it holds, 2 = it fails). The referee's answers come
+/// from the counted model in puzzles, never from this
+/// table.
+pub struct ArcStep {
+    /// What the hand does at this step.
+    pub action: &'static str,
+    /// The question the player foretells.
+    pub question: &'static str,
+    /// The question kind (see above).
+    pub kind: u8,
+    /// The operation code for the model in puzzles:
+    /// 0 = take a strong hold, 1 = make a weak echo,
+    /// 2 = copy a weak echo, 3 = let a strong hold go,
+    /// 4 = raise a weak echo to a strong hold.
+    pub op: u8,
+}
+
+/// Floor 7 Chamber 4's eight-step script. The book starts
+/// in one strong hold (its keeper's). The model's trace —
+/// computed in puzzles — is the judge.
+pub const ARC_SCRIPT: [ArcStep; 8] = [
+    ArcStep {
+        action: "Ama takes a second strong hold on the book.",
+        question: "How many strong holds stand after?",
+        kind: 0,
+        op: 0,
+    },
+    ArcStep {
+        action: "The keeper makes a weak echo of the book.",
+        question: "How many weak echoes stand after?",
+        kind: 1,
+        op: 1,
+    },
+    ArcStep {
+        action: "Bryn copies the weak echo for his desk.",
+        question: "How many weak echoes stand after?",
+        kind: 1,
+        op: 2,
+    },
+    ArcStep {
+        action: "Ama lets her strong hold go.",
+        question: "How many strong holds stand after?",
+        kind: 0,
+        op: 3,
+    },
+    ArcStep {
+        action: "Bryn raises his weak echo, asking to hold the book.",
+        question: "Does the raising hold — 1 if it holds, 2 if it fails?",
+        kind: 2,
+        op: 4,
+    },
+    ArcStep {
+        action: "The keeper lets the book's own strong hold go.",
+        question: "How many strong holds stand after?",
+        kind: 0,
+        op: 3,
+    },
+    ArcStep {
+        action: "Bryn lets his raised strong hold go.",
+        question: "How many strong holds stand after?",
+        kind: 0,
+        op: 3,
+    },
+    ArcStep {
+        action: "The keeper raises the last weak echo, asking for the book.",
+        question: "Does the raising hold — 1 if it holds, 2 if it fails?",
+        kind: 2,
+        op: 4,
+    },
+];
