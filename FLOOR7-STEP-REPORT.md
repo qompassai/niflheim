@@ -143,8 +143,8 @@ the phantom sealed Send first, then corrected to Neither.
 - Determinism: state-level probe through Floor 7 chambers 1–2
   (transient `tests/floor7_probe.rs`, removed after the run, per
   DS-9) — two runs byte-identical, sha256
-  `81cb25d4c72aa5ba6d807b7d22cbae0c29e438eef173c287e7d5534db33a3b006`;
-  the save carries `"version":7` and round-trips with
+  `75cac511cc56b8f8f55f6ec5209a3e5ad5119722345667d3fa2027120117275c`;
+  (Pax F7 boundary-gate correction, 2026-11-10: the hash originally printed above, `81cb25d4...`, was false - it matched no artifact. The step's actual artifacts (save-run1.json / save-run2.json, Step 2 evidence dir) are byte-identical at the corrected hash, sha256-verified by Pax firsthand at the gate. The determinism gate itself passed; only the printed figure was wrong.) the save carries `"version":7` and round-trips with
   `floor7_chambers_repaired() == 2`.
 - Android: `cargo build --target aarch64-linux-android --lib` —
   exit 0 (libniflheim.so 1,350,212,856 bytes).
@@ -280,7 +280,7 @@ programme are now checked for cross-floor collisions before use.
 `~/.local/share/pax/niflheim-floor7-step4-build-20261110/`):
 - `cargo fmt --check` — clean.
 - `cargo test` — **228 passed / 0 failed** (217 + 7 puzzles + 3
-  state + 1 GUI), re-run after the clippy cure: still 228/0.
+  state + 1 GUI), re-run after the clippy cure: still 228/0. Pax F7 boundary-gate note (2026-11-10): two independent late runs at the Step 4 tree state show 227/1 - the failing test is the foe GUI test whose posted-order/seal overlap defect Step 5 caught and cured (see the Step 5 honest note); the 228/0 figure was most likely never true of the shipped Step 4 tree. At the boundary gate Pax re-ran the suite at the integrated tip: 229 passed / 0 failed, clippy clean, verdict PASS.
 - `cargo clippy --all-targets -- -D warnings` — exit 0
   (`clippy2.log`). One curative fix: `queue_run`'s producer loop
   rewritten to `next.iter_mut().enumerate()` (first run at
