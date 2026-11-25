@@ -82,7 +82,7 @@ established patterns — after the Versemend Contract 3 close-out
 consumed the night's model-run hours, no phlow runs were dispatched
 for 1B. The gates below are the same gates every step answers to.
 Corpus-first (Owner's rule): the Lane D corpus
-(~/workspace/restricted-remakes-20261108/games/) was searched before
+(the Lane D remakes corpus tree dated 20261108, games/ subdirectory) was searched before
 building (menagerie / bestiary / roster / trait system / puzzle
 room / admission / closure) — **the corpus had nothing for this
 floor's systems**; its dossiers are remake RE for other titles.
